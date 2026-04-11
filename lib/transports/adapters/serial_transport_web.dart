@@ -1,0 +1,144 @@
+import 'dart:async';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
+import 'dart:typed_data';
+
+import '../../domain/connection_config.dart';
+import '../../domain/transport.dart';
+
+@JS('navigator')
+external JSObject get _navigator;
+
+Future<List<String>> listSerialPorts() async {
+  return _navigator.has('serial')
+      ? const <String>['Web Serial: choose a port on connect']
+      : const <String>[];
+}
+
+TransportSession createSerialSession(ConnectionConfig config) {
+  return WebSerialTransportSession(config);
+}
+
+class WebSerialTransportSession implements TransportSession {
+  WebSerialTransportSession(this.config);
+
+  final ConnectionConfig config;
+  final StreamController<List<int>> _incoming =
+      StreamController<List<int>>.broadcast();
+  JSObject? _port;
+  bool _connected = false;
+  bool _closing = false;
+
+  @override
+  TransportType get type => TransportType.serial;
+
+  @override
+  String get label => 'Web Serial';
+
+  @override
+  bool get isConnected => _connected;
+
+  @override
+  Stream<List<int>> get incoming => _incoming.stream;
+
+  @override
+  Future<void> connect() async {
+    final serial = _navigator['serial'] as JSObject?;
+    if (serial == null) {
+      throw UnsupportedError('Web Serial is not available in this browser.');
+    }
+
+    final port =
+        await serial.callMethod<JSPromise<JSObject>>('requestPort'.toJS).toDart;
+    final options = <String, Object>{
+      'baudRate': config.serial.baudRate,
+      'dataBits': config.serial.dataBits,
+      'stopBits': config.serial.stopBits,
+      'parity': switch (config.serial.parity) {
+        SerialParity.none => 'none',
+        SerialParity.odd => 'odd',
+        SerialParity.even => 'even',
+      },
+    }.jsify() as JSObject;
+
+    await port.callMethod<JSPromise<JSAny?>>('open'.toJS, options).toDart;
+    _port = port;
+    _connected = true;
+    _closing = false;
+    unawaited(_readLoop(port));
+  }
+
+  Future<void> _readLoop(JSObject port) async {
+    try {
+      while (!_closing) {
+        final readable = port['readable'] as JSObject?;
+        if (readable == null) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          continue;
+        }
+        final reader = readable.callMethod<JSObject>('getReader'.toJS);
+        try {
+          while (!_closing) {
+            final result = await reader
+                .callMethod<JSPromise<JSObject>>('read'.toJS)
+                .toDart;
+            final done = (result['done'] as JSBoolean?)?.toDart ?? false;
+            if (done) {
+              break;
+            }
+            final value = result['value'];
+            if (value != null) {
+              final bytes = (value as JSUint8Array).toDart;
+              if (bytes.isNotEmpty) {
+                _incoming.add(Uint8List.fromList(bytes));
+              }
+            }
+          }
+        } finally {
+          reader.callMethod<JSAny?>('releaseLock'.toJS);
+        }
+      }
+    } catch (error, stackTrace) {
+      if (!_closing && !_incoming.isClosed) {
+        _incoming.addError(error, stackTrace);
+      }
+    }
+  }
+
+  @override
+  Future<void> send(List<int> bytes) async {
+    final port = _port;
+    if (port == null || !_connected) {
+      throw StateError('Web Serial port is not open.');
+    }
+    final writable = port['writable'] as JSObject?;
+    if (writable == null) {
+      throw StateError('Web Serial writable stream is not available.');
+    }
+    final writer = writable.callMethod<JSObject>('getWriter'.toJS);
+    try {
+      await writer
+          .callMethod<JSPromise<JSAny?>>(
+            'write'.toJS,
+            Uint8List.fromList(bytes).toJS,
+          )
+          .toDart;
+    } finally {
+      writer.callMethod<JSAny?>('releaseLock'.toJS);
+    }
+  }
+
+  @override
+  Future<void> disconnect() async {
+    _closing = true;
+    _connected = false;
+    final port = _port;
+    _port = null;
+    if (port != null) {
+      await port.callMethod<JSPromise<JSAny?>>('close'.toJS).toDart;
+    }
+    if (!_incoming.isClosed) {
+      await _incoming.close();
+    }
+  }
+}
