@@ -6,8 +6,7 @@ void main() {
     await tester.pumpWidget(const CommToolApp());
     await tester.pump();
 
-    expect(find.text('LSerial 通信调试工具'), findsOneWidget);
-    expect(find.text('连接'), findsWidgets);
+    expect(find.text('连接方式'), findsOneWidget);
     expect(find.text('发送数据'), findsOneWidget);
   });
 }

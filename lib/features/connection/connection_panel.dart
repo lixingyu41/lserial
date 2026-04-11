@@ -56,8 +56,13 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       padding: const EdgeInsets.all(12),
       child: ListView(
         children: [
-          Text('连接', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
+          Text(
+            controller.statusMessage,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
           DropdownButtonFormField<TransportType>(
             initialValue: config.type,
             decoration: const InputDecoration(labelText: '连接方式'),
@@ -78,9 +83,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                     }
                   },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           _fieldsFor(config),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -99,14 +104,12 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: controller.refreshSerialPorts,
             icon: const Icon(Icons.refresh),
             label: const Text('刷新串口列表'),
           ),
-          const SizedBox(height: 12),
-          _CapabilityBox(controller: controller),
         ],
       ),
     );
@@ -148,6 +151,47 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           enabled: !controller.isConnected,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(labelText: '波特率'),
+          onChanged: (value) {
+            final parsed = int.tryParse(value);
+            if (parsed != null) {
+              controller.updateConfig(
+                config.copyWith(
+                  serial: config.serial.copyWith(baudRate: parsed),
+                ),
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final value in const [
+              9600,
+              19200,
+              38400,
+              57600,
+              115200,
+              230400,
+              460800,
+              921600
+            ])
+              ChoiceChip(
+                label: Text('$value'),
+                selected: config.serial.baudRate == value,
+                onSelected: controller.isConnected
+                    ? null
+                    : (_) {
+                        baudRate.text = '$value';
+                        controller.updateConfig(
+                          config.copyWith(
+                            serial: config.serial.copyWith(baudRate: value),
+                          ),
+                        );
+                      },
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         Row(
@@ -312,36 +356,5 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       ),
     );
     await controller.connect();
-  }
-}
-
-class _CapabilityBox extends StatelessWidget {
-  const _CapabilityBox({required this.controller});
-
-  final SessionController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('平台能力', style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: 6),
-            for (final capability in controller.capabilities)
-              Text(
-                '${capability.supported ? "OK" : "--"} ${capability.type.label}: ${capability.reason}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-          ],
-        ),
-      ),
-    );
   }
 }

@@ -81,24 +81,9 @@ class _ConsoleToolbar extends StatelessWidget {
             ),
           ),
           FilterChip(
-            label: const Text('时间戳'),
-            selected: controller.showTimestamp,
-            onSelected: controller.setTimestampVisible,
-          ),
-          FilterChip(
-            label: const Text('收发标记'),
-            selected: controller.showDirection,
-            onSelected: controller.setDirectionVisible,
-          ),
-          FilterChip(
-            label: const Text('自动滚动'),
+            label: Text(controller.autoScroll ? '自动滚动' : '不自动滚动'),
             selected: controller.autoScroll,
             onSelected: controller.setAutoScroll,
-          ),
-          FilterChip(
-            label: const Text('暂停显示'),
-            selected: controller.pauseDisplay,
-            onSelected: controller.setPauseDisplay,
           ),
           SizedBox(
             width: 220,
