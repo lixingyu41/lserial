@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_libserialport: ^0.4.0
+  universal_ble: ^1.2.0
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:

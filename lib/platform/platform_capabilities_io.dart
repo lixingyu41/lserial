@@ -9,9 +9,8 @@ Future<List<TransportCapability>> loadPlatformCapabilities() async {
     ),
     TransportCapability(
       type: TransportType.bluetooth,
-      supported: false,
-      reason:
-          'Bluetooth adapter placeholder; choose BLE/SPP plugin per target hardware.',
+      supported: true,
+      reason: 'BLE via universal_ble. Bluetooth Classic/SPP is not included.',
     ),
     TransportCapability(
       type: TransportType.tcpClient,

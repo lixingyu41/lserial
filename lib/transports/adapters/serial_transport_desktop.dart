@@ -10,6 +10,8 @@ Future<List<String>> listSerialPorts() async {
   return SerialPort.availablePorts;
 }
 
+Future<String?> requestSerialPort() async => null;
+
 TransportSession createSerialSession(ConnectionConfig config) {
   return DesktopSerialTransportSession(config);
 }

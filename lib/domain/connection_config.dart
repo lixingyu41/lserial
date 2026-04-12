@@ -111,23 +111,50 @@ class UdpConfig {
 class BluetoothConfig {
   const BluetoothConfig({
     this.deviceId = '',
+    this.deviceName = '',
     this.serviceUuid = '',
     this.characteristicUuid = '',
+    this.writeCharacteristicUuid = '',
+    this.notifyCharacteristicUuid = '',
+    this.writeWithoutResponse = false,
   });
 
   final String deviceId;
+  final String deviceName;
   final String serviceUuid;
   final String characteristicUuid;
+  final String writeCharacteristicUuid;
+  final String notifyCharacteristicUuid;
+  final bool writeWithoutResponse;
+
+  String get effectiveWriteCharacteristicUuid => writeCharacteristicUuid.isEmpty
+      ? characteristicUuid
+      : writeCharacteristicUuid;
+
+  String get effectiveNotifyCharacteristicUuid =>
+      notifyCharacteristicUuid.isEmpty
+          ? effectiveWriteCharacteristicUuid
+          : notifyCharacteristicUuid;
 
   BluetoothConfig copyWith({
     String? deviceId,
+    String? deviceName,
     String? serviceUuid,
     String? characteristicUuid,
+    String? writeCharacteristicUuid,
+    String? notifyCharacteristicUuid,
+    bool? writeWithoutResponse,
   }) {
     return BluetoothConfig(
       deviceId: deviceId ?? this.deviceId,
+      deviceName: deviceName ?? this.deviceName,
       serviceUuid: serviceUuid ?? this.serviceUuid,
       characteristicUuid: characteristicUuid ?? this.characteristicUuid,
+      writeCharacteristicUuid:
+          writeCharacteristicUuid ?? this.writeCharacteristicUuid,
+      notifyCharacteristicUuid:
+          notifyCharacteristicUuid ?? this.notifyCharacteristicUuid,
+      writeWithoutResponse: writeWithoutResponse ?? this.writeWithoutResponse,
     );
   }
 }
@@ -171,7 +198,9 @@ class ConnectionConfig {
         TransportType.serial => serial.portName.isEmpty
             ? 'Serial: no port selected'
             : 'Serial ${serial.portName} @ ${serial.baudRate}',
-        TransportType.bluetooth => 'Bluetooth ${bluetooth.deviceId}',
+        TransportType.bluetooth => bluetooth.deviceName.isEmpty
+            ? 'BLE ${bluetooth.deviceId}'
+            : 'BLE ${bluetooth.deviceName}',
         TransportType.tcpClient => 'TCP ${tcpClient.host}:${tcpClient.port}',
         TransportType.tcpServer =>
           'TCP Server ${tcpServer.bindAddress}:${tcpServer.port}',

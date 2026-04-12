@@ -6,6 +6,8 @@ import 'serial_transport_stub.dart'
 
 Future<List<String>> listSerialPorts() => impl.listSerialPorts();
 
+Future<String?> requestSerialPort() => impl.requestSerialPort();
+
 TransportSession createSerialSession(ConnectionConfig config) {
   return impl.createSerialSession(config);
 }

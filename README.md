@@ -7,12 +7,18 @@
 | 功能 | Windows | macOS | Linux | Web Chrome |
 | --- | --- | --- | --- | --- |
 | Serial | 支持，`flutter_libserialport` | 支持，`flutter_libserialport` | 支持，`flutter_libserialport` | Web Serial 接入点，需 HTTPS/localhost 和用户授权 |
-| Bluetooth | 已隔离 adapter，MVP 禁用 | 已隔离 adapter，MVP 禁用 | 已隔离 adapter，MVP 禁用 | Web Bluetooth 能力探测，BLE GATT 待接入 |
+| Bluetooth | 支持 BLE GATT，`universal_ble` | 支持 BLE GATT，`universal_ble` | 支持 BLE GATT，`universal_ble` | Chrome Web Bluetooth，BLE GATT，需 HTTPS/localhost 和用户授权 |
 | TCP Client | 支持，`dart:io` | 支持，`dart:io` | 支持，`dart:io` | 不支持，UI 禁用 |
 | TCP Server | 支持，`dart:io` | 支持，`dart:io` | 支持，`dart:io` | 不支持，UI 禁用 |
 | UDP | 支持，`dart:io` | 支持，`dart:io` | 支持，`dart:io` | 不支持，UI 禁用 |
 
 Web 端是纯静态前端，无后端依赖。浏览器不暴露原生 TCP/UDP socket，所以 Web 端不会伪造 TCP/UDP 支持。
+
+Web Serial 的串口选择在“串口”下拉栏中完成：选择“选择 Web Serial 串口...”后 Chrome 会弹出授权窗口，授权完成后再点击连接。
+
+Bluetooth 当前实现的是 BLE GATT，不是 Bluetooth Classic/SPP。使用 BLE 时通常只需要扫描并选择设备，连接时会优先自动识别常见 BLE 串口通道，例如 Nordic UART、FFE0/FFE1、FFF0/FFF1；如果设备使用私有 GATT 通道且自动识别失败，再在“高级 BLE 设置”里填写 Service UUID、写入 Characteristic UUID、通知 Characteristic UUID。
+
+传统“蓝牙串口助手”常见的 HC-05/HC-06 属于 Bluetooth Classic SPP，通常会在系统里映射成一个 COM 口，这种情况应直接按 Serial/串口使用，而不是 BLE。
 
 ## 目录结构
 
@@ -22,7 +28,7 @@ lib/
   app/                    # MaterialApp 和主界面 shell
   application/            # SessionController、ReceivePipeline
   core/                   # 字节环形缓存、HEX/ASCII、节流工具
-  domain/                 # TransportType、ConnectionConfig、DataFrame、SendRequest
+  domain/                 # TransportType、ConnectionConfig、BluetoothDeviceInfo、DataFrame、SendRequest
   features/
     connection/           # 连接方式和参数配置 UI
     console/              # 接收显示区、虚拟列表、过滤和工具栏
@@ -32,7 +38,7 @@ lib/
   storage/                # LogBuffer 和日志导出
   transports/
     transport_registry.dart
-    adapters/             # Serial/TCP/UDP/Bluetooth 平台适配
+    adapters/             # Serial/TCP/UDP/BLE 平台适配
 ```
 
 ## 性能策略
@@ -81,6 +87,10 @@ Web Chrome：
 flutter run -d chrome
 ```
 
+不要直接双击 `build/web/index.html` 用 `file://` 打开，Flutter Web 需要通过 HTTP 服务加载资源。
+
+macOS 首次运行 BLE 会触发系统蓝牙权限提示，工程已在 `macos/Runner/Info.plist` 和 entitlements 中声明蓝牙权限。Linux 需要系统 BlueZ 服务可用，用户需要有访问蓝牙适配器的权限。
+
 ## 构建
 
 Windows Release：
@@ -105,6 +115,18 @@ flutter build web --release
 
 ```text
 build/web
+```
+
+本地预览 Web 产物：
+
+```bash
+python -m http.server 8010 --directory build/web
+```
+
+然后在 Chrome 打开：
+
+```text
+http://127.0.0.1:8010/
 ```
 
 如果 Windows 遇到 CMake 生成器缓存不一致：
@@ -140,15 +162,15 @@ Build command: flutter build web --release
 Build output directory: build/web
 ```
 
-Web Serial/Web Bluetooth 只能在 Chrome、HTTPS 或 localhost、用户授权手势下使用。Cloudflare Pages 默认 HTTPS，满足浏览器安全上下文要求。
+Web Serial/Web Bluetooth 只能在 Chrome、HTTPS 或 localhost、用户授权手势下使用。Cloudflare Pages 默认 HTTPS，满足浏览器安全上下文要求。Web Bluetooth 只能访问用户授权时允许的 GATT service；如果 Service UUID 没有在扫描时填入，浏览器可能不允许连接后发现该 service。
 
 ## 后续优先级
 
 必做：
 
-- 桌面 Bluetooth 明确 BLE/SPP 目标后接入稳定插件或原生桥。
-- Web Bluetooth 完成 BLE GATT service/characteristic 选择、notify、write。
 - 增加自动日志滚动落盘，保证超长运行时显示淘汰不影响完整日志。
+- 增加 BLE service/characteristic 发现辅助 UI，减少手工填写 UUID。
+- 如需 HC-05/HC-06 等串口蓝牙模块，单独实现 Bluetooth Classic/SPP adapter。
 
 应做：
 

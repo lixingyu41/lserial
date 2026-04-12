@@ -18,21 +18,75 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="High-throughput communication debug tool.">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="lserial">
+  <meta name="apple-mobile-web-app-title" content="LSerial">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>lserial</title>
+  <title>LSerial</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #111418;
+    }
+
+    #web-startup-help {
+      box-sizing: border-box;
+      max-width: 680px;
+      margin: 96px auto;
+      padding: 24px;
+      color: #e7edf1;
+      border: 1px solid #58626b;
+      border-radius: 8px;
+      font: 14px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #171b20;
+    }
+
+    #web-startup-help code {
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #252b32;
+    }
+  </style>
 </head>
 <body>
+  <div id="web-startup-help" hidden>
+    <strong>LSerial 没有启动。</strong>
+    <p>不要直接双击 <code>build/web/index.html</code> 用 <code>file://</code> 打开。请用 HTTP 服务访问，例如：</p>
+    <p><code>flutter run -d chrome</code></p>
+    <p>或：</p>
+    <p><code>python -m http.server 8010 --directory build/web</code></p>
+    <p>然后打开 <code>http://127.0.0.1:8010/</code>。</p>
+  </div>
+  <script>
+    (function () {
+      const help = document.getElementById('web-startup-help');
+      const isFlutterMounted = () =>
+        document.querySelector('flutter-view, flt-glass-pane') !== null;
+
+      setTimeout(function () {
+        if (!isFlutterMounted()) {
+          help.hidden = false;
+        }
+      }, 3000);
+
+      const timer = setInterval(function () {
+        if (isFlutterMounted()) {
+          help.hidden = true;
+          clearInterval(timer);
+        }
+      }, 500);
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

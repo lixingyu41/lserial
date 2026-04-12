@@ -34,20 +34,28 @@ class FrameFormatter {
   String formatFrame(DataFrame frame, ConsoleFormatOptions options) {
     final prefix = <String>[];
     if (options.showTimestamp) {
-      prefix.add(_formatTime(frame.timestamp));
+      prefix.add(formatTimestamp(frame.timestamp));
     }
     if (options.showDirection) {
-      prefix.add(frame.direction.label);
+      prefix.add('${directionToken(frame)}:');
     }
-    if (frame.source.isNotEmpty) {
-      prefix.add(frame.source);
-    }
+    final payload = formatPayload(frame, options.viewMode);
+    return prefix.isEmpty ? payload : '${prefix.join(' ')} $payload';
+  }
 
-    final payload = switch (options.viewMode) {
+  String directionToken(DataFrame frame) {
+    return switch (frame.direction) {
+      FrameDirection.rx => 'R',
+      FrameDirection.tx => 'T',
+      FrameDirection.system => 'S',
+    };
+  }
+
+  String formatPayload(DataFrame frame, ConsoleViewMode viewMode) {
+    return switch (viewMode) {
       ConsoleViewMode.ascii => _ascii(frame),
       ConsoleViewMode.hex => HexCodec.encode(frame.bytes),
     };
-    return prefix.isEmpty ? payload : '${prefix.join(' ')} | $payload';
   }
 
   String _ascii(DataFrame frame) {
@@ -55,7 +63,7 @@ class FrameFormatter {
     return text.replaceAll('\r', r'\r').replaceAll('\n', r'\n');
   }
 
-  String _formatTime(DateTime value) {
+  String formatTimestamp(DateTime value) {
     String two(int n) => n.toString().padLeft(2, '0');
     String three(int n) => n.toString().padLeft(3, '0');
     return '${two(value.hour)}:${two(value.minute)}:${two(value.second)}.${three(value.millisecond)}';

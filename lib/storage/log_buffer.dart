@@ -60,6 +60,10 @@ class LogBuffer {
 
   int get droppedBytes => _droppedBytes;
 
+  int get retainedFrames => _frames.length;
+
+  int get retainedBytes => _bytes;
+
   void addAll(Iterable<DataFrame> frames) {
     var changed = false;
     for (final frame in frames) {

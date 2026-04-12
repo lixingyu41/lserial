@@ -5,14 +5,30 @@ import 'dart:typed_data';
 
 import '../../domain/connection_config.dart';
 import '../../domain/transport.dart';
+import 'serial_port_options.dart';
 
 @JS('navigator')
 external JSObject get _navigator;
 
+JSObject? _selectedPort;
+
 Future<List<String>> listSerialPorts() async {
-  return _navigator.has('serial')
-      ? const <String>['Web Serial: choose a port on connect']
-      : const <String>[];
+  if (!_navigator.has('serial')) {
+    return const <String>[];
+  }
+  return _selectedPort == null
+      ? const <String>[webSerialPickPortOption]
+      : const <String>[webSerialSelectedPortOption, webSerialPickPortOption];
+}
+
+Future<String?> requestSerialPort() async {
+  final serial = _navigator['serial'] as JSObject?;
+  if (serial == null) {
+    throw UnsupportedError('Web Serial is not available in this browser.');
+  }
+  _selectedPort =
+      await serial.callMethod<JSPromise<JSObject>>('requestPort'.toJS).toDart;
+  return webSerialSelectedPortOption;
 }
 
 TransportSession createSerialSession(ConnectionConfig config) {
@@ -43,13 +59,11 @@ class WebSerialTransportSession implements TransportSession {
 
   @override
   Future<void> connect() async {
-    final serial = _navigator['serial'] as JSObject?;
-    if (serial == null) {
-      throw UnsupportedError('Web Serial is not available in this browser.');
+    final port = _selectedPort;
+    if (port == null) {
+      throw StateError('请先在串口下拉列表中选择 Web Serial 串口。');
     }
 
-    final port =
-        await serial.callMethod<JSPromise<JSObject>>('requestPort'.toJS).toDart;
     final options = <String, Object>{
       'baudRate': config.serial.baudRate,
       'dataBits': config.serial.dataBits,

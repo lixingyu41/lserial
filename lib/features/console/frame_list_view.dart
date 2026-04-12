@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/session_controller.dart';
 import '../../domain/data_frame.dart';
+import '../../protocol/frame_formatter.dart';
 import '../../storage/log_buffer.dart';
 
 class FrameListView extends StatefulWidget {
@@ -44,38 +45,50 @@ class _FrameListViewState extends State<FrameListView> {
     final frames = _filteredFrames();
     final options = widget.controller.formatOptions;
     final formatter = widget.controller.formatter;
-    return Column(
-      children: [
-        _StatsLine(snapshot: widget.snapshot, visibleFrames: frames.length),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.builder(
-            controller: scroll,
-            itemExtent: 24,
-            itemCount: frames.length,
-            itemBuilder: (context, index) {
-              final frame = frames[index];
-              return ColoredBox(
-                color: _rowColor(context, frame),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-                  child: Text(
-                    formatter.formatFrame(frame, options),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'Consolas',
-                      fontSize: 12,
-                      letterSpacing: 0,
-                    ),
+    final filter = widget.filter.trim();
+    return SelectionArea(
+      child: ListView.builder(
+        controller: scroll,
+        itemCount: frames.length,
+        itemBuilder: (context, index) {
+          final frame = frames[index];
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: _rowColor(context, frame),
+              border: frame.direction == FrameDirection.system
+                  ? Border(
+                      left: BorderSide(
+                        color: Theme.of(context).colorScheme.tertiary,
+                        width: 3,
+                      ),
+                    )
+                  : null,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Text.rich(
+                TextSpan(
+                  children: _spansFor(
+                    context,
+                    frame,
+                    formatter,
+                    options,
+                    filter,
                   ),
                 ),
-              );
-            },
-          ),
-        ),
-      ],
+                softWrap: true,
+                style: TextStyle(
+                  fontFamily: 'Consolas',
+                  fontSize: widget.controller.logFontSize,
+                  letterSpacing: 0,
+                  height: 1.35,
+                  color: _textColor(context, frame),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -99,7 +112,120 @@ class _FrameListViewState extends State<FrameListView> {
     return switch (frame.direction) {
       FrameDirection.rx => Colors.transparent,
       FrameDirection.tx => scheme.primary.withValues(alpha: 0.08),
-      FrameDirection.system => scheme.tertiary.withValues(alpha: 0.10),
+      FrameDirection.system => scheme.tertiary.withValues(alpha: 0.14),
+    };
+  }
+
+  Color? _textColor(BuildContext context, DataFrame frame) {
+    if (frame.direction != FrameDirection.system) {
+      return null;
+    }
+    return Theme.of(context).colorScheme.tertiary;
+  }
+
+  List<TextSpan> _spansFor(
+    BuildContext context,
+    DataFrame frame,
+    FrameFormatter formatter,
+    ConsoleFormatOptions options,
+    String filter,
+  ) {
+    final tokenColor = _tokenColor(context, frame);
+    final colonColor = Theme.of(context).colorScheme.outline;
+    final highlightStyle = TextStyle(
+      color: Theme.of(context).colorScheme.onTertiaryContainer,
+      backgroundColor: Theme.of(context)
+          .colorScheme
+          .tertiaryContainer
+          .withValues(alpha: 0.72),
+    );
+    final spans = <TextSpan>[];
+    if (options.showTimestamp) {
+      spans.addAll(
+        _highlightedTextSpans(
+          '${formatter.formatTimestamp(frame.timestamp)} ',
+          filter,
+          TextStyle(color: tokenColor, fontWeight: FontWeight.w600),
+          highlightStyle,
+        ),
+      );
+    }
+    if (options.showDirection) {
+      spans
+        ..addAll(
+          _highlightedTextSpans(
+            formatter.directionToken(frame),
+            filter,
+            TextStyle(color: tokenColor, fontWeight: FontWeight.w700),
+            highlightStyle,
+          ),
+        )
+        ..addAll(
+          _highlightedTextSpans(
+            ': ',
+            filter,
+            TextStyle(color: colonColor, fontWeight: FontWeight.w700),
+            highlightStyle,
+          ),
+        );
+    }
+    spans.addAll(
+      _highlightedTextSpans(
+        formatter.formatPayload(frame, options.viewMode),
+        filter,
+        null,
+        highlightStyle,
+      ),
+    );
+    return spans;
+  }
+
+  List<TextSpan> _highlightedTextSpans(
+    String text,
+    String filter,
+    TextStyle? baseStyle,
+    TextStyle highlightStyle,
+  ) {
+    if (text.isEmpty || filter.isEmpty) {
+      return [TextSpan(text: text, style: baseStyle)];
+    }
+
+    final haystack = text.toLowerCase();
+    final needle = filter.toLowerCase();
+    var cursor = 0;
+    final spans = <TextSpan>[];
+
+    while (cursor < text.length) {
+      final index = haystack.indexOf(needle, cursor);
+      if (index < 0) {
+        spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
+        break;
+      }
+
+      if (index > cursor) {
+        spans.add(
+            TextSpan(text: text.substring(cursor, index), style: baseStyle));
+      }
+
+      final end = index + needle.length;
+      spans.add(
+        TextSpan(
+          text: text.substring(index, end),
+          style: baseStyle?.merge(highlightStyle) ?? highlightStyle,
+        ),
+      );
+      cursor = end;
+    }
+
+    return spans;
+  }
+
+  Color _tokenColor(BuildContext context, DataFrame frame) {
+    final scheme = Theme.of(context).colorScheme;
+    return switch (frame.direction) {
+      FrameDirection.rx => scheme.secondary,
+      FrameDirection.tx => scheme.primary,
+      FrameDirection.system => scheme.tertiary,
     };
   }
 
@@ -108,30 +234,5 @@ class _FrameListViewState extends State<FrameListView> {
       return;
     }
     scroll.jumpTo(scroll.position.maxScrollExtent);
-  }
-}
-
-class _StatsLine extends StatelessWidget {
-  const _StatsLine({
-    required this.snapshot,
-    required this.visibleFrames,
-  });
-
-  final LogSnapshot snapshot;
-  final int visibleFrames;
-
-  @override
-  Widget build(BuildContext context) {
-    final text =
-        'visible $visibleFrames | total frames ${snapshot.totalFrames} | '
-        'bytes ${snapshot.totalBytes} | dropped frames ${snapshot.droppedFrames} | '
-        'dropped bytes ${snapshot.droppedBytes}${snapshot.paused ? " | display paused" : ""}';
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Text(text, style: Theme.of(context).textTheme.bodySmall),
-      ),
-    );
   }
 }

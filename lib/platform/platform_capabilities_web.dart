@@ -21,7 +21,7 @@ Future<List<TransportCapability>> loadPlatformCapabilities() async {
       type: TransportType.bluetooth,
       supported: hasBluetooth,
       reason: hasBluetooth
-          ? 'Chrome Web Bluetooth is available; BLE adapter entry point is present.'
+          ? 'Chrome Web Bluetooth is available for BLE GATT.'
           : 'Web Bluetooth is not available in this browser.',
     ),
     const TransportCapability(
