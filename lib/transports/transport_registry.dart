@@ -32,4 +32,10 @@ class TransportRegistry {
       timeout: timeout,
     );
   }
+
+  Stream<List<BluetoothDeviceInfo>> bluetoothDeviceStream({
+    String? serviceUuid,
+  }) {
+    return bluetooth.scanBluetoothDeviceStream(serviceUuid: serviceUuid);
+  }
 }

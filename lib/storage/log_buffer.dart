@@ -51,6 +51,8 @@ class LogBuffer {
   int _totalBytes = 0;
   int _droppedFrames = 0;
   int _droppedBytes = 0;
+  int _droppedDataFrames = 0;
+  int _droppedDataBytes = 0;
 
   int get totalFrames => _totalFrames;
 
@@ -63,6 +65,17 @@ class LogBuffer {
   int get retainedFrames => _frames.length;
 
   int get retainedBytes => _bytes;
+
+  int get retainedDataFrames =>
+      _frames.where((frame) => frame.direction != FrameDirection.system).length;
+
+  int get retainedDataBytes => _frames
+      .where((frame) => frame.direction != FrameDirection.system)
+      .fold<int>(0, (total, frame) => total + frame.byteLength);
+
+  int get droppedDataFrames => _droppedDataFrames;
+
+  int get droppedDataBytes => _droppedDataBytes;
 
   void addAll(Iterable<DataFrame> frames) {
     var changed = false;
@@ -83,6 +96,10 @@ class LogBuffer {
       _bytes -= removed.byteLength;
       _droppedFrames++;
       _droppedBytes += removed.byteLength;
+      if (removed.direction != FrameDirection.system) {
+        _droppedDataFrames++;
+        _droppedDataBytes += removed.byteLength;
+      }
     }
     _revision++;
   }
@@ -94,6 +111,8 @@ class LogBuffer {
     _totalBytes = 0;
     _droppedFrames = 0;
     _droppedBytes = 0;
+    _droppedDataFrames = 0;
+    _droppedDataBytes = 0;
     _revision++;
   }
 

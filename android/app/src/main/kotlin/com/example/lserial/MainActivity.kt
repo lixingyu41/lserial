@@ -1,4 +1,4 @@
-package com.example.lserial
+package com.lixingyu.lserial
 
 import io.flutter.embedding.android.FlutterActivity
 

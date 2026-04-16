@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../application/session_controller.dart';
 import '../../domain/data_frame.dart';
 import '../../protocol/frame_formatter.dart';
 import '../../storage/log_buffer.dart';
@@ -9,13 +8,23 @@ class FrameListView extends StatefulWidget {
   const FrameListView({
     super.key,
     required this.snapshot,
-    required this.controller,
+    required this.formatter,
+    required this.options,
+    required this.logFontSize,
+    required this.autoScroll,
+    required this.pauseDisplay,
     required this.filter,
+    this.visibleSources,
   });
 
   final LogSnapshot snapshot;
-  final SessionController controller;
+  final FrameFormatter formatter;
+  final ConsoleFormatOptions options;
+  final double logFontSize;
+  final bool autoScroll;
+  final bool pauseDisplay;
   final String filter;
+  final Set<String>? visibleSources;
 
   @override
   State<FrameListView> createState() => _FrameListViewState();
@@ -27,8 +36,8 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   void didUpdateWidget(FrameListView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.controller.autoScroll &&
-        !widget.controller.pauseDisplay &&
+    if (widget.autoScroll &&
+        !widget.pauseDisplay &&
         widget.snapshot.revision != oldWidget.snapshot.revision) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     }
@@ -43,8 +52,8 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   Widget build(BuildContext context) {
     final frames = _filteredFrames();
-    final options = widget.controller.formatOptions;
-    final formatter = widget.controller.formatter;
+    final options = widget.options;
+    final formatter = widget.formatter;
     final filter = widget.filter.trim();
     return SelectionArea(
       child: ListView.builder(
@@ -65,7 +74,7 @@ class _FrameListViewState extends State<FrameListView> {
                   : null,
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               child: Text.rich(
                 TextSpan(
                   children: _spansFor(
@@ -79,7 +88,7 @@ class _FrameListViewState extends State<FrameListView> {
                 softWrap: true,
                 style: TextStyle(
                   fontFamily: 'Consolas',
-                  fontSize: widget.controller.logFontSize,
+                  fontSize: widget.logFontSize,
                   letterSpacing: 0,
                   height: 1.35,
                   color: _textColor(context, frame),
@@ -94,12 +103,20 @@ class _FrameListViewState extends State<FrameListView> {
 
   List<DataFrame> _filteredFrames() {
     final filter = widget.filter.trim().toLowerCase();
-    if (filter.isEmpty) {
+    final visibleSources = widget.visibleSources;
+    if (filter.isEmpty && visibleSources == null) {
       return widget.snapshot.frames;
     }
-    final formatter = widget.controller.formatter;
-    final options = widget.controller.formatOptions;
+    final formatter = widget.formatter;
+    final options = widget.options;
     return widget.snapshot.frames.where((frame) {
+      if (visibleSources != null &&
+          !visibleSources.contains(formatter.sourceToken(frame))) {
+        return false;
+      }
+      if (filter.isEmpty) {
+        return true;
+      }
       return formatter
           .formatFrame(frame, options)
           .toLowerCase()
@@ -150,6 +167,16 @@ class _FrameListViewState extends State<FrameListView> {
         ),
       );
     }
+    if (options.showSource && frame.direction != FrameDirection.system) {
+      spans.addAll(
+        _highlightedTextSpans(
+          '${formatter.sourceToken(frame)} ',
+          filter,
+          TextStyle(color: tokenColor, fontWeight: FontWeight.w600),
+          highlightStyle,
+        ),
+      );
+    }
     if (options.showDirection) {
       spans
         ..addAll(
@@ -169,14 +196,16 @@ class _FrameListViewState extends State<FrameListView> {
           ),
         );
     }
-    spans.addAll(
-      _highlightedTextSpans(
-        formatter.formatPayload(frame, options.viewMode),
-        filter,
-        null,
-        highlightStyle,
-      ),
-    );
+    if (options.showContent) {
+      spans.addAll(
+        _highlightedTextSpans(
+          formatter.formatPayload(frame, options.viewMode),
+          filter,
+          null,
+          highlightStyle,
+        ),
+      );
+    }
     return spans;
   }
 

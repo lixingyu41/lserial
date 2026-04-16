@@ -33,6 +33,77 @@ Future<List<BluetoothDeviceInfo>> scanBluetoothDevices({
   String? serviceUuid,
   Duration timeout = const Duration(seconds: 8),
 }) async {
+  final result = <BluetoothDeviceInfo>[];
+  final subscription = scanBluetoothDeviceStream(
+    serviceUuid: serviceUuid,
+  ).listen((devices) {
+    result
+      ..clear()
+      ..addAll(devices);
+  });
+  await Future<void>.delayed(kIsWeb ? const Duration(seconds: 2) : timeout);
+  await subscription.cancel();
+  return List<BluetoothDeviceInfo>.unmodifiable(result);
+}
+
+Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({
+  String? serviceUuid,
+}) {
+  late StreamController<List<BluetoothDeviceInfo>> controller;
+  StreamSubscription<BleDevice>? subscription;
+  var stopping = false;
+
+  controller = StreamController<List<BluetoothDeviceInfo>>.broadcast(
+    onListen: () async {
+      final devices = <String, BluetoothDeviceInfo>{};
+      void publish() {
+        if (controller.isClosed) {
+          return;
+        }
+        controller.add(_sortedDevices(devices));
+      }
+
+      try {
+        subscription = UniversalBle.scanStream.listen(
+          (device) async {
+            devices[device.deviceId] = _deviceInfoFor(device);
+            publish();
+            // Chrome Web Bluetooth is permission-picker based for this app.
+            // Keep it as a one-shot browser interaction instead of pretending
+            // it supports a desktop-style continuous RSSI scan.
+            if (kIsWeb && !stopping) {
+              stopping = true;
+              await UniversalBle.stopScan().catchError((_) {});
+              await controller.close();
+            }
+          },
+          onError: controller.addError,
+        );
+
+        final scanConfig = _scanConfig(serviceUuid);
+        await UniversalBle.requestPermissions();
+        await UniversalBle.startScan(
+          scanFilter: scanConfig.filter,
+          platformConfig: scanConfig.platformConfig,
+        );
+      } on Object catch (error, stackTrace) {
+        if (!controller.isClosed) {
+          controller.addError(error, stackTrace);
+        }
+      }
+    },
+    onCancel: () async {
+      stopping = true;
+      await UniversalBle.stopScan().catchError((_) {});
+      await subscription?.cancel();
+      subscription = null;
+    },
+  );
+
+  return controller.stream;
+}
+
+_ScanConfig _scanConfig(String? serviceUuid) {
   final filterUuid = serviceUuid?.trim();
   final serviceFilter =
       filterUuid == null || filterUuid.isEmpty ? null : <String>[filterUuid];
@@ -40,39 +111,19 @@ Future<List<BluetoothDeviceInfo>> scanBluetoothDevices({
     for (final profile in _knownBleSerialProfiles) profile.serviceUuid,
     if (serviceFilter != null) ...serviceFilter,
   }.toList(growable: false);
-  final devices = <String, BluetoothDeviceInfo>{};
-  final webResult = Completer<void>();
-  final subscription = UniversalBle.scanStream.listen((device) {
-    devices[device.deviceId] = _deviceInfoFor(device);
-    if (kIsWeb && !webResult.isCompleted) {
-      webResult.complete();
-    }
-  });
+  return _ScanConfig(
+    filter:
+        serviceFilter == null ? null : ScanFilter(withServices: serviceFilter),
+    platformConfig: PlatformConfig(
+      web: WebOptions(optionalServices: optionalServices),
+    ),
+  );
+}
 
-  try {
-    await UniversalBle.requestPermissions();
-    await UniversalBle.startScan(
-      scanFilter: serviceFilter == null
-          ? null
-          : ScanFilter(withServices: serviceFilter),
-      platformConfig: PlatformConfig(
-        web: WebOptions(optionalServices: optionalServices),
-      ),
-    );
-    if (kIsWeb) {
-      await webResult.future.timeout(
-        const Duration(seconds: 1),
-        onTimeout: () {},
-      );
-    } else {
-      await Future<void>.delayed(timeout);
-    }
-  } finally {
-    await UniversalBle.stopScan().catchError((_) {});
-    await subscription.cancel();
-  }
-
-  final result = devices.values.toList(growable: false)
+List<BluetoothDeviceInfo> _sortedDevices(
+  Map<String, BluetoothDeviceInfo> devices,
+) {
+  return devices.values.toList(growable: false)
     ..sort((a, b) {
       final signalCompare = (b.rssi ?? -999).compareTo(a.rssi ?? -999);
       if (signalCompare != 0) {
@@ -80,7 +131,6 @@ Future<List<BluetoothDeviceInfo>> scanBluetoothDevices({
       }
       return a.name.compareTo(b.name);
     });
-  return result;
 }
 
 BluetoothDeviceInfo _deviceInfoFor(BleDevice device) {
@@ -496,6 +546,16 @@ class _KnownBleSerialProfile {
   final String serviceUuid;
   final String writeCharacteristicUuid;
   final String notifyCharacteristicUuid;
+}
+
+class _ScanConfig {
+  const _ScanConfig({
+    required this.filter,
+    required this.platformConfig,
+  });
+
+  final ScanFilter? filter;
+  final PlatformConfig platformConfig;
 }
 
 class _BleChannelSelection {

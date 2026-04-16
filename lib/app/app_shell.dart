@@ -1,34 +1,37 @@
 import 'package:flutter/material.dart';
 
 import '../application/session_controller.dart';
+import '../application/workspace_controller.dart';
 import '../features/connection/connection_panel.dart';
-import '../features/console/console_panel.dart';
+import '../features/console/workspace_console_panel.dart';
 import '../features/quick_commands/quick_commands_panel.dart';
 import '../features/send_panel/send_panel.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.controller});
 
-  final SessionController controller;
+  final WorkspaceController controller;
 
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<AppShell> {
-  double _connectionWidth = 330;
-  double _connectionTopHeight = 210;
-  double _sendHeight = 230;
-  double _quickWidth = 300;
-  double _quickBottomHeight = 240;
+  double _connectionWidth = 318;
+  double _connectionTopHeight = 220;
+  double _sendHeight = 220;
+  double _quickWidth = 292;
+  double _quickBottomHeight = 236;
 
-  SessionController get controller => widget.controller;
+  WorkspaceController get controller => widget.controller;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
+        final activeSession = controller.activeSession;
+        final sendTarget = controller.sendTarget;
         return Scaffold(
           body: LayoutBuilder(
             builder: (context, constraints) {
@@ -47,28 +50,34 @@ class _AppShellState extends State<AppShell> {
                   children: [
                     _AnimatedConnectionTopPanel(
                       controller: controller,
+                      session: activeSession,
                       height: topHeight,
                       onResize: (delta) => setState(() {
                         _connectionTopHeight = (_connectionTopHeight + delta)
-                            .clamp(150, 420)
+                            .clamp(160, 440)
                             .toDouble();
                       }),
                     ),
                     Expanded(
                       flex: 4,
-                      child: ConsolePanel(controller: controller),
+                      child: WorkspaceConsolePanel(controller: controller),
                     ),
                     const Divider(height: 1),
                     Expanded(
                       flex: 2,
-                      child: SendPanel(controller: controller),
+                      child: SendPanel(
+                        controller: sendTarget,
+                        targetSelector: _SendTargetSelector(
+                          controller: controller,
+                        ),
+                      ),
                     ),
                     _AnimatedQuickCommandsBottomPanel(
-                      controller: controller,
+                      controller: sendTarget,
                       height: quickHeight,
                       onResize: (delta) => setState(() {
                         _quickBottomHeight = (_quickBottomHeight - delta)
-                            .clamp(150, 420)
+                            .clamp(160, 440)
                             .toDouble();
                       }),
                     ),
@@ -79,35 +88,43 @@ class _AppShellState extends State<AppShell> {
                 children: [
                   _AnimatedConnectionSidePanel(
                     controller: controller,
+                    session: activeSession,
                     width: _connectionWidth,
                     onResize: (delta) => setState(() {
                       _connectionWidth =
-                          (_connectionWidth + delta).clamp(260, 520).toDouble();
+                          (_connectionWidth + delta).clamp(280, 520).toDouble();
                     }),
                   ),
                   Expanded(
                     child: Column(
                       children: [
-                        Expanded(child: ConsolePanel(controller: controller)),
+                        Expanded(
+                          child: WorkspaceConsolePanel(controller: controller),
+                        ),
                         _HorizontalDragDivider(
                           onDrag: (delta) => setState(() {
                             _sendHeight = (_sendHeight - delta)
-                                .clamp(150, 420)
+                                .clamp(160, 420)
                                 .toDouble();
                           }),
                         ),
                         SizedBox(
                             height: _sendHeight,
-                            child: SendPanel(controller: controller)),
+                            child: SendPanel(
+                              controller: sendTarget,
+                              targetSelector: _SendTargetSelector(
+                                controller: controller,
+                              ),
+                            )),
                       ],
                     ),
                   ),
                   _AnimatedQuickCommandsSidePanel(
-                    controller: controller,
+                    controller: sendTarget,
                     width: _quickWidth,
                     onResize: (delta) => setState(() {
                       _quickWidth =
-                          (_quickWidth - delta).clamp(240, 520).toDouble();
+                          (_quickWidth - delta).clamp(260, 520).toDouble();
                     }),
                   ),
                 ],
@@ -135,11 +152,13 @@ class _AppShellState extends State<AppShell> {
 class _AnimatedConnectionTopPanel extends StatelessWidget {
   const _AnimatedConnectionTopPanel({
     required this.controller,
+    required this.session,
     required this.height,
     required this.onResize,
   });
 
-  final SessionController controller;
+  final WorkspaceController controller;
+  final SessionController session;
   final double height;
   final ValueChanged<double> onResize;
 
@@ -166,7 +185,12 @@ class _AnimatedConnectionTopPanel extends StatelessWidget {
         children: [
           SizedBox(
             height: height,
-            child: ConnectionPanel(controller: controller),
+            child: ConnectionPanel(
+              controller: session,
+              sessionHeader: _SessionPager(controller: controller),
+              occupiedSerialPorts:
+                  controller.occupiedSerialPortsExcept(session),
+            ),
           ),
           _HorizontalDragDivider(onDrag: onResize),
         ],
@@ -178,11 +202,13 @@ class _AnimatedConnectionTopPanel extends StatelessWidget {
 class _AnimatedConnectionSidePanel extends StatelessWidget {
   const _AnimatedConnectionSidePanel({
     required this.controller,
+    required this.session,
     required this.width,
     required this.onResize,
   });
 
-  final SessionController controller;
+  final WorkspaceController controller;
+  final SessionController session;
   final double width;
   final ValueChanged<double> onResize;
 
@@ -218,7 +244,12 @@ class _AnimatedConnectionSidePanel extends StatelessWidget {
         children: [
           SizedBox(
             width: width,
-            child: ConnectionPanel(controller: controller),
+            child: ConnectionPanel(
+              controller: session,
+              sessionHeader: _SessionPager(controller: controller),
+              occupiedSerialPorts:
+                  controller.occupiedSerialPortsExcept(session),
+            ),
           ),
           _VerticalDragDivider(onDrag: onResize),
         ],
@@ -318,6 +349,119 @@ class _AnimatedQuickCommandsSidePanel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SessionPager extends StatelessWidget {
+  const _SessionPager({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = controller.activeSession;
+    return Row(
+      children: [
+        IconButton.outlined(
+          tooltip: '上一个连接页',
+          onPressed:
+              controller.canGoPrevious ? controller.previousSession : null,
+          icon: const Icon(Icons.chevron_left),
+        ),
+        const SizedBox(width: 8),
+        IconButton.outlined(
+          tooltip: '下一个连接页',
+          onPressed: controller.canGoNext ? controller.nextSession : null,
+          icon: const Icon(Icons.chevron_right),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            active.sourceLabel,
+            softWrap: true,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          controller.pageIndicator,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(width: 8),
+        _SessionActionButton(controller: controller),
+      ],
+    );
+  }
+}
+
+class _SessionActionButton extends StatelessWidget {
+  const _SessionActionButton({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    if (controller.canAddSession) {
+      return IconButton.outlined(
+        tooltip: '新增连接页',
+        onPressed: () {
+          controller.addSession();
+        },
+        icon: const Icon(Icons.add),
+      );
+    }
+
+    if (!controller.activeSession.isConnected) {
+      return IconButton.outlined(
+        tooltip: '删除当前空白页',
+        onPressed: controller.canRemoveActiveSession
+            ? controller.removeActiveSession
+            : null,
+        icon: const Icon(Icons.remove),
+      );
+    }
+
+    return const SizedBox.square(dimension: 32);
+  }
+}
+
+class _SendTargetSelector extends StatelessWidget {
+  const _SendTargetSelector({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final connectedIndexes = controller.connectedSessionIndexes;
+    final selectedValue = connectedIndexes.contains(controller.sendTargetIndex)
+        ? controller.sendTargetIndex
+        : null;
+    return DropdownButtonFormField<int>(
+      key: ValueKey(
+        'send-target-${controller.sendTargetIndex}-${connectedIndexes.join("|")}',
+      ),
+      initialValue: selectedValue,
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: '发送到'),
+      hint: const Text('无已连接目标'),
+      items: [
+        for (final i in connectedIndexes)
+          DropdownMenuItem<int>(
+            value: i,
+            child: Text(
+              controller.sessionLabel(i),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: connectedIndexes.isEmpty
+          ? null
+          : (index) {
+              if (index != null) {
+                controller.setSendTargetIndex(index);
+              }
+            },
     );
   }
 }

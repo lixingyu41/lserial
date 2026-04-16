@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 enum FrameDirection {
@@ -33,7 +34,7 @@ class DataFrame {
       sequence: sequence,
       timestamp: DateTime.now(),
       direction: direction,
-      bytes: Uint8List.fromList(text.codeUnits),
+      bytes: utf8.encode(text),
       source: source,
     );
   }

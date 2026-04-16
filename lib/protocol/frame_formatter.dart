@@ -9,21 +9,29 @@ class ConsoleFormatOptions {
     required this.viewMode,
     required this.showTimestamp,
     required this.showDirection,
+    this.showSource = false,
+    this.showContent = true,
   });
 
   final ConsoleViewMode viewMode;
   final bool showTimestamp;
   final bool showDirection;
+  final bool showSource;
+  final bool showContent;
 
   ConsoleFormatOptions copyWith({
     ConsoleViewMode? viewMode,
     bool? showTimestamp,
     bool? showDirection,
+    bool? showSource,
+    bool? showContent,
   }) {
     return ConsoleFormatOptions(
       viewMode: viewMode ?? this.viewMode,
       showTimestamp: showTimestamp ?? this.showTimestamp,
       showDirection: showDirection ?? this.showDirection,
+      showSource: showSource ?? this.showSource,
+      showContent: showContent ?? this.showContent,
     );
   }
 }
@@ -36,22 +44,45 @@ class FrameFormatter {
     if (options.showTimestamp) {
       prefix.add(formatTimestamp(frame.timestamp));
     }
+    if (options.showSource && frame.direction != FrameDirection.system) {
+      prefix.add(sourceToken(frame));
+    }
     if (options.showDirection) {
       prefix.add('${directionToken(frame)}:');
+    } else if (options.showSource && frame.direction == FrameDirection.system) {
+      prefix.add('${sourceToken(frame)}:');
     }
-    final payload = formatPayload(frame, options.viewMode);
-    return prefix.isEmpty ? payload : '${prefix.join(' ')} $payload';
+    final payload =
+        options.showContent ? formatPayload(frame, options.viewMode) : '';
+    if (prefix.isEmpty) {
+      return payload;
+    }
+    if (payload.isEmpty) {
+      return prefix.join(' ');
+    }
+    return '${prefix.join(' ')} $payload';
+  }
+
+  String sourceToken(DataFrame frame) {
+    if (frame.direction == FrameDirection.system) {
+      return 'SYS';
+    }
+    final source = frame.source.trim();
+    return source.isEmpty ? frame.direction.label : source;
   }
 
   String directionToken(DataFrame frame) {
     return switch (frame.direction) {
       FrameDirection.rx => 'R',
       FrameDirection.tx => 'T',
-      FrameDirection.system => 'S',
+      FrameDirection.system => 'SYS',
     };
   }
 
   String formatPayload(DataFrame frame, ConsoleViewMode viewMode) {
+    if (frame.direction == FrameDirection.system) {
+      return _ascii(frame);
+    }
     return switch (viewMode) {
       ConsoleViewMode.ascii => _ascii(frame),
       ConsoleViewMode.hex => HexCodec.encode(frame.bytes),

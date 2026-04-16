@@ -65,6 +65,7 @@ class SessionController extends ChangeNotifier {
     TransportRegistry? registry,
     int maxDisplayFrames = 10000,
     int maxCacheBytes = 16 * 1024 * 1024,
+    this.serialAliasNumber = 1,
   })  : registry = registry ?? const TransportRegistry(),
         rawBuffer = ByteRingBuffer(maxCacheBytes),
         logBuffer =
@@ -81,11 +82,13 @@ class SessionController extends ChangeNotifier {
   final ByteRingBuffer rawBuffer;
   final LogBuffer logBuffer;
   final FrameFormatter formatter = const FrameFormatter();
+  final int serialAliasNumber;
   final ValueNotifier<LogSnapshot> displaySnapshot =
       ValueNotifier<LogSnapshot>(LogSnapshot.empty());
 
   late final ReceivePipeline _pipeline;
   StreamSubscription<List<int>>? _incomingSubscription;
+  StreamSubscription<List<BluetoothDeviceInfo>>? _bluetoothScanSubscription;
   TransportSession? _session;
   Timer? _autoSendTimer;
   Timer? _statsTimer;
@@ -114,6 +117,8 @@ class SessionController extends ChangeNotifier {
   bool pauseDisplay = false;
   bool isScanningBluetooth = false;
   SendShortcutMode sendShortcutMode = SendShortcutMode.enter;
+  String sendDraftText = '';
+  String autoSendIntervalText = '1000';
   double logFontSize = 12;
   int rxFrameCount = 0;
   int txFrameCount = 0;
@@ -158,6 +163,22 @@ class SessionController extends ChangeNotifier {
 
   bool get isAutoSending => _autoSendTimer != null;
 
+  String get sourceLabel => switch (config.type) {
+        TransportType.serial => serialDisplayName,
+        TransportType.bluetooth => _titleValue(
+            config.bluetooth.deviceName.isEmpty
+                ? config.bluetooth.deviceId
+                : config.bluetooth.deviceName,
+            'BLE',
+          ),
+        TransportType.tcpClient =>
+          'TCP ${_titleValue(config.tcpClient.host, 'Client')}:${config.tcpClient.port}',
+        TransportType.tcpServer =>
+          'TCP Server ${_titleValue(config.tcpServer.bindAddress, 'Server')}:${config.tcpServer.port}',
+        TransportType.udp =>
+          'UDP ${_titleValue(config.udp.bindAddress, 'Local')}:${config.udp.localPort}',
+      };
+
   Duration get sessionDuration {
     final startedAt = _sessionStartedAt;
     if (startedAt == null) {
@@ -168,7 +189,7 @@ class SessionController extends ChangeNotifier {
 
   String get windowTitle => switch (config.type) {
         TransportType.serial =>
-          'LSerial-${_titleValue(config.serial.portName, 'Serial')}-${config.serial.baudRate}',
+          'LSerial-$serialDisplayName-${config.serial.baudRate}',
         TransportType.bluetooth =>
           'LSerial-BLE-${_titleValue(config.bluetooth.deviceName.isEmpty ? config.bluetooth.deviceId : config.bluetooth.deviceName, 'Device')}',
         TransportType.tcpClient =>
@@ -178,6 +199,13 @@ class SessionController extends ChangeNotifier {
         TransportType.udp =>
           'LSerial-UDP-${_titleValue(config.udp.remoteHost, 'Remote')}:${config.udp.remotePort}',
       };
+
+  String get serialDisplayName {
+    if (isGenericSerialPortName(config.serial.portName)) {
+      return 'Serial$serialAliasNumber';
+    }
+    return _titleValue(config.serial.portName, 'Serial$serialAliasNumber');
+  }
 
   double get averageRxBytesPerSecond => _averageBytesPerSecond(
         rxByteCount.toDouble(),
@@ -222,33 +250,66 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> scanBluetoothDevices() async {
-    if (isScanningBluetooth || isConnected) {
+    if (isScanningBluetooth) {
+      await stopBluetoothScan();
+      return;
+    }
+    if (isConnected) {
       return;
     }
     isScanningBluetooth = true;
-    _setStatusMessage('Scanning BLE devices...');
+    _setStatusMessage(
+        kIsWeb ? 'Opening Web Bluetooth picker...' : 'Scanning BLE devices...');
     try {
-      bluetoothDevices = await registry.bluetoothDevices(
+      await _bluetoothScanSubscription?.cancel();
+      _bluetoothScanSubscription = registry
+          .bluetoothDeviceStream(
         serviceUuid: config.bluetooth.serviceUuid.trim().isEmpty
             ? null
             : config.bluetooth.serviceUuid.trim(),
+      )
+          .listen(
+        (devices) {
+          bluetoothDevices = devices;
+          _setStatusMessage(kIsWeb
+              ? 'Web Bluetooth device selected.'
+              : 'Scanning BLE devices: ${devices.length}');
+        },
+        onError: (Object error) {
+          bluetoothDevices = const <BluetoothDeviceInfo>[];
+          isScanningBluetooth = false;
+          _bluetoothScanSubscription = null;
+          _setStatusMessage('BLE scan failed: $error');
+        },
+        onDone: () {
+          isScanningBluetooth = false;
+          _bluetoothScanSubscription = null;
+          if (bluetoothDevices.isEmpty) {
+            _setStatusMessage('No BLE devices found.');
+          } else {
+            _setStatusMessage(
+                'Found ${bluetoothDevices.length} BLE device(s).');
+          }
+        },
       );
-      if (bluetoothDevices.isEmpty) {
-        _setStatusMessage('No BLE devices found.');
-      } else {
-        final currentDevice = config.bluetooth.deviceId.trim();
-        if (currentDevice.isEmpty && bluetoothDevices.length == 1) {
-          selectBluetoothDevice(bluetoothDevices.first.id);
-        }
-        _setStatusMessage('Found ${bluetoothDevices.length} BLE device(s).');
-      }
     } on Object catch (error) {
       bluetoothDevices = const <BluetoothDeviceInfo>[];
-      _setStatusMessage('BLE scan failed: $error');
-    } finally {
       isScanningBluetooth = false;
+      _setStatusMessage('BLE scan failed: $error');
       notifyListeners();
     }
+  }
+
+  Future<void> stopBluetoothScan() async {
+    await _bluetoothScanSubscription?.cancel();
+    _bluetoothScanSubscription = null;
+    if (!isScanningBluetooth) {
+      return;
+    }
+    isScanningBluetooth = false;
+    _setStatusMessage(bluetoothDevices.isEmpty
+        ? 'BLE scan stopped.'
+        : 'BLE scan stopped: ${bluetoothDevices.length} device(s).');
   }
 
   void selectBluetoothDevice(String deviceId) {
@@ -345,6 +406,14 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void saveSendDraftText(String value) {
+    sendDraftText = value;
+  }
+
+  void saveAutoSendIntervalText(String value) {
+    autoSendIntervalText = value;
+  }
+
   void addQuickCommand({
     required String name,
     required String content,
@@ -403,6 +472,9 @@ class SessionController extends ChangeNotifier {
           '${config.type.label} disabled: ${unsupportedReason(config.type)}');
       return;
     }
+    if (config.type == TransportType.bluetooth) {
+      await stopBluetoothScan();
+    }
 
     status = TransportStatus.connecting;
     statusMessage = 'Connecting ${config.summary}';
@@ -414,7 +486,7 @@ class SessionController extends ChangeNotifier {
       _session = session;
       _manualDisconnect = false;
       _incomingSubscription = session.incoming.listen(
-        (bytes) => _pipeline.addBytes(bytes, source: session.label),
+        (bytes) => _pipeline.addBytes(bytes, source: sourceLabel),
         onError: (Object error, StackTrace stackTrace) {
           _appendSystem('Receive error: ${_formatError(error)}');
         },
@@ -430,7 +502,7 @@ class SessionController extends ChangeNotifier {
         cancelOnError: false,
       );
       status = TransportStatus.connected;
-      statusMessage = 'Connected ${session.label}';
+      statusMessage = 'Connected $sourceLabel';
       _sessionStartedAt = DateTime.now();
       _startStatsTicker();
       _appendSystem(statusMessage);
@@ -522,7 +594,7 @@ class SessionController extends ChangeNotifier {
           timestamp: DateTime.now(),
           direction: FrameDirection.tx,
           bytes: request.bytes,
-          source: session.label,
+          source: sourceLabel,
         ),
       ]);
       if (rememberHistory) {
@@ -608,6 +680,10 @@ class SessionController extends ChangeNotifier {
     } on Object catch (error) {
       _setStatusMessage('Export failed: $error');
     }
+  }
+
+  void appendSystemMessage(String text) {
+    _appendSystem(text);
   }
 
   void _commitFrames(List<DataFrame> frames) {
@@ -813,6 +889,7 @@ class SessionController extends ChangeNotifier {
     _autoSendTimer?.cancel();
     _statsTimer?.cancel();
     _incomingSubscription?.cancel();
+    _bluetoothScanSubscription?.cancel();
     _session?.disconnect();
     _pipeline.dispose();
     displaySnapshot.dispose();

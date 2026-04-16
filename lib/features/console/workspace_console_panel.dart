@@ -2,21 +2,21 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../application/session_controller.dart';
+import '../../application/workspace_controller.dart';
 import '../../core/encoding/data_format.dart';
 import '../../storage/log_buffer.dart';
 import 'frame_list_view.dart';
 
-class ConsolePanel extends StatefulWidget {
-  const ConsolePanel({super.key, required this.controller});
+class WorkspaceConsolePanel extends StatefulWidget {
+  const WorkspaceConsolePanel({super.key, required this.controller});
 
-  final SessionController controller;
+  final WorkspaceController controller;
 
   @override
-  State<ConsolePanel> createState() => _ConsolePanelState();
+  State<WorkspaceConsolePanel> createState() => _WorkspaceConsolePanelState();
 }
 
-class _ConsolePanelState extends State<ConsolePanel> {
+class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
   final TextEditingController search = TextEditingController();
 
   @override
@@ -41,25 +41,32 @@ class _ConsolePanelState extends State<ConsolePanel> {
                 autoScroll: widget.controller.autoScroll,
                 pauseDisplay: widget.controller.pauseDisplay,
                 filter: search.text,
+                visibleSources: widget.controller.visibleSources,
               );
             },
           ),
         ),
         const Divider(height: 1),
-        _ConsoleToolbar(controller: widget.controller, search: search),
+        _WorkspaceConsoleToolbar(
+          controller: widget.controller,
+          search: search,
+          onSearchChanged: () => setState(() {}),
+        ),
       ],
     );
   }
 }
 
-class _ConsoleToolbar extends StatelessWidget {
-  const _ConsoleToolbar({
+class _WorkspaceConsoleToolbar extends StatelessWidget {
+  const _WorkspaceConsoleToolbar({
     required this.controller,
     required this.search,
+    required this.onSearchChanged,
   });
 
-  final SessionController controller;
+  final WorkspaceController controller;
   final TextEditingController search;
+  final VoidCallback onSearchChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -68,8 +75,8 @@ class _ConsoleToolbar extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final searchField = _SearchField(
-            controller: controller,
             search: search,
+            onChanged: onSearchChanged,
           );
           final rightActions = _RightActions(controller: controller);
 
@@ -104,7 +111,7 @@ class _ConsoleToolbar extends StatelessWidget {
 class _RightActions extends StatelessWidget {
   const _RightActions({required this.controller});
 
-  final SessionController controller;
+  final WorkspaceController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -128,12 +135,12 @@ class _RightActions extends StatelessWidget {
 
 class _SearchField extends StatelessWidget {
   const _SearchField({
-    required this.controller,
     required this.search,
+    required this.onChanged,
   });
 
-  final SessionController controller;
   final TextEditingController search;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -148,11 +155,7 @@ class _SearchField extends StatelessWidget {
           hintText: '搜索过滤',
           contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
         ),
-        onChanged: (_) {
-          controller.displaySnapshot.value = controller.logBuffer.snapshot(
-            paused: controller.pauseDisplay,
-          );
-        },
+        onChanged: (_) => onChanged(),
       ),
     );
   }
@@ -161,7 +164,7 @@ class _SearchField extends StatelessWidget {
 class _LogSettingsButton extends StatefulWidget {
   const _LogSettingsButton({required this.controller});
 
-  final SessionController controller;
+  final WorkspaceController controller;
 
   @override
   State<_LogSettingsButton> createState() => _LogSettingsButtonState();
@@ -244,7 +247,7 @@ class _LogSettingsPopup extends StatelessWidget {
     required this.onClose,
   });
 
-  final SessionController controller;
+  final WorkspaceController controller;
   final VoidCallback onClose;
 
   @override
@@ -253,8 +256,8 @@ class _LogSettingsPopup extends StatelessWidget {
     final viewportSize = MediaQuery.sizeOf(context);
     final availableWidth = math.max(0.0, viewportSize.width - 24);
     final availableHeight = math.max(0.0, viewportSize.height - 24);
-    final popupWidth = math.min(340.0, availableWidth);
-    final popupMaxHeight = math.min(420.0, availableHeight);
+    final popupWidth = math.min(380.0, availableWidth);
+    final popupMaxHeight = math.min(520.0, availableHeight);
     return Material(
       color: scheme.surface,
       elevation: 8,
@@ -271,6 +274,7 @@ class _LogSettingsPopup extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
@@ -315,24 +319,23 @@ class _LogSettingsPopup extends StatelessWidget {
                 animation: controller,
                 builder: (context, _) {
                   return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SwitchListTile(
-                        value: controller.showTimestamp,
-                        onChanged: controller.setTimestampVisible,
-                        title: const Text('显示时间戳'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
+                      _DisplayItems(controller: controller),
+                      const SizedBox(height: 10),
                       SwitchListTile(
                         value: controller.autoScroll,
                         onChanged: controller.setAutoScroll,
                         title: const Text('自动滚动'),
                         contentPadding: EdgeInsets.zero,
                       ),
+                      const SizedBox(height: 6),
+                      _SourceFilter(controller: controller),
                     ],
                   );
                 },
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -352,7 +355,7 @@ class _LogSettingsPopup extends StatelessWidget {
 class _ViewModeSelector extends StatelessWidget {
   const _ViewModeSelector({required this.controller});
 
-  final SessionController controller;
+  final WorkspaceController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -400,6 +403,80 @@ class _ViewModeButton extends StatelessWidget {
         disabledForegroundColor: scheme.onPrimaryContainer,
       ),
       child: Text(mode.label),
+    );
+  }
+}
+
+class _SourceFilter extends StatelessWidget {
+  const _SourceFilter({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = controller.sourceLabels;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('来源过滤', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final source in labels)
+              FilterChip(
+                label: Text(source),
+                selected: controller.isSourceVisible(source),
+                onSelected: (selected) =>
+                    controller.setLogSourceVisible(source, selected),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _DisplayItems extends StatelessWidget {
+  const _DisplayItems({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('显示项', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            FilterChip(
+              label: const Text('时间戳'),
+              selected: controller.showTimestamp,
+              onSelected: controller.setTimestampVisible,
+            ),
+            FilterChip(
+              label: const Text('来源'),
+              selected: controller.showSource,
+              onSelected: controller.setSourceVisible,
+            ),
+            FilterChip(
+              label: const Text('收发'),
+              selected: controller.showDirection,
+              onSelected: controller.setDirectionVisible,
+            ),
+            FilterChip(
+              label: const Text('内容'),
+              selected: controller.showContent,
+              onSelected: controller.setContentVisible,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

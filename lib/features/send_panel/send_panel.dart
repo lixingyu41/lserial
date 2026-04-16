@@ -8,30 +8,71 @@ import '../../core/encoding/data_format.dart';
 import '../../core/encoding/hex_codec.dart';
 
 class SendPanel extends StatefulWidget {
-  const SendPanel({super.key, required this.controller});
+  const SendPanel({
+    super.key,
+    required this.controller,
+    this.targetSelector,
+  });
 
   final SessionController controller;
+  final Widget? targetSelector;
 
   @override
   State<SendPanel> createState() => _SendPanelState();
 }
 
 class _SendPanelState extends State<SendPanel> {
-  final TextEditingController input = TextEditingController();
-  final TextEditingController interval = TextEditingController(text: '1000');
+  late final TextEditingController input;
+  late final TextEditingController interval;
+
+  @override
+  void initState() {
+    super.initState();
+    input = TextEditingController(text: widget.controller.sendDraftText);
+    interval =
+        TextEditingController(text: widget.controller.autoSendIntervalText);
+    input.addListener(_saveInputDraft);
+    interval.addListener(_saveIntervalDraft);
+  }
+
+  @override
+  void didUpdateWidget(SendPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) {
+      return;
+    }
+    input
+      ..removeListener(_saveInputDraft)
+      ..text = widget.controller.sendDraftText
+      ..addListener(_saveInputDraft);
+    interval
+      ..removeListener(_saveIntervalDraft)
+      ..text = widget.controller.autoSendIntervalText
+      ..addListener(_saveIntervalDraft);
+  }
 
   @override
   void dispose() {
+    input.removeListener(_saveInputDraft);
+    interval.removeListener(_saveIntervalDraft);
     input.dispose();
     interval.dispose();
     super.dispose();
+  }
+
+  void _saveInputDraft() {
+    widget.controller.saveSendDraftText(input.text);
+  }
+
+  void _saveIntervalDraft() {
+    widget.controller.saveAutoSendIntervalText(interval.text);
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final inputHeight = _inputHeightFor(constraints);
@@ -59,6 +100,7 @@ class _SendPanelState extends State<SendPanel> {
               const SizedBox(height: 8),
               _SendOptionsRow(
                 controller: controller,
+                targetSelector: widget.targetSelector,
                 onSend: _sendNow,
               ),
               const SizedBox(height: 8),
@@ -169,10 +211,12 @@ class _SendPanelState extends State<SendPanel> {
 class _SendOptionsRow extends StatelessWidget {
   const _SendOptionsRow({
     required this.controller,
+    required this.targetSelector,
     required this.onSend,
   });
 
   final SessionController controller;
+  final Widget? targetSelector;
   final VoidCallback onSend;
 
   @override
@@ -181,6 +225,10 @@ class _SendOptionsRow extends StatelessWidget {
       builder: (context, constraints) {
         const gap = SizedBox(width: 8);
         final children = [
+          if (targetSelector != null) ...[
+            SizedBox(width: 190, child: targetSelector!),
+            gap,
+          ],
           _FormatField(controller: controller),
           gap,
           _LineEndingField(controller: controller),
@@ -204,6 +252,8 @@ class _SendOptionsRow extends StatelessWidget {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            if (targetSelector != null)
+              SizedBox(width: constraints.maxWidth, child: targetSelector!),
             _FormatField(controller: controller),
             _LineEndingField(controller: controller),
             _ShortcutModeField(controller: controller),
@@ -231,6 +281,9 @@ class _FormatField extends StatelessWidget {
     return SizedBox(
       width: 150,
       child: DropdownButtonFormField<PayloadFormat>(
+        key: ValueKey(
+          'send-format-${identityHashCode(controller)}-${controller.sendFormat}',
+        ),
         initialValue: controller.sendFormat,
         isExpanded: true,
         decoration: const InputDecoration(labelText: '输入'),
@@ -262,6 +315,9 @@ class _LineEndingField extends StatelessWidget {
     return SizedBox(
       width: 150,
       child: DropdownButtonFormField<LineEnding>(
+        key: ValueKey(
+          'line-ending-${identityHashCode(controller)}-${controller.lineEnding}',
+        ),
         initialValue: controller.lineEnding,
         isExpanded: true,
         decoration: const InputDecoration(labelText: '结尾'),
@@ -293,6 +349,9 @@ class _ShortcutModeField extends StatelessWidget {
     return SizedBox(
       width: 180,
       child: DropdownButtonFormField<SendShortcutMode>(
+        key: ValueKey(
+          'shortcut-${identityHashCode(controller)}-${controller.sendShortcutMode}',
+        ),
         initialValue: controller.sendShortcutMode,
         isExpanded: true,
         decoration: const InputDecoration(labelText: '发送快捷键'),

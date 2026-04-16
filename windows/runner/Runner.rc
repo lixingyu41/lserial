@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
+            VALUE "CompanyName", "lixingyu" "\0"
             VALUE "FileDescription", "lserial" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "lserial" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2024 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 lixingyu. All rights reserved." "\0"
             VALUE "OriginalFilename", "lserial.exe" "\0"
             VALUE "ProductName", "lserial" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

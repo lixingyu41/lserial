@@ -6,9 +6,16 @@ import '../../domain/transport.dart';
 import '../../transports/adapters/serial_port_options.dart';
 
 class ConnectionPanel extends StatefulWidget {
-  const ConnectionPanel({super.key, required this.controller});
+  const ConnectionPanel({
+    super.key,
+    required this.controller,
+    this.sessionHeader,
+    this.occupiedSerialPorts = const <String>{},
+  });
 
   final SessionController controller;
+  final Widget? sessionHeader;
+  final Set<String> occupiedSerialPorts;
 
   @override
   State<ConnectionPanel> createState() => _ConnectionPanelState();
@@ -52,6 +59,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   }
 
   @override
+  void didUpdateWidget(ConnectionPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _syncTextFields(widget.controller.config);
+    }
+  }
+
+  @override
   void dispose() {
     host.dispose();
     port.dispose();
@@ -71,61 +86,70 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   Widget build(BuildContext context) {
     final config = controller.config;
     return Padding(
-      padding: const EdgeInsets.all(12),
-      child: ListView(
-        children: [
-          _StatusLine(controller: controller),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<TransportType>(
-            initialValue: config.type,
-            decoration: const InputDecoration(labelText: '连接方式'),
-            items: TransportType.values.map((type) {
-              final supported = controller.isTypeSupported(type);
-              return DropdownMenuItem(
-                value: type,
-                enabled: supported,
-                child:
-                    Text(supported ? type.label : '${type.label} (disabled)'),
-              );
-            }).toList(),
-            onChanged: controller.isConnected
-                ? null
-                : (type) {
-                    if (type != null) {
-                      controller.setTransportType(type);
-                    }
-                  },
-          ),
-          const SizedBox(height: 8),
-          _fieldsFor(config),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: controller.isConnected ? null : _connect,
-                  child: const Text('连接'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed:
-                      controller.isConnected ? controller.disconnect : null,
-                  child: const Text('断开'),
-                ),
-              ),
+      padding: const EdgeInsets.all(14),
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: ListView(
+          children: [
+            if (widget.sessionHeader != null) ...[
+              widget.sessionHeader!,
+              const SizedBox(height: 8),
             ],
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: controller.refreshSerialPorts,
-            icon: const Icon(Icons.refresh),
-            label: const Text('刷新串口列表'),
-          ),
-          const SizedBox(height: 8),
-          _StatsPanel(controller: controller),
-        ],
+            _StatusLine(controller: controller),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<TransportType>(
+              key: ValueKey(
+                  'type-${identityHashCode(controller)}-${config.type}'),
+              initialValue: config.type,
+              decoration: const InputDecoration(labelText: '连接方式'),
+              items: TransportType.values.map((type) {
+                final supported = controller.isTypeSupported(type);
+                return DropdownMenuItem(
+                  value: type,
+                  enabled: supported,
+                  child:
+                      Text(supported ? type.label : '${type.label} (disabled)'),
+                );
+              }).toList(),
+              onChanged: controller.isConnected
+                  ? null
+                  : (type) {
+                      if (type != null) {
+                        controller.setTransportType(type);
+                      }
+                    },
+            ),
+            const SizedBox(height: 8),
+            _fieldsFor(config),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: controller.isConnected ? null : _connect,
+                    child: const Text('连接'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed:
+                        controller.isConnected ? controller.disconnect : null,
+                    child: const Text('断开'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: controller.refreshSerialPorts,
+              icon: const Icon(Icons.refresh),
+              label: const Text('刷新串口列表'),
+            ),
+            const SizedBox(height: 8),
+            _StatsPanel(controller: controller),
+          ],
+        ),
       ),
     );
   }
@@ -140,10 +164,35 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     };
   }
 
+  void _syncTextFields(ConnectionConfig config) {
+    host.text = config.tcpClient.host;
+    port.text = switch (config.type) {
+      TransportType.tcpServer => config.tcpServer.port.toString(),
+      _ => config.tcpClient.port.toString(),
+    };
+    bindAddress.text = switch (config.type) {
+      TransportType.udp => config.udp.bindAddress,
+      _ => config.tcpServer.bindAddress,
+    };
+    localPort.text = config.udp.localPort.toString();
+    remoteHost.text = config.udp.remoteHost;
+    remotePort.text = config.udp.remotePort.toString();
+    baudRate.text = config.serial.baudRate.toString();
+    bluetoothDeviceId.text = config.bluetooth.deviceId;
+    bluetoothServiceUuid.text = config.bluetooth.serviceUuid;
+    bluetoothWriteCharacteristicUuid.text =
+        config.bluetooth.effectiveWriteCharacteristicUuid;
+    bluetoothNotifyCharacteristicUuid.text =
+        config.bluetooth.notifyCharacteristicUuid;
+  }
+
   Widget _serialFields(ConnectionConfig config) {
-    final selectedPort = controller.serialPorts.contains(config.serial.portName)
-        ? config.serial.portName
-        : null;
+    final occupiedPorts = widget.occupiedSerialPorts;
+    final selectedPort =
+        controller.serialPorts.contains(config.serial.portName) &&
+                !occupiedPorts.contains(config.serial.portName)
+            ? config.serial.portName
+            : null;
     return Column(
       children: [
         DropdownButtonFormField<String>(
@@ -155,7 +204,13 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               .map(
                 (portName) => DropdownMenuItem(
                   value: portName,
-                  child: Text(serialPortOptionLabel(portName)),
+                  enabled: !occupiedPorts.contains(portName),
+                  child: Text(
+                    serialPortOptionLabel(portName),
+                    style: occupiedPorts.contains(portName)
+                        ? TextStyle(color: Theme.of(context).disabledColor)
+                        : null,
+                  ),
                 ),
               )
               .toList(),
@@ -214,6 +269,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             SizedBox(
               width: 78,
               child: DropdownButtonFormField<int>(
+                key: ValueKey(
+                  'data-bits-${identityHashCode(controller)}-${config.serial.dataBits}',
+                ),
                 initialValue: config.serial.dataBits,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: '数据位'),
@@ -238,6 +296,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             SizedBox(
               width: 78,
               child: DropdownButtonFormField<int>(
+                key: ValueKey(
+                  'stop-bits-${identityHashCode(controller)}-${config.serial.stopBits}',
+                ),
                 initialValue: config.serial.stopBits,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: '停止位'),
@@ -261,6 +322,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             const SizedBox(width: 8),
             Expanded(
               child: DropdownButtonFormField<SerialParity>(
+                key: ValueKey(
+                  'parity-${identityHashCode(controller)}-${config.serial.parity}',
+                ),
                 initialValue: config.serial.parity,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: '校验'),
@@ -362,46 +426,26 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: controller.isConnected || controller.isScanningBluetooth
-              ? null
-              : _scanBluetoothDevices,
+          onPressed: controller.isConnected ? null : _scanBluetoothDevices,
           icon: controller.isScanningBluetooth
               ? const SizedBox.square(
                   dimension: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.bluetooth_searching),
-          label: Text(controller.isScanningBluetooth ? '扫描中...' : '扫描 BLE 设备'),
+          label: Text(
+            controller.isScanningBluetooth ? '停止扫描' : '扫描 BLE 设备',
+          ),
         ),
         if (controller.bluetoothDevices.isNotEmpty) ...[
           const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            key: ValueKey(
-              'ble-${controller.bluetoothDevices.map((e) => e.id).join("|")}-$selectedDevice',
-            ),
-            initialValue: selectedDevice,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'BLE 设备'),
-            items: controller.bluetoothDevices
-                .map(
-                  (device) => DropdownMenuItem(
-                    value: device.id,
-                    child: Text(
-                      device.label,
-                      softWrap: true,
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: controller.isConnected
-                ? null
-                : (value) {
-                    if (value == null) {
-                      return;
-                    }
-                    bluetoothDeviceId.text = value;
-                    controller.selectBluetoothDevice(value);
-                  },
+          _BluetoothDeviceList(
+            controller: controller,
+            selectedDeviceId: selectedDevice,
+            onSelected: (value) {
+              bluetoothDeviceId.text = value;
+              controller.selectBluetoothDevice(value);
+            },
           ),
         ],
         const SizedBox(height: 8),
@@ -572,6 +616,102 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   }
 }
 
+class _BluetoothDeviceList extends StatelessWidget {
+  const _BluetoothDeviceList({
+    required this.controller,
+    required this.selectedDeviceId,
+    required this.onSelected,
+  });
+
+  final SessionController controller;
+  final String? selectedDeviceId;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final devices = controller.bluetoothDevices;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 180),
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: devices.length,
+          separatorBuilder: (context, index) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final device = devices[index];
+            final selected = device.id == selectedDeviceId;
+            return InkWell(
+              onTap:
+                  controller.isConnected ? null : () => onSelected(device.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      selected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      size: 17,
+                      color: selected ? scheme.primary : scheme.outline,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  device.name.trim().isEmpty
+                                      ? 'Unknown BLE device'
+                                      : device.name,
+                                  softWrap: true,
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ),
+                              if (device.rssi != null) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${device.rssi} dBm',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelMedium
+                                      ?.copyWith(color: scheme.secondary),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            device.id,
+                            softWrap: true,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class _StatusLine extends StatelessWidget {
   const _StatusLine({required this.controller});
 
@@ -584,7 +724,7 @@ class _StatusLine extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withAlpha(22),
         border: Border.all(color: color.withAlpha(110)),
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -671,7 +811,7 @@ class _StatsPanel extends StatelessWidget {
         _StatRow(
           label: '显示',
           value:
-              '${controller.logBuffer.retainedFrames} 帧 / ${_formatBytes(controller.logBuffer.retainedBytes)}',
+              '${controller.logBuffer.retainedDataFrames} 帧 / ${_formatBytes(controller.logBuffer.retainedDataBytes)}',
         ),
       if (controller.isStatVisible(SessionStat.rawCache))
         _StatRow(
@@ -683,14 +823,15 @@ class _StatsPanel extends StatelessWidget {
         _StatRow(
           label: '丢弃',
           value:
-              '${controller.logBuffer.droppedFrames} 帧 / ${_formatBytes(controller.logBuffer.droppedBytes + controller.rawBuffer.droppedBytes)}',
+              '${controller.logBuffer.droppedDataFrames} 帧 / ${_formatBytes(controller.logBuffer.droppedDataBytes + controller.rawBuffer.droppedBytes)}',
         ),
     ];
 
     return DecoratedBox(
       decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
         padding: const EdgeInsets.all(8),
@@ -776,7 +917,7 @@ class _StatRow extends StatelessWidget {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           border:
               Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-          borderRadius: BorderRadius.zero,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),

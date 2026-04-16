@@ -25,7 +25,7 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
   Widget build(BuildContext context) {
     final hasHistory = controller.sendHistory.isNotEmpty;
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
