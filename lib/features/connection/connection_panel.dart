@@ -437,7 +437,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             controller.isScanningBluetooth ? '停止扫描' : '扫描 BLE 设备',
           ),
         ),
-        if (controller.bluetoothDevices.isNotEmpty) ...[
+        if (!controller.isConnected &&
+            controller.bluetoothDevices.isNotEmpty) ...[
           const SizedBox(height: 8),
           _BluetoothDeviceList(
             controller: controller,
@@ -637,76 +638,82 @@ class _BluetoothDeviceList extends StatelessWidget {
         border: Border.all(color: scheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 180),
-        child: ListView.separated(
-          shrinkWrap: true,
-          itemCount: devices.length,
-          separatorBuilder: (context, index) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final device = devices[index];
-            final selected = device.id == selectedDeviceId;
-            return InkWell(
-              onTap:
-                  controller.isConnected ? null : () => onSelected(device.id),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      selected
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_unchecked,
-                      size: 17,
-                      color: selected ? scheme.primary : scheme.outline,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < devices.length; index++) ...[
+            if (index > 0) const Divider(height: 1),
+            Builder(
+              builder: (context) {
+                final device = devices[index];
+                final selected = device.id == selectedDeviceId;
+                return InkWell(
+                  onTap: controller.isConnected
+                      ? null
+                      : () => onSelected(device.id),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          selected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_unchecked,
+                          size: 17,
+                          color: selected ? scheme.primary : scheme.outline,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  device.name.trim().isEmpty
-                                      ? 'Unknown BLE device'
-                                      : device.name,
-                                  softWrap: true,
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      device.name.trim().isEmpty
+                                          ? 'Unknown BLE device'
+                                          : device.name,
+                                      softWrap: true,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium,
+                                    ),
+                                  ),
+                                  if (device.rssi != null) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '${device.rssi} dBm',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(color: scheme.secondary),
+                                    ),
+                                  ],
+                                ],
                               ),
-                              if (device.rssi != null) ...[
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${device.rssi} dBm',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelMedium
-                                      ?.copyWith(color: scheme.secondary),
-                                ),
-                              ],
+                              const SizedBox(height: 2),
+                              Text(
+                                device.id,
+                                softWrap: true,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(color: scheme.onSurfaceVariant),
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            device.id,
-                            softWrap: true,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(color: scheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
       ),
     );
   }

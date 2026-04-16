@@ -51,6 +51,7 @@ Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({
 }) {
   late StreamController<List<BluetoothDeviceInfo>> controller;
   StreamSubscription<BleDevice>? subscription;
+  Timer? publishTimer;
   var stopping = false;
 
   controller = StreamController<List<BluetoothDeviceInfo>>.broadcast(
@@ -67,11 +68,11 @@ Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({
         subscription = UniversalBle.scanStream.listen(
           (device) async {
             devices[device.deviceId] = _deviceInfoFor(device);
-            publish();
             // Chrome Web Bluetooth is permission-picker based for this app.
             // Keep it as a one-shot browser interaction instead of pretending
             // it supports a desktop-style continuous RSSI scan.
             if (kIsWeb && !stopping) {
+              publish();
               stopping = true;
               await UniversalBle.stopScan().catchError((_) {});
               await controller.close();
@@ -82,6 +83,10 @@ Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({
 
         final scanConfig = _scanConfig(serviceUuid);
         await UniversalBle.requestPermissions();
+        publishTimer = Timer.periodic(
+          const Duration(seconds: 2),
+          (_) => publish(),
+        );
         await UniversalBle.startScan(
           scanFilter: scanConfig.filter,
           platformConfig: scanConfig.platformConfig,
@@ -94,6 +99,8 @@ Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({
     },
     onCancel: () async {
       stopping = true;
+      publishTimer?.cancel();
+      publishTimer = null;
       await UniversalBle.stopScan().catchError((_) {});
       await subscription?.cancel();
       subscription = null;
