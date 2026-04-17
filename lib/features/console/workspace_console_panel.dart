@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/localization.dart';
 import '../../application/workspace_controller.dart';
 import '../../core/encoding/data_format.dart';
+import '../../platform/external_link.dart';
 import '../../storage/log_buffer.dart';
 import 'frame_list_view.dart';
 
@@ -346,6 +347,10 @@ class _LogSettingsPopup extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   _LanguageSelector(controller: controller),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  const _CopyrightLink(),
                 ],
               ),
             ),
@@ -550,6 +555,51 @@ class _SettingsFilterChip extends StatelessWidget {
       label: label,
       selected: selected,
       onSelected: onSelected,
+    );
+  }
+}
+
+class _CopyrightLink extends StatelessWidget {
+  const _CopyrightLink();
+
+  static final Uri _url = Uri.parse('https://lixingyu.top');
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.center,
+      child: InkWell(
+        onTap: () async {
+          try {
+            await openExternalLink(_url);
+          } on Object catch (error) {
+            if (!context.mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                SnackBar(
+                  content: Text(error.toString()),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Text(
+            'Copyright LIXINGYU',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: scheme.primary,
+                  decoration: TextDecoration.underline,
+                  decorationColor: scheme.primary,
+                ),
+          ),
+        ),
+      ),
     );
   }
 }
