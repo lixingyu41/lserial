@@ -11,11 +11,13 @@ class ConnectionPanel extends StatefulWidget {
     required this.controller,
     this.sessionHeader,
     this.occupiedSerialPorts = const <String>{},
+    this.padding = const EdgeInsets.all(14),
   });
 
   final SessionController controller;
   final Widget? sessionHeader;
   final Set<String> occupiedSerialPorts;
+  final EdgeInsetsGeometry padding;
 
   @override
   State<ConnectionPanel> createState() => _ConnectionPanelState();
@@ -86,51 +88,66 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   Widget build(BuildContext context) {
     final config = controller.config;
     final strings = controller.strings;
-    return Padding(
-      padding: const EdgeInsets.all(14),
-      child: ScrollConfiguration(
-        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-        child: ListView(
-          children: [
-            if (widget.sessionHeader != null) ...[
-              widget.sessionHeader!,
-              const SizedBox(height: 8),
-            ],
-            _StatusLine(controller: controller),
-            const SizedBox(height: 8),
-            _connectionActions(config),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<TransportType>(
-              key: ValueKey(
-                  'type-${identityHashCode(controller)}-${config.type}'),
-              initialValue: config.type,
-              decoration: InputDecoration(labelText: strings.connectionType),
-              items: TransportType.values.map((type) {
-                final supported = controller.isTypeSupported(type);
-                final label = strings.transportType(type);
-                return DropdownMenuItem(
-                  value: type,
-                  enabled: supported,
-                  child: Text(
-                    supported ? label : '$label (${strings.disabled})',
-                  ),
-                );
-              }).toList(),
-              onChanged: controller.isConnected
-                  ? null
-                  : (type) {
-                      if (type != null) {
-                        controller.setTransportType(type);
-                      }
-                    },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.sessionHeader != null)
+          Padding(
+            padding: widget.padding,
+            child: Column(
+              children: [
+                widget.sessionHeader!,
+                const SizedBox(height: 8),
+              ],
             ),
-            const SizedBox(height: 8),
-            _fieldsFor(config),
-            const SizedBox(height: 8),
-            _StatsPanel(controller: controller),
-          ],
+          ),
+        Expanded(
+          child: ScrollConfiguration(
+            behavior:
+                ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            child: ListView(
+              padding: widget.padding,
+              physics: const ClampingScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              children: [
+                _StatusLine(controller: controller),
+                const SizedBox(height: 8),
+                _connectionActions(config),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<TransportType>(
+                  key: ValueKey(
+                      'type-${identityHashCode(controller)}-${config.type}'),
+                  initialValue: config.type,
+                  decoration:
+                      InputDecoration(labelText: strings.connectionType),
+                  items: TransportType.values.map((type) {
+                    final supported = controller.isTypeSupported(type);
+                    final label = strings.transportType(type);
+                    return DropdownMenuItem(
+                      value: type,
+                      enabled: supported,
+                      child: Text(
+                        supported ? label : '$label (${strings.disabled})',
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: controller.isConnected
+                      ? null
+                      : (type) {
+                          if (type != null) {
+                            controller.setTransportType(type);
+                          }
+                        },
+                ),
+                const SizedBox(height: 8),
+                _fieldsFor(config),
+                const SizedBox(height: 8),
+                _StatsPanel(controller: controller),
+              ],
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 

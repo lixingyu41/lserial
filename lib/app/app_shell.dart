@@ -185,11 +185,9 @@ class _AnimatedConnectionTopPanel extends StatelessWidget {
         children: [
           SizedBox(
             height: height,
-            child: ConnectionPanel(
+            child: _ConnectionPageArea(
+              workspace: controller,
               controller: session,
-              sessionHeader: _SessionPager(controller: controller),
-              occupiedSerialPorts:
-                  controller.occupiedSerialPortsExcept(session),
             ),
           ),
           _HorizontalDragDivider(onDrag: onResize),
@@ -244,11 +242,9 @@ class _AnimatedConnectionSidePanel extends StatelessWidget {
         children: [
           SizedBox(
             width: width,
-            child: ConnectionPanel(
+            child: _ConnectionPageArea(
+              workspace: controller,
               controller: session,
-              sessionHeader: _SessionPager(controller: controller),
-              occupiedSerialPorts:
-                  controller.occupiedSerialPortsExcept(session),
             ),
           ),
           _VerticalDragDivider(onDrag: onResize),
@@ -353,6 +349,39 @@ class _AnimatedQuickCommandsSidePanel extends StatelessWidget {
   }
 }
 
+class _ConnectionPageArea extends StatelessWidget {
+  const _ConnectionPageArea({
+    required this.workspace,
+    required this.controller,
+  });
+
+  final WorkspaceController workspace;
+  final SessionController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+          child: _SessionPager(controller: workspace),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ConnectionPanel(
+            key: ValueKey<SessionController>(controller),
+            controller: controller,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+            occupiedSerialPorts: workspace.occupiedSerialPortsExcept(
+              controller,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SessionPager extends StatelessWidget {
   const _SessionPager({required this.controller});
 
@@ -362,6 +391,7 @@ class _SessionPager extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = controller.activeSession;
     final strings = controller.strings;
+    final pageIndicator = controller.pageIndicator;
     return Row(
       children: [
         IconButton.outlined(
@@ -378,18 +408,29 @@ class _SessionPager extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            active.sourceLabel,
-            softWrap: true,
-            style: Theme.of(context).textTheme.titleSmall,
+          child: ScrollConfiguration(
+            behavior:
+                ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              child: Text(
+                active.sourceLabel,
+                maxLines: 1,
+                softWrap: false,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          controller.pageIndicator,
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        const SizedBox(width: 8),
+        if (pageIndicator.isNotEmpty) ...[
+          Text(
+            pageIndicator,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(width: 8),
+        ],
         _SessionActionButton(controller: controller),
       ],
     );

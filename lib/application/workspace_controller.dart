@@ -59,7 +59,8 @@ class WorkspaceController extends ChangeNotifier {
   bool get allSessionsConnected =>
       sessions.isNotEmpty && sessions.every((session) => session.isConnected);
 
-  bool get canAddSession => sessions.length == 1 || allSessionsConnected;
+  bool get canAddSession =>
+      sessions.length == 1 || activeSession.isConnected || allSessionsConnected;
 
   bool get canRemoveActiveSession =>
       !activeSession.isConnected && sessions.length > 1;
@@ -67,9 +68,7 @@ class WorkspaceController extends ChangeNotifier {
   String get pageIndicator {
     final total = connectedSessionCount;
     if (!activeSession.isConnected) {
-      return total == 0
-          ? strings.newSession
-          : strings.newSessionWithTotal(total);
+      return '';
     }
 
     var current = 0;
@@ -156,6 +155,13 @@ class WorkspaceController extends ChangeNotifier {
 
   Future<void> addSession() async {
     if (!canAddSession) {
+      return;
+    }
+    final reusableIndex = _reusableEmptySessionIndex();
+    if (reusableIndex != null) {
+      activeSessionIndex = reusableIndex;
+      _syncSendTargetIndex();
+      notifyListeners();
       return;
     }
     final session = _addSession(initialize: true);
@@ -421,6 +427,18 @@ class WorkspaceController extends ChangeNotifier {
       candidate++;
     }
     return candidate;
+  }
+
+  int? _reusableEmptySessionIndex() {
+    if (!activeSession.isConnected) {
+      return null;
+    }
+    for (var i = 0; i < sessions.length; i++) {
+      if (!sessions[i].isConnected) {
+        return i;
+      }
+    }
+    return null;
   }
 
   @override
