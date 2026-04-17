@@ -1,6 +1,8 @@
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import 'log_export_result.dart';
+
 @JS('Blob')
 external JSFunction get _blobConstructor;
 
@@ -10,7 +12,7 @@ external JSObject get _url;
 @JS('document')
 external JSObject get _document;
 
-Future<String> exportLogText(String content) async {
+Future<LogExportResult> exportLogText(String content) async {
   final now = DateTime.now();
   String two(int n) => n.toString().padLeft(2, '0');
   final name = 'lserial_log_${now.year}${two(now.month)}${two(now.day)}_'
@@ -27,5 +29,5 @@ Future<String> exportLogText(String content) async {
   anchor['download'] = name.toJS;
   anchor.callMethod<JSAny?>('click'.toJS);
   _url.callMethod<JSAny?>('revokeObjectURL'.toJS, url);
-  return 'Started browser download: $name';
+  return LogExportResult.downloadStarted(name);
 }

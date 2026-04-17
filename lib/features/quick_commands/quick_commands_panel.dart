@@ -24,6 +24,7 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
   @override
   Widget build(BuildContext context) {
     final hasHistory = controller.sendHistory.isNotEmpty;
+    final strings = controller.strings;
     return Padding(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -31,7 +32,8 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
         children: [
           Row(
             children: [
-              Text('快捷指令', style: Theme.of(context).textTheme.titleSmall),
+              Text(strings.quickCommands,
+                  style: Theme.of(context).textTheme.titleSmall),
             ],
           ),
           const SizedBox(height: 8),
@@ -68,7 +70,7 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                       Padding(
                         padding: const EdgeInsets.only(top: 8, bottom: 8),
                         child: Text(
-                          '历史发送记录',
+                          strings.sendHistory,
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
                       ),
@@ -120,7 +122,11 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text(command == null ? '添加指令' : '编辑指令'),
+              title: Text(
+                command == null
+                    ? controller.strings.addCommand
+                    : controller.strings.editCommand,
+              ),
               content: SizedBox(
                 width: 420,
                 child: Column(
@@ -128,7 +134,8 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                   children: [
                     TextField(
                       controller: name,
-                      decoration: const InputDecoration(labelText: '名称'),
+                      decoration:
+                          InputDecoration(labelText: controller.strings.name),
                       textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 8),
@@ -136,18 +143,22 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                       controller: content,
                       minLines: 2,
                       maxLines: 6,
-                      decoration: const InputDecoration(labelText: '内容'),
+                      decoration: InputDecoration(
+                        labelText: controller.strings.content,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<PayloadFormat>(
                       initialValue: format,
                       isExpanded: true,
-                      decoration: const InputDecoration(labelText: '格式'),
+                      decoration:
+                          InputDecoration(labelText: controller.strings.format),
                       items: PayloadFormat.values
                           .map(
                             (value) => DropdownMenuItem(
                               value: value,
-                              child: Text(value.label),
+                              child:
+                                  Text(controller.strings.payloadFormat(value)),
                             ),
                           )
                           .toList(),
@@ -163,7 +174,7 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('取消'),
+                  child: Text(controller.strings.cancel),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -183,7 +194,7 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                     }
                     Navigator.of(context).pop();
                   },
-                  child: const Text('保存'),
+                  child: Text(controller.strings.save),
                 ),
               ],
             );
@@ -240,13 +251,14 @@ class _QuickCommandList extends StatelessWidget {
     return ListView(
       children: [
         if (controller.quickCommands.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: Text('暂无快捷指令')),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: Text(controller.strings.noQuickCommands)),
           )
         else
           for (final command in controller.quickCommands) ...[
             _QuickCommandRow(
+              controller: controller,
               command: command,
               onSend: controller.sendQuickCommand,
               onEdit: onEdit,
@@ -259,7 +271,7 @@ class _QuickCommandList extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: onAdd,
             icon: const Icon(Icons.add),
-            label: const Text('添加指令'),
+            label: Text(controller.strings.addCommand),
           ),
         ),
       ],
@@ -280,6 +292,7 @@ class _HistoryList extends StatelessWidget {
       itemBuilder: (context, index) {
         final item = controller.sendHistory[index];
         return _HistoryRow(
+          controller: controller,
           entry: item,
           onSend: controller.sendHistoryEntry,
         );
@@ -290,12 +303,14 @@ class _HistoryList extends StatelessWidget {
 
 class _QuickCommandRow extends StatelessWidget {
   const _QuickCommandRow({
+    required this.controller,
     required this.command,
     required this.onSend,
     required this.onEdit,
     required this.onRemove,
   });
 
+  final SessionController controller;
   final QuickCommand command;
   final Future<void> Function(QuickCommand command) onSend;
   final void Function(QuickCommand command) onEdit;
@@ -323,7 +338,7 @@ class _QuickCommandRow extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      command.format.label,
+                      controller.strings.payloadFormat(command.format),
                       style: Theme.of(context).textTheme.labelSmall,
                     ),
                   ],
@@ -339,17 +354,17 @@ class _QuickCommandRow extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           IconButton(
-            tooltip: '发送',
+            tooltip: controller.strings.send,
             onPressed: () => onSend(command),
             icon: const Icon(Icons.send),
           ),
           IconButton(
-            tooltip: '编辑',
+            tooltip: controller.strings.edit,
             onPressed: () => onEdit(command),
             icon: const Icon(Icons.edit_outlined),
           ),
           IconButton(
-            tooltip: '删除',
+            tooltip: controller.strings.delete,
             onPressed: () => onRemove(command.id),
             icon: const Icon(Icons.delete_outline),
           ),
@@ -360,8 +375,13 @@ class _QuickCommandRow extends StatelessWidget {
 }
 
 class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({required this.entry, required this.onSend});
+  const _HistoryRow({
+    required this.controller,
+    required this.entry,
+    required this.onSend,
+  });
 
+  final SessionController controller;
   final SendHistoryEntry entry;
   final Future<void> Function(SendHistoryEntry entry) onSend;
 
@@ -376,7 +396,7 @@ class _HistoryRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(entry.format.label,
+                Text(controller.strings.payloadFormat(entry.format),
                     style: Theme.of(context).textTheme.labelSmall),
                 const SizedBox(height: 2),
                 Text(
@@ -389,7 +409,7 @@ class _HistoryRow extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           IconButton(
-            tooltip: '发送',
+            tooltip: controller.strings.send,
             onPressed: () => onSend(entry),
             icon: const Icon(Icons.send),
           ),

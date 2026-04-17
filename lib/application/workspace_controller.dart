@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../app/localization.dart';
 import '../core/encoding/data_format.dart';
 import '../domain/data_frame.dart';
 import '../domain/transport.dart';
@@ -35,14 +36,16 @@ class WorkspaceController extends ChangeNotifier {
   bool autoScroll = true;
   bool pauseDisplay = false;
   double logFontSize = 12;
+  AppLanguage language = AppLanguage.zh;
 
   final Set<String> _hiddenSources = <String>{};
   int _revision = 0;
-  int _nextSerialAliasNumber = 1;
 
   SessionController get activeSession => sessions[activeSessionIndex];
 
   SessionController get sendTarget => sessions[sendTargetIndex];
+
+  AppStrings get strings => AppStrings.of(language);
 
   String get windowTitle => activeSession.windowTitle;
 
@@ -64,7 +67,9 @@ class WorkspaceController extends ChangeNotifier {
   String get pageIndicator {
     final total = connectedSessionCount;
     if (!activeSession.isConnected) {
-      return total == 0 ? '新建' : '新建/$total';
+      return total == 0
+          ? strings.newSession
+          : strings.newSessionWithTotal(total);
     }
 
     var current = 0;
@@ -74,6 +79,17 @@ class WorkspaceController extends ChangeNotifier {
       }
     }
     return '$current/$total';
+  }
+
+  void setLanguage(AppLanguage next) {
+    if (language == next) {
+      return;
+    }
+    language = next;
+    for (final session in sessions) {
+      session.setLanguage(next);
+    }
+    notifyListeners();
   }
 
   ConsoleFormatOptions get formatOptions => ConsoleFormatOptions(
@@ -296,9 +312,9 @@ class WorkspaceController extends ChangeNotifier {
           .map((frame) => formatter.formatFrame(frame, formatOptions))
           .join('\n');
       final result = await exportLogText('$text\n');
-      activeSession.appendSystemMessage(result);
+      activeSession.appendSystemMessage(strings.exportResult(result));
     } on Object catch (error) {
-      activeSession.appendSystemMessage('Export failed: $error');
+      activeSession.appendSystemMessage(strings.exportFailed(error));
     }
   }
 
@@ -383,7 +399,8 @@ class WorkspaceController extends ChangeNotifier {
 
   SessionController _addSession({required bool initialize}) {
     final session = SessionController(
-      serialAliasNumber: _nextSerialAliasNumber++,
+      serialAliasNumber: _nextAvailableSerialAliasNumber(),
+      language: language,
     );
     session.addListener(_handleSessionChanged);
     session.displaySnapshot.addListener(_handleSessionSnapshotChanged);
@@ -392,6 +409,18 @@ class WorkspaceController extends ChangeNotifier {
       unawaited(session.initialize());
     }
     return session;
+  }
+
+  int _nextAvailableSerialAliasNumber() {
+    final usedNumbers = sessions
+        .map((session) => session.serialAliasNumber)
+        .where((number) => number > 0)
+        .toSet();
+    var candidate = 1;
+    while (usedNumbers.contains(candidate)) {
+      candidate++;
+    }
+    return candidate;
   }
 
   @override

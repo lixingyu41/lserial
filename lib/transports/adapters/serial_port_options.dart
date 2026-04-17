@@ -1,5 +1,5 @@
 const String webSerialPickPortOption = '__web_serial_pick_port__';
-const String webSerialSelectedPortOption = 'Web Serial 已选择串口';
+const String webSerialSelectedPortOption = '__web_serial_selected_port__';
 
 bool isSerialPickerOption(String value) => value == webSerialPickPortOption;
 
@@ -11,9 +11,14 @@ bool isGenericSerialPortName(String value) {
       trimmed == 'Web Serial';
 }
 
-String serialPortOptionLabel(String value) {
+String serialPortOptionLabel(
+  String value, {
+  String pickLabel = 'Choose Web Serial port...',
+  String selectedLabel = 'Web Serial port selected',
+}) {
   return switch (value) {
-    webSerialPickPortOption => '选择 Web Serial 串口...',
+    webSerialPickPortOption => pickLabel,
+    webSerialSelectedPortOption => selectedLabel,
     _ => value,
   };
 }

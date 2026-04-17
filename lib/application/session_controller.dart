@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../app/localization.dart';
 import '../core/buffer/byte_ring_buffer.dart';
 import '../core/encoding/data_format.dart';
 import '../domain/bluetooth_device_info.dart';
@@ -19,46 +20,9 @@ import '../storage/log_exporter.dart';
 import '../transports/adapters/serial_port_options.dart';
 import '../transports/transport_registry.dart';
 import 'receive_pipeline.dart';
+import 'session_options.dart';
 
-enum SessionStat {
-  rxCount,
-  txCount,
-  rxCurrentRate,
-  txCurrentRate,
-  rxRate,
-  txRate,
-  sessionDuration,
-  displayCache,
-  droppedData,
-  rawCache,
-}
-
-enum SendShortcutMode {
-  enter,
-  ctrlEnter,
-}
-
-extension SendShortcutModeLabel on SendShortcutMode {
-  String get label => switch (this) {
-        SendShortcutMode.enter => '回车发送',
-        SendShortcutMode.ctrlEnter => 'Ctrl+回车发送',
-      };
-}
-
-extension SessionStatLabel on SessionStat {
-  String get label => switch (this) {
-        SessionStat.rxCount => '接收',
-        SessionStat.txCount => '发送',
-        SessionStat.rxCurrentRate => '收速',
-        SessionStat.txCurrentRate => '发速',
-        SessionStat.rxRate => '均收',
-        SessionStat.txRate => '均发',
-        SessionStat.sessionDuration => '会话时长',
-        SessionStat.displayCache => '显示缓存',
-        SessionStat.droppedData => '丢弃',
-        SessionStat.rawCache => '原始缓存',
-      };
-}
+export 'session_options.dart';
 
 class SessionController extends ChangeNotifier {
   SessionController({
@@ -66,10 +30,12 @@ class SessionController extends ChangeNotifier {
     int maxDisplayFrames = 10000,
     int maxCacheBytes = 16 * 1024 * 1024,
     this.serialAliasNumber = 1,
+    this.language = AppLanguage.zh,
   })  : registry = registry ?? const TransportRegistry(),
         rawBuffer = ByteRingBuffer(maxCacheBytes),
         logBuffer =
             LogBuffer(maxFrames: maxDisplayFrames, maxBytes: maxCacheBytes) {
+    statusMessage = strings.ready;
     _pipeline = ReceivePipeline(
       rawBuffer: rawBuffer,
       onBatch: _commitFrames,
@@ -83,6 +49,7 @@ class SessionController extends ChangeNotifier {
   final LogBuffer logBuffer;
   final FrameFormatter formatter = const FrameFormatter();
   final int serialAliasNumber;
+  AppLanguage language;
   final ValueNotifier<LogSnapshot> displaySnapshot =
       ValueNotifier<LogSnapshot>(LogSnapshot.empty());
 
@@ -104,7 +71,7 @@ class SessionController extends ChangeNotifier {
 
   ConnectionConfig config = const ConnectionConfig();
   TransportStatus status = TransportStatus.disconnected;
-  String statusMessage = 'Ready';
+  String statusMessage = AppStrings.zh.ready;
   List<TransportCapability> capabilities = const <TransportCapability>[];
   List<String> serialPorts = const <String>[];
   List<BluetoothDeviceInfo> bluetoothDevices = const <BluetoothDeviceInfo>[];
@@ -158,6 +125,8 @@ class SessionController extends ChangeNotifier {
     ),
   ];
   final List<SendHistoryEntry> sendHistory = <SendHistoryEntry>[];
+
+  AppStrings get strings => AppStrings.of(language);
 
   bool get isConnected => status == TransportStatus.connected;
 
@@ -223,6 +192,33 @@ class SessionController extends ChangeNotifier {
         showDirection: showDirection,
       );
 
+  void setLanguage(AppLanguage next) {
+    if (language == next) {
+      return;
+    }
+    final previousStrings = strings;
+    final previousMessage = statusMessage;
+    language = next;
+    statusMessage = switch (status) {
+      TransportStatus.connected => strings.connectedTo(sourceLabel),
+      TransportStatus.connecting => strings.connectingTo(
+          strings.connectionSummary(config, serialDisplayName),
+        ),
+      TransportStatus.disconnecting => strings.disconnectingStatus,
+      TransportStatus.disconnected
+          when previousMessage == previousStrings.ready =>
+        strings.ready,
+      TransportStatus.disconnected
+          when previousMessage == previousStrings.disconnected =>
+        strings.disconnected,
+      TransportStatus.error
+          when previousMessage == previousStrings.unexpectedDisconnect =>
+        strings.unexpectedDisconnect,
+      _ => previousMessage,
+    };
+    notifyListeners();
+  }
+
   Future<void> initialize() async {
     capabilities = await loadPlatformCapabilities();
     await refreshSerialPorts();
@@ -245,7 +241,7 @@ class SessionController extends ChangeNotifier {
       }
     } on Object catch (error) {
       serialPorts = const <String>[];
-      _setStatusMessage('Serial scan failed: $error');
+      _setStatusMessage(strings.serialScanFailed(error));
     }
   }
 
@@ -259,7 +255,8 @@ class SessionController extends ChangeNotifier {
     }
     isScanningBluetooth = true;
     _setStatusMessage(
-        kIsWeb ? 'Opening Web Bluetooth picker...' : 'Scanning BLE devices...');
+      kIsWeb ? strings.openingWebBluetoothPicker : strings.scanningBleDevices,
+    );
     try {
       await _bluetoothScanSubscription?.cancel();
       _bluetoothScanSubscription = registry
@@ -272,30 +269,29 @@ class SessionController extends ChangeNotifier {
         (devices) {
           bluetoothDevices = devices;
           _setStatusMessage(kIsWeb
-              ? 'Web Bluetooth device selected.'
-              : 'Scanning BLE devices: ${devices.length}');
+              ? strings.webBluetoothDeviceSelected
+              : strings.scanningBleDevicesCount(devices.length));
         },
         onError: (Object error) {
           bluetoothDevices = const <BluetoothDeviceInfo>[];
           isScanningBluetooth = false;
           _bluetoothScanSubscription = null;
-          _setStatusMessage('BLE scan failed: $error');
+          _setStatusMessage(strings.bleScanFailed(error));
         },
         onDone: () {
           isScanningBluetooth = false;
           _bluetoothScanSubscription = null;
           if (bluetoothDevices.isEmpty) {
-            _setStatusMessage('No BLE devices found.');
+            _setStatusMessage(strings.noBleDevicesFound);
           } else {
-            _setStatusMessage(
-                'Found ${bluetoothDevices.length} BLE device(s).');
+            _setStatusMessage(strings.foundBleDevices(bluetoothDevices.length));
           }
         },
       );
     } on Object catch (error) {
       bluetoothDevices = const <BluetoothDeviceInfo>[];
       isScanningBluetooth = false;
-      _setStatusMessage('BLE scan failed: $error');
+      _setStatusMessage(strings.bleScanFailed(error));
       notifyListeners();
     }
   }
@@ -308,8 +304,8 @@ class SessionController extends ChangeNotifier {
     }
     isScanningBluetooth = false;
     _setStatusMessage(bluetoothDevices.isEmpty
-        ? 'BLE scan stopped.'
-        : 'BLE scan stopped: ${bluetoothDevices.length} device(s).');
+        ? strings.bleScanStopped
+        : strings.bleScanStoppedWithCount(bluetoothDevices.length));
   }
 
   void selectBluetoothDevice(String deviceId) {
@@ -330,7 +326,10 @@ class SessionController extends ChangeNotifier {
   }
 
   String unsupportedReason(TransportType type) {
-    return _capabilityFor(type)?.reason ?? 'Unsupported platform.';
+    final reason = _capabilityFor(type)?.reason;
+    return reason == null
+        ? strings.unsupportedPlatform
+        : strings.platformReason(reason);
   }
 
   void updateConfig(ConnectionConfig next) {
@@ -347,10 +346,10 @@ class SessionController extends ChangeNotifier {
           config = config.copyWith(
             serial: config.serial.copyWith(portName: selected),
           );
-          _setStatusMessage('已选择 Web Serial 串口');
+          _setStatusMessage(strings.webSerialPortSelected);
         }
       } on Object catch (error) {
-        _setStatusMessage('选择串口失败: $error');
+        _setStatusMessage(strings.serialPortSelectFailed(error));
       }
       return;
     }
@@ -363,7 +362,8 @@ class SessionController extends ChangeNotifier {
 
   void setTransportType(TransportType type) {
     if (!isTypeSupported(type)) {
-      _setStatusMessage('${type.label} disabled: ${unsupportedReason(type)}');
+      _setStatusMessage(
+          strings.transportDisabled(type, unsupportedReason(type)));
       return;
     }
     config = config.copyWith(type: type);
@@ -421,7 +421,7 @@ class SessionController extends ChangeNotifier {
   }) {
     final safeName = name.trim();
     if (safeName.isEmpty || content.isEmpty) {
-      _setStatusMessage('快捷指令名称和内容不能为空');
+      _setStatusMessage(strings.quickCommandEmpty);
       return;
     }
     quickCommands.add(
@@ -443,7 +443,7 @@ class SessionController extends ChangeNotifier {
   }) {
     final safeName = name.trim();
     if (safeName.isEmpty || content.isEmpty) {
-      _setStatusMessage('快捷指令名称和内容不能为空');
+      _setStatusMessage(strings.quickCommandEmpty);
       return;
     }
     final index = quickCommands.indexWhere((command) => command.id == id);
@@ -469,7 +469,8 @@ class SessionController extends ChangeNotifier {
     }
     if (!isTypeSupported(config.type)) {
       _setStatusMessage(
-          '${config.type.label} disabled: ${unsupportedReason(config.type)}');
+        strings.transportDisabled(config.type, unsupportedReason(config.type)),
+      );
       return;
     }
     if (config.type == TransportType.bluetooth) {
@@ -477,7 +478,8 @@ class SessionController extends ChangeNotifier {
     }
 
     status = TransportStatus.connecting;
-    statusMessage = 'Connecting ${config.summary}';
+    statusMessage = strings
+        .connectingTo(strings.connectionSummary(config, serialDisplayName));
     notifyListeners();
 
     try {
@@ -488,28 +490,28 @@ class SessionController extends ChangeNotifier {
       _incomingSubscription = session.incoming.listen(
         (bytes) => _pipeline.addBytes(bytes, source: sourceLabel),
         onError: (Object error, StackTrace stackTrace) {
-          _appendSystem('Receive error: ${_formatError(error)}');
+          _appendSystem(strings.receiveError(_formatError(error)));
         },
         onDone: () {
           if (!_manualDisconnect) {
             status = TransportStatus.error;
-            statusMessage = '异常断开';
+            statusMessage = strings.unexpectedDisconnect;
             _stopStatsTicker();
-            _appendSystem('Connection closed unexpectedly');
+            _appendSystem(strings.unexpectedDisconnect);
             notifyListeners();
           }
         },
         cancelOnError: false,
       );
       status = TransportStatus.connected;
-      statusMessage = 'Connected $sourceLabel';
+      statusMessage = strings.connectedTo(sourceLabel);
       _sessionStartedAt = DateTime.now();
       _startStatsTicker();
       _appendSystem(statusMessage);
       notifyListeners();
     } on Object catch (error) {
       status = TransportStatus.error;
-      statusMessage = 'Connect failed: ${_formatError(error)}';
+      statusMessage = strings.connectFailed(_formatError(error));
       _appendSystem(statusMessage);
       notifyListeners();
     }
@@ -522,7 +524,7 @@ class SessionController extends ChangeNotifier {
     }
     _manualDisconnect = true;
     status = TransportStatus.disconnecting;
-    statusMessage = 'Disconnecting';
+    statusMessage = strings.disconnectingStatus;
     stopAutoSend();
     notifyListeners();
 
@@ -533,7 +535,7 @@ class SessionController extends ChangeNotifier {
     _pipeline.flush();
 
     status = TransportStatus.disconnected;
-    statusMessage = 'Disconnected';
+    statusMessage = strings.disconnected;
     _stopStatsTicker();
     _appendSystem(statusMessage);
     notifyListeners();
@@ -582,7 +584,7 @@ class SessionController extends ChangeNotifier {
     }
     final session = _session;
     if (session == null || !session.isConnected) {
-      _appendSystem('Send skipped: no active connection');
+      _appendSystem(strings.sendSkippedNoConnection);
       return;
     }
 
@@ -601,7 +603,7 @@ class SessionController extends ChangeNotifier {
         _rememberHistory(text, format);
       }
     } on Object catch (error) {
-      _appendSystem('Send failed: ${_formatError(error)}');
+      _appendSystem(strings.sendFailed(_formatError(error)));
     }
   }
 
@@ -612,7 +614,7 @@ class SessionController extends ChangeNotifier {
         : interval;
     _autoSendTimer =
         Timer.periodic(safeInterval, (_) => unawaited(sendText(text)));
-    _setStatusMessage('Auto send every ${safeInterval.inMilliseconds} ms');
+    _setStatusMessage(strings.autoSendEvery(safeInterval.inMilliseconds));
   }
 
   void stopAutoSend() {
@@ -676,9 +678,9 @@ class SessionController extends ChangeNotifier {
     try {
       final text = logBuffer.exportText(formatter, formatOptions);
       final result = await exportLogText(text);
-      _setStatusMessage(result);
+      _setStatusMessage(strings.exportResult(result));
     } on Object catch (error) {
-      _setStatusMessage('Export failed: $error');
+      _setStatusMessage(strings.exportFailed(error));
     }
   }
 
@@ -838,41 +840,32 @@ class SessionController extends ChangeNotifier {
     if (error is SocketException) {
       return _formatSocketException(error);
     }
-    return error.toString();
+    return strings.errorMessage(error);
   }
 
   String _formatSocketException(SocketException error) {
     final code = error.osError?.errorCode;
     final address = error.address?.address;
     final port = error.port;
-    final parts = <String>['SocketException'];
+    final parts = <String>[strings.socketExceptionLabel];
     if (code != null) {
-      parts.add('errno=$code');
+      parts.add('${strings.socketErrnoLabel}=$code');
       final meaning = _windowsSocketErrorMeaning(code);
       if (meaning != null) {
         parts.add(meaning);
       }
     }
     if (address != null && address.isNotEmpty) {
-      parts.add('address=$address');
+      parts.add('${strings.socketAddressLabel}=$address');
     }
     if (port != null) {
-      parts.add('port=$port');
+      parts.add('${strings.socketPortLabel}=$port');
     }
     return parts.join(', ');
   }
 
   String? _windowsSocketErrorMeaning(int code) {
-    return switch (code) {
-      10048 => 'address already in use',
-      10049 => 'cannot assign requested address',
-      10054 => 'connection reset by peer',
-      10060 => 'connection timed out',
-      10061 => 'connection refused',
-      10065 => 'no route to host',
-      1225 => 'connection refused',
-      _ => null,
-    };
+    return strings.windowsSocketErrorMeaning(code);
   }
 
   TransportCapability? _capabilityFor(TransportType type) {

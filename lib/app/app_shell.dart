@@ -361,17 +361,18 @@ class _SessionPager extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = controller.activeSession;
+    final strings = controller.strings;
     return Row(
       children: [
         IconButton.outlined(
-          tooltip: '上一个连接页',
+          tooltip: strings.previousSessionPage,
           onPressed:
               controller.canGoPrevious ? controller.previousSession : null,
           icon: const Icon(Icons.chevron_left),
         ),
         const SizedBox(width: 8),
         IconButton.outlined(
-          tooltip: '下一个连接页',
+          tooltip: strings.nextSessionPage,
           onPressed: controller.canGoNext ? controller.nextSession : null,
           icon: const Icon(Icons.chevron_right),
         ),
@@ -404,7 +405,7 @@ class _SessionActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (controller.canAddSession) {
       return IconButton.outlined(
-        tooltip: '新增连接页',
+        tooltip: controller.strings.addSessionPage,
         onPressed: () {
           controller.addSession();
         },
@@ -414,7 +415,7 @@ class _SessionActionButton extends StatelessWidget {
 
     if (!controller.activeSession.isConnected) {
       return IconButton.outlined(
-        tooltip: '删除当前空白页',
+        tooltip: controller.strings.removeEmptySessionPage,
         onPressed: controller.canRemoveActiveSession
             ? controller.removeActiveSession
             : null,
@@ -443,8 +444,8 @@ class _SendTargetSelector extends StatelessWidget {
       ),
       initialValue: selectedValue,
       isExpanded: true,
-      decoration: const InputDecoration(labelText: '发送到'),
-      hint: const Text('无已连接目标'),
+      decoration: InputDecoration(labelText: controller.strings.sendTo),
+      hint: Text(controller.strings.noConnectedTarget),
       items: [
         for (final i in connectedIndexes)
           DropdownMenuItem<int>(

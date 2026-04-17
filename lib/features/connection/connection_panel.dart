@@ -85,6 +85,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   @override
   Widget build(BuildContext context) {
     final config = controller.config;
+    final strings = controller.strings;
     return Padding(
       padding: const EdgeInsets.all(14),
       child: ScrollConfiguration(
@@ -97,18 +98,22 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             ],
             _StatusLine(controller: controller),
             const SizedBox(height: 8),
+            _connectionActions(config),
+            const SizedBox(height: 8),
             DropdownButtonFormField<TransportType>(
               key: ValueKey(
                   'type-${identityHashCode(controller)}-${config.type}'),
               initialValue: config.type,
-              decoration: const InputDecoration(labelText: '连接方式'),
+              decoration: InputDecoration(labelText: strings.connectionType),
               items: TransportType.values.map((type) {
                 final supported = controller.isTypeSupported(type);
+                final label = strings.transportType(type);
                 return DropdownMenuItem(
                   value: type,
                   enabled: supported,
-                  child:
-                      Text(supported ? type.label : '${type.label} (disabled)'),
+                  child: Text(
+                    supported ? label : '$label (${strings.disabled})',
+                  ),
                 );
               }).toList(),
               onChanged: controller.isConnected
@@ -121,31 +126,6 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             ),
             const SizedBox(height: 8),
             _fieldsFor(config),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: controller.isConnected ? null : _connect,
-                    child: const Text('连接'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        controller.isConnected ? controller.disconnect : null,
-                    child: const Text('断开'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: controller.refreshSerialPorts,
-              icon: const Icon(Icons.refresh),
-              label: const Text('刷新串口列表'),
-            ),
             const SizedBox(height: 8),
             _StatsPanel(controller: controller),
           ],
@@ -161,6 +141,69 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       TransportType.tcpServer => _tcpServerFields(),
       TransportType.udp => _udpFields(),
       TransportType.bluetooth => _bluetoothFields(),
+    };
+  }
+
+  Widget _connectionActions(ConnectionConfig config) {
+    final connecting = controller.status == TransportStatus.connecting;
+    final disconnecting = controller.status == TransportStatus.disconnecting;
+    final busy = connecting || disconnecting;
+    final actionLabel = switch (controller.status) {
+      TransportStatus.connected => controller.strings.disconnect,
+      TransportStatus.connecting => controller.strings.connecting,
+      TransportStatus.disconnecting => controller.strings.disconnecting,
+      _ => controller.strings.connect,
+    };
+    final actionPressed = busy
+        ? null
+        : controller.isConnected
+            ? controller.disconnect
+            : _connect;
+
+    final mainAction = controller.isConnected
+        ? OutlinedButton(
+            onPressed: actionPressed,
+            child: Text(actionLabel),
+          )
+        : FilledButton(
+            onPressed: actionPressed,
+            child: Text(actionLabel),
+          );
+    final listAction = _listActionFor(config);
+
+    return Row(
+      children: [
+        Expanded(child: mainAction),
+        if (listAction != null) ...[
+          const SizedBox(width: 8),
+          SizedBox(width: 116, child: listAction),
+        ],
+      ],
+    );
+  }
+
+  Widget? _listActionFor(ConnectionConfig config) {
+    return switch (config.type) {
+      TransportType.serial => OutlinedButton.icon(
+          onPressed: controller.refreshSerialPorts,
+          icon: const Icon(Icons.refresh),
+          label: Text(controller.strings.refreshList),
+        ),
+      TransportType.bluetooth => OutlinedButton.icon(
+          onPressed: controller.isConnected ? null : _scanBluetoothDevices,
+          icon: controller.isScanningBluetooth
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+          label: Text(
+            controller.isScanningBluetooth
+                ? controller.strings.stopScan
+                : controller.strings.refreshList,
+          ),
+        ),
+      _ => null,
     };
   }
 
@@ -199,14 +242,18 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           key: ValueKey(
               'serial-${controller.serialPorts.join("|")}-$selectedPort'),
           initialValue: selectedPort,
-          decoration: const InputDecoration(labelText: '串口'),
+          decoration: InputDecoration(labelText: controller.strings.serialPort),
           items: controller.serialPorts
               .map(
                 (portName) => DropdownMenuItem(
                   value: portName,
                   enabled: !occupiedPorts.contains(portName),
                   child: Text(
-                    serialPortOptionLabel(portName),
+                    serialPortOptionLabel(
+                      portName,
+                      pickLabel: controller.strings.chooseWebSerialPort,
+                      selectedLabel: controller.strings.webSerialSelectedPort,
+                    ),
                     style: occupiedPorts.contains(portName)
                         ? TextStyle(color: Theme.of(context).disabledColor)
                         : null,
@@ -228,7 +275,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             return DropdownMenu<int>(
               controller: baudRate,
               enabled: !controller.isConnected,
-              label: const Text('波特率'),
+              label: Text(controller.strings.baudRate),
               enableFilter: true,
               requestFocusOnTap: true,
               width: constraints.maxWidth,
@@ -274,7 +321,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.dataBits,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: '数据位'),
+                decoration:
+                    InputDecoration(labelText: controller.strings.dataBits),
                 items: const [5, 6, 7, 8]
                     .map((bits) =>
                         DropdownMenuItem(value: bits, child: Text('$bits')))
@@ -301,7 +349,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.stopBits,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: '停止位'),
+                decoration:
+                    InputDecoration(labelText: controller.strings.stopBits),
                 items: const [1, 2]
                     .map((bits) =>
                         DropdownMenuItem(value: bits, child: Text('$bits')))
@@ -327,10 +376,13 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.parity,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: '校验'),
+                decoration:
+                    InputDecoration(labelText: controller.strings.parity),
                 items: SerialParity.values
                     .map((parity) => DropdownMenuItem(
-                        value: parity, child: Text(parity.label)))
+                          value: parity,
+                          child: Text(controller.strings.serialParity(parity)),
+                        ))
                     .toList(),
                 onChanged: controller.isConnected
                     ? null
@@ -355,12 +407,12 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       children: [
         TextField(
             controller: host,
-            decoration: const InputDecoration(labelText: 'Host')),
+            decoration: InputDecoration(labelText: controller.strings.host)),
         const SizedBox(height: 8),
         TextField(
           controller: port,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Port'),
+          decoration: InputDecoration(labelText: controller.strings.port),
         ),
       ],
     );
@@ -371,13 +423,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       children: [
         TextField(
           controller: bindAddress,
-          decoration: const InputDecoration(labelText: 'Bind address'),
+          decoration:
+              InputDecoration(labelText: controller.strings.bindAddress),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: port,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Listen port'),
+          decoration: InputDecoration(labelText: controller.strings.listenPort),
         ),
       ],
     );
@@ -388,24 +441,25 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       children: [
         TextField(
           controller: bindAddress,
-          decoration: const InputDecoration(labelText: 'Bind address'),
+          decoration:
+              InputDecoration(labelText: controller.strings.bindAddress),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: localPort,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Local port'),
+          decoration: InputDecoration(labelText: controller.strings.localPort),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: remoteHost,
-          decoration: const InputDecoration(labelText: 'Remote host'),
+          decoration: InputDecoration(labelText: controller.strings.remoteHost),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: remotePort,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Remote port'),
+          decoration: InputDecoration(labelText: controller.strings.remotePort),
         ),
       ],
     );
@@ -421,21 +475,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'BLE 串口会自动识别常见 UART 通道；无法识别时再展开高级设置填写 UUID。',
+          controller.strings.bluetoothInfo,
           style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: controller.isConnected ? null : _scanBluetoothDevices,
-          icon: controller.isScanningBluetooth
-              ? const SizedBox.square(
-                  dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.bluetooth_searching),
-          label: Text(
-            controller.isScanningBluetooth ? '停止扫描' : '扫描 BLE 设备',
-          ),
         ),
         if (!controller.isConnected &&
             controller.bluetoothDevices.isNotEmpty) ...[
@@ -453,7 +494,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         TextField(
           controller: bluetoothDeviceId,
           enabled: !controller.isConnected,
-          decoration: const InputDecoration(labelText: 'Device ID'),
+          decoration: InputDecoration(labelText: controller.strings.deviceId),
           onChanged: (value) {
             final deviceId = value.trim();
             controller.updateConfig(
@@ -470,13 +511,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
           childrenPadding: EdgeInsets.zero,
-          title: const Text('高级 BLE 设置'),
-          subtitle: const Text('自动识别失败时再填写'),
+          title: Text(controller.strings.advancedBleSettings),
+          subtitle: Text(controller.strings.fillWhenAutoDetectFails),
           children: [
             TextField(
               controller: bluetoothServiceUuid,
               enabled: !controller.isConnected,
-              decoration: const InputDecoration(labelText: 'Service UUID'),
+              decoration:
+                  InputDecoration(labelText: controller.strings.serviceUuid),
               onChanged: (value) {
                 controller.updateConfig(
                   controller.config.copyWith(
@@ -491,8 +533,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             TextField(
               controller: bluetoothWriteCharacteristicUuid,
               enabled: !controller.isConnected,
-              decoration:
-                  const InputDecoration(labelText: '写入 Characteristic UUID'),
+              decoration: InputDecoration(
+                labelText: controller.strings.writeCharacteristicUuid,
+              ),
               onChanged: (value) {
                 controller.updateConfig(
                   controller.config.copyWith(
@@ -507,8 +550,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             TextField(
               controller: bluetoothNotifyCharacteristicUuid,
               enabled: !controller.isConnected,
-              decoration:
-                  const InputDecoration(labelText: '通知 Characteristic UUID'),
+              decoration: InputDecoration(
+                labelText: controller.strings.notifyCharacteristicUuid,
+              ),
               onChanged: (value) {
                 controller.updateConfig(
                   controller.config.copyWith(
@@ -535,7 +579,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                             ),
                           );
                         },
-                  title: const Text('无响应写入'),
+                  title: Text(controller.strings.writeWithoutResponse),
                   contentPadding: EdgeInsets.zero,
                 );
               },
@@ -674,7 +718,7 @@ class _BluetoothDeviceList extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       device.name.trim().isEmpty
-                                          ? 'Unknown BLE device'
+                                          ? controller.strings.unknownBleDevice
                                           : device.name,
                                       softWrap: true,
                                       style: Theme.of(context)
@@ -776,61 +820,62 @@ class _StatsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = controller.strings;
     final items = <Widget>[
       if (controller.isStatVisible(SessionStat.rxCount))
         _StatRow(
-          label: '接收',
+          label: strings.rxCount,
           value:
-              '${controller.rxFrameCount} 帧 / ${_formatBytes(controller.rxByteCount)}',
+              '${controller.rxFrameCount} ${strings.framesUnit} / ${_formatBytes(controller.rxByteCount)}',
         ),
       if (controller.isStatVisible(SessionStat.txCount))
         _StatRow(
-          label: '发送',
+          label: strings.txCount,
           value:
-              '${controller.txFrameCount} 帧 / ${_formatBytes(controller.txByteCount)}',
+              '${controller.txFrameCount} ${strings.framesUnit} / ${_formatBytes(controller.txByteCount)}',
         ),
       if (controller.isStatVisible(SessionStat.rxCurrentRate))
         _StatRow(
-          label: '收速',
+          label: strings.rxCurrentRate,
           value: _formatRate(controller.currentRxBytesPerSecond),
         ),
       if (controller.isStatVisible(SessionStat.txCurrentRate))
         _StatRow(
-          label: '发速',
+          label: strings.txCurrentRate,
           value: _formatRate(controller.currentTxBytesPerSecond),
         ),
       if (controller.isStatVisible(SessionStat.rxRate))
         _StatRow(
-          label: '均收',
+          label: strings.rxRate,
           value: _formatRate(controller.averageRxBytesPerSecond),
         ),
       if (controller.isStatVisible(SessionStat.txRate))
         _StatRow(
-          label: '均发',
+          label: strings.txRate,
           value: _formatRate(controller.averageTxBytesPerSecond),
         ),
       if (controller.isStatVisible(SessionStat.sessionDuration))
         _StatRow(
-          label: '时长',
+          label: strings.sessionDuration,
           value: _formatDuration(controller.sessionDuration),
         ),
       if (controller.isStatVisible(SessionStat.displayCache))
         _StatRow(
-          label: '显示',
+          label: strings.displayCache,
           value:
-              '${controller.logBuffer.retainedDataFrames} 帧 / ${_formatBytes(controller.logBuffer.retainedDataBytes)}',
+              '${controller.logBuffer.retainedDataFrames} ${strings.framesUnit} / ${_formatBytes(controller.logBuffer.retainedDataBytes)}',
         ),
       if (controller.isStatVisible(SessionStat.rawCache))
         _StatRow(
-          label: '原始',
+          label: strings.rawCache,
           value:
               '${_formatBytes(controller.rawBuffer.length)} / ${_formatBytes(controller.rawBuffer.capacityBytes)}',
         ),
       if (controller.isStatVisible(SessionStat.droppedData))
         _StatRow(
-          label: '丢弃',
+          label: strings.droppedData,
           value:
-              '${controller.logBuffer.droppedDataFrames} 帧 / ${_formatBytes(controller.logBuffer.droppedDataBytes + controller.rawBuffer.droppedBytes)}',
+              '${controller.logBuffer.droppedDataFrames} ${strings.framesUnit} / ${_formatBytes(controller.logBuffer.droppedDataBytes + controller.rawBuffer.droppedBytes)}',
         ),
     ];
 
@@ -847,10 +892,11 @@ class _StatsPanel extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text('统计', style: Theme.of(context).textTheme.labelLarge),
+                Text(strings.stats,
+                    style: Theme.of(context).textTheme.labelLarge),
                 const Spacer(),
                 PopupMenuButton<SessionStat>(
-                  tooltip: '选择统计项',
+                  tooltip: strings.chooseStats,
                   icon: const Icon(Icons.tune, size: 18),
                   onSelected: (stat) => controller.setStatVisible(
                     stat,
@@ -861,7 +907,7 @@ class _StatsPanel extends StatelessWidget {
                         (stat) => CheckedPopupMenuItem<SessionStat>(
                           value: stat,
                           checked: controller.isStatVisible(stat),
-                          child: Text(stat.label),
+                          child: Text(strings.sessionStat(stat)),
                         ),
                       )
                       .toList(),
@@ -871,7 +917,7 @@ class _StatsPanel extends StatelessWidget {
             const SizedBox(height: 4),
             if (items.isEmpty)
               Text(
-                '未显示统计项',
+                strings.noStatsVisible,
                 style: Theme.of(context).textTheme.bodySmall,
               )
             else

@@ -116,7 +116,7 @@ class _RightActions extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: controller.clearLog,
             icon: const Icon(Icons.clear_all),
-            label: const Text('清空'),
+            label: Text(controller.strings.clear),
           ),
         ),
         const SizedBox(width: 8),
@@ -142,11 +142,13 @@ class _SearchField extends StatelessWidget {
       child: TextField(
         controller: search,
         textAlignVertical: TextAlignVertical.center,
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.search, size: 18),
-          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
-          hintText: '搜索过滤',
-          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search, size: 18),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 34, minHeight: 34),
+          hintText: controller.strings.searchFilter,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
         ),
         onChanged: (_) {
           controller.displaySnapshot.value = controller.logBuffer.snapshot(
@@ -184,7 +186,7 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
       child: SizedBox.square(
         dimension: 34,
         child: IconButton.outlined(
-          tooltip: '日志设置',
+          tooltip: widget.controller.strings.logSettings,
           onPressed: _toggleEntry,
           icon: const Icon(Icons.settings),
           style: IconButton.styleFrom(
@@ -274,10 +276,11 @@ class _LogSettingsPopup extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text('日志设置', style: Theme.of(context).textTheme.titleSmall),
+                  Text(controller.strings.logSettings,
+                      style: Theme.of(context).textTheme.titleSmall),
                   const Spacer(),
                   IconButton(
-                    tooltip: '关闭',
+                    tooltip: controller.strings.close,
                     onPressed: onClose,
                     icon: const Icon(Icons.close),
                   ),
@@ -288,9 +291,9 @@ class _LogSettingsPopup extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Expanded(child: Text('日志文字大小')),
+                  Expanded(child: Text(controller.strings.logFontSize)),
                   IconButton.outlined(
-                    tooltip: '减小日志字号',
+                    tooltip: controller.strings.decreaseLogFontSize,
                     onPressed: controller.decreaseLogFontSize,
                     icon: const Icon(Icons.remove),
                   ),
@@ -305,7 +308,7 @@ class _LogSettingsPopup extends StatelessWidget {
                     ),
                   ),
                   IconButton.outlined(
-                    tooltip: '增大日志字号',
+                    tooltip: controller.strings.increaseLogFontSize,
                     onPressed: controller.increaseLogFontSize,
                     icon: const Icon(Icons.add),
                   ),
@@ -319,13 +322,13 @@ class _LogSettingsPopup extends StatelessWidget {
                       SwitchListTile(
                         value: controller.showTimestamp,
                         onChanged: controller.setTimestampVisible,
-                        title: const Text('显示时间戳'),
+                        title: Text(controller.strings.timestamp),
                         contentPadding: EdgeInsets.zero,
                       ),
                       SwitchListTile(
                         value: controller.autoScroll,
                         onChanged: controller.setAutoScroll,
-                        title: const Text('自动滚动'),
+                        title: Text(controller.strings.autoScroll),
                         contentPadding: EdgeInsets.zero,
                       ),
                     ],
@@ -338,7 +341,7 @@ class _LogSettingsPopup extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: controller.exportLog,
                   icon: const Icon(Icons.save_alt),
-                  label: const Text('导出为txt'),
+                  label: Text(controller.strings.exportTxt),
                 ),
               ),
             ],
@@ -361,11 +364,11 @@ class _ViewModeSelector extends StatelessWidget {
       builder: (context, _) {
         return Row(
           children: [
-            const SizedBox(width: 76, child: Text('视图格式')),
+            SizedBox(width: 76, child: Text(controller.strings.viewFormat)),
             for (final mode in ConsoleViewMode.values) ...[
               Expanded(
                 child: _ViewModeButton(
-                  mode: mode,
+                  label: controller.strings.consoleViewMode(mode),
                   selected: controller.viewMode == mode,
                   onPressed: () => controller.setViewMode(mode),
                 ),
@@ -381,12 +384,12 @@ class _ViewModeSelector extends StatelessWidget {
 
 class _ViewModeButton extends StatelessWidget {
   const _ViewModeButton({
-    required this.mode,
+    required this.label,
     required this.selected,
     required this.onPressed,
   });
 
-  final ConsoleViewMode mode;
+  final String label;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -399,7 +402,7 @@ class _ViewModeButton extends StatelessWidget {
         disabledBackgroundColor: scheme.primaryContainer,
         disabledForegroundColor: scheme.onPrimaryContainer,
       ),
-      child: Text(mode.label),
+      child: Text(label),
     );
   }
 }

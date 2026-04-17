@@ -88,8 +88,8 @@ class _SendPanelState extends State<SendPanel> {
                     minLines: null,
                     maxLines: null,
                     textAlignVertical: TextAlignVertical.top,
-                    decoration: const InputDecoration(
-                      labelText: '发送数据',
+                    decoration: InputDecoration(
+                      labelText: controller.strings.sendData,
                       alignLabelWithHint: true,
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
@@ -187,8 +187,8 @@ class _SendPanelState extends State<SendPanel> {
     } on FormatException catch (error) {
       final message = switch (error.message) {
         'HEX input must contain an even number of digits.' =>
-          'HEX 内容需要偶数个十六进制字符',
-        _ => 'HEX 内容包含非法字符',
+          widget.controller.strings.hexNeedsEvenDigits,
+        _ => widget.controller.strings.hexInvalidChars,
       };
       _showFloatingTip(message);
       return false;
@@ -229,16 +229,16 @@ class _SendOptionsRow extends StatelessWidget {
             SizedBox(width: 190, child: targetSelector!),
             gap,
           ],
-          _FormatField(controller: controller),
+          _FormatField(controller: controller, width: 104),
           gap,
-          _LineEndingField(controller: controller),
+          _LineEndingField(controller: controller, width: 92),
           gap,
-          _ShortcutModeField(controller: controller),
+          _ShortcutModeField(controller: controller, width: 128),
           gap,
           Expanded(
             child: FilledButton(
               onPressed: onSend,
-              child: const Text('发送'),
+              child: Text(controller.strings.send),
             ),
           ),
         ];
@@ -254,14 +254,14 @@ class _SendOptionsRow extends StatelessWidget {
           children: [
             if (targetSelector != null)
               SizedBox(width: constraints.maxWidth, child: targetSelector!),
-            _FormatField(controller: controller),
-            _LineEndingField(controller: controller),
-            _ShortcutModeField(controller: controller),
+            _FormatField(controller: controller, width: 104),
+            _LineEndingField(controller: controller, width: 92),
+            _ShortcutModeField(controller: controller, width: 128),
             SizedBox(
               width: constraints.maxWidth,
               child: FilledButton(
                 onPressed: onSend,
-                child: const Text('发送'),
+                child: Text(controller.strings.send),
               ),
             ),
           ],
@@ -272,26 +272,27 @@ class _SendOptionsRow extends StatelessWidget {
 }
 
 class _FormatField extends StatelessWidget {
-  const _FormatField({required this.controller});
+  const _FormatField({required this.controller, required this.width});
 
   final SessionController controller;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 150,
+      width: width,
       child: DropdownButtonFormField<PayloadFormat>(
         key: ValueKey(
           'send-format-${identityHashCode(controller)}-${controller.sendFormat}',
         ),
         initialValue: controller.sendFormat,
         isExpanded: true,
-        decoration: const InputDecoration(labelText: '输入'),
+        decoration: InputDecoration(labelText: controller.strings.inputFormat),
         items: PayloadFormat.values
             .map(
               (format) => DropdownMenuItem(
                 value: format,
-                child: Text(format.label),
+                child: Text(controller.strings.payloadFormat(format)),
               ),
             )
             .toList(),
@@ -306,26 +307,27 @@ class _FormatField extends StatelessWidget {
 }
 
 class _LineEndingField extends StatelessWidget {
-  const _LineEndingField({required this.controller});
+  const _LineEndingField({required this.controller, required this.width});
 
   final SessionController controller;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 150,
+      width: width,
       child: DropdownButtonFormField<LineEnding>(
         key: ValueKey(
           'line-ending-${identityHashCode(controller)}-${controller.lineEnding}',
         ),
         initialValue: controller.lineEnding,
         isExpanded: true,
-        decoration: const InputDecoration(labelText: '结尾'),
+        decoration: InputDecoration(labelText: controller.strings.lineEnding),
         items: LineEnding.values
             .map(
               (ending) => DropdownMenuItem(
                 value: ending,
-                child: Text(ending.label),
+                child: Text(controller.strings.lineEndingLabel(ending)),
               ),
             )
             .toList(),
@@ -340,26 +342,27 @@ class _LineEndingField extends StatelessWidget {
 }
 
 class _ShortcutModeField extends StatelessWidget {
-  const _ShortcutModeField({required this.controller});
+  const _ShortcutModeField({required this.controller, required this.width});
 
   final SessionController controller;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 180,
+      width: width,
       child: DropdownButtonFormField<SendShortcutMode>(
         key: ValueKey(
           'shortcut-${identityHashCode(controller)}-${controller.sendShortcutMode}',
         ),
         initialValue: controller.sendShortcutMode,
         isExpanded: true,
-        decoration: const InputDecoration(labelText: '发送快捷键'),
+        decoration: InputDecoration(labelText: controller.strings.sendShortcut),
         items: SendShortcutMode.values
             .map(
               (mode) => DropdownMenuItem(
                 value: mode,
-                child: Text(mode.label),
+                child: Text(controller.strings.shortcutMode(mode)),
               ),
             )
             .toList(),
@@ -393,7 +396,8 @@ class _AutoSendRow extends StatelessWidget {
           child: TextField(
             controller: interval,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '定时 ms'),
+            decoration:
+                InputDecoration(labelText: controller.strings.autoSendMs),
           ),
         ),
         const SizedBox(width: 8),
@@ -402,7 +406,11 @@ class _AutoSendRow extends StatelessWidget {
             onPressed:
                 controller.isAutoSending ? controller.stopAutoSend : onStart,
             icon: Icon(controller.isAutoSending ? Icons.stop : Icons.timer),
-            label: Text(controller.isAutoSending ? '停止定时' : '定时发送'),
+            label: Text(
+              controller.isAutoSending
+                  ? controller.strings.stopAutoSend
+                  : controller.strings.startAutoSend,
+            ),
           ),
         ),
       ],

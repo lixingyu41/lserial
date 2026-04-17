@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../app/localization.dart';
 import '../../application/workspace_controller.dart';
 import '../../core/encoding/data_format.dart';
 import '../../storage/log_buffer.dart';
@@ -76,6 +77,7 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
         builder: (context, constraints) {
           final searchField = _SearchField(
             search: search,
+            hintText: controller.strings.searchFilter,
             onChanged: onSearchChanged,
           );
           final rightActions = _RightActions(controller: controller);
@@ -123,7 +125,7 @@ class _RightActions extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: controller.clearLog,
             icon: const Icon(Icons.clear_all),
-            label: const Text('清空'),
+            label: Text(controller.strings.clear),
           ),
         ),
         const SizedBox(width: 8),
@@ -136,10 +138,12 @@ class _RightActions extends StatelessWidget {
 class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.search,
+    required this.hintText,
     required this.onChanged,
   });
 
   final TextEditingController search;
+  final String hintText;
   final VoidCallback onChanged;
 
   @override
@@ -149,11 +153,13 @@ class _SearchField extends StatelessWidget {
       child: TextField(
         controller: search,
         textAlignVertical: TextAlignVertical.center,
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.search, size: 18),
-          prefixIconConstraints: BoxConstraints(minWidth: 34, minHeight: 34),
-          hintText: '搜索过滤',
-          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search, size: 18),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 34, minHeight: 34),
+          hintText: hintText,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
         ),
         onChanged: (_) => onChanged(),
       ),
@@ -187,7 +193,7 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
       child: SizedBox.square(
         dimension: 34,
         child: IconButton.outlined(
-          tooltip: '日志设置',
+          tooltip: widget.controller.strings.logSettings,
           onPressed: _toggleEntry,
           icon: const Icon(Icons.settings),
           style: IconButton.styleFrom(
@@ -252,102 +258,135 @@ class _LogSettingsPopup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final viewportSize = MediaQuery.sizeOf(context);
     final availableWidth = math.max(0.0, viewportSize.width - 24);
     final availableHeight = math.max(0.0, viewportSize.height - 24);
     final popupWidth = math.min(380.0, availableWidth);
     final popupMaxHeight = math.min(520.0, availableHeight);
-    return Material(
-      color: scheme.surface,
-      elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: scheme.outlineVariant),
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: popupWidth,
-          maxHeight: popupMaxHeight,
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final scheme = Theme.of(context).colorScheme;
+        final strings = controller.strings;
+        return Material(
+          color: scheme.surface,
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(color: scheme.outlineVariant),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: popupWidth,
+              maxHeight: popupMaxHeight,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('日志设置', style: Theme.of(context).textTheme.titleSmall),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: onClose,
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _ViewModeSelector(controller: controller),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Expanded(child: Text('日志文字大小')),
-                  IconButton.outlined(
-                    tooltip: '减小日志字号',
-                    onPressed: controller.decreaseLogFontSize,
-                    icon: const Icon(Icons.remove),
-                  ),
-                  SizedBox(
-                    width: 44,
-                    child: AnimatedBuilder(
-                      animation: controller,
-                      builder: (context, _) => Text(
-                        controller.logFontSize.toStringAsFixed(0),
-                        textAlign: TextAlign.center,
+                  Row(
+                    children: [
+                      Text(
+                        strings.logSettings,
+                        style: Theme.of(context).textTheme.titleSmall,
                       ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: strings.close,
+                        onPressed: onClose,
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _ViewModeSelector(controller: controller),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(child: Text(strings.logFontSize)),
+                      IconButton.outlined(
+                        tooltip: strings.decreaseLogFontSize,
+                        onPressed: controller.decreaseLogFontSize,
+                        icon: const Icon(Icons.remove),
+                      ),
+                      SizedBox(
+                        width: 44,
+                        child: Text(
+                          controller.logFontSize.toStringAsFixed(0),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      IconButton.outlined(
+                        tooltip: strings.increaseLogFontSize,
+                        onPressed: controller.increaseLogFontSize,
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                  _DisplayItems(controller: controller),
+                  const SizedBox(height: 10),
+                  SwitchListTile(
+                    value: controller.autoScroll,
+                    onChanged: controller.setAutoScroll,
+                    title: Text(strings.autoScroll),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  const SizedBox(height: 6),
+                  _SourceFilter(controller: controller),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: controller.exportLog,
+                      icon: const Icon(Icons.save_alt),
+                      label: Text(strings.exportTxt),
                     ),
                   ),
-                  IconButton.outlined(
-                    tooltip: '增大日志字号',
-                    onPressed: controller.increaseLogFontSize,
-                    icon: const Icon(Icons.add),
-                  ),
+                  const SizedBox(height: 10),
+                  _LanguageSelector(controller: controller),
                 ],
               ),
-              AnimatedBuilder(
-                animation: controller,
-                builder: (context, _) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _DisplayItems(controller: controller),
-                      const SizedBox(height: 10),
-                      SwitchListTile(
-                        value: controller.autoScroll,
-                        onChanged: controller.setAutoScroll,
-                        title: const Text('自动滚动'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(height: 6),
-                      _SourceFilter(controller: controller),
-                    ],
-                  );
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LanguageSelector extends StatelessWidget {
+  const _LanguageSelector({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = controller.strings;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(strings.languageSetting,
+            style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final language in AppLanguage.values)
+              _SettingsFilterChip(
+                label: Text(language.nativeLabel),
+                selected: controller.language == language,
+                onSelected: (selected) {
+                  if (selected) {
+                    controller.setLanguage(language);
+                  }
                 },
               ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: controller.exportLog,
-                  icon: const Icon(Icons.save_alt),
-                  label: const Text('导出为txt'),
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
-      ),
+      ],
     );
   }
 }
@@ -364,11 +403,11 @@ class _ViewModeSelector extends StatelessWidget {
       builder: (context, _) {
         return Row(
           children: [
-            const SizedBox(width: 76, child: Text('视图格式')),
+            SizedBox(width: 76, child: Text(controller.strings.viewFormat)),
             for (final mode in ConsoleViewMode.values) ...[
               Expanded(
                 child: _ViewModeButton(
-                  mode: mode,
+                  label: controller.strings.consoleViewMode(mode),
                   selected: controller.viewMode == mode,
                   onPressed: () => controller.setViewMode(mode),
                 ),
@@ -384,12 +423,12 @@ class _ViewModeSelector extends StatelessWidget {
 
 class _ViewModeButton extends StatelessWidget {
   const _ViewModeButton({
-    required this.mode,
+    required this.label,
     required this.selected,
     required this.onPressed,
   });
 
-  final ConsoleViewMode mode;
+  final String label;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -402,7 +441,7 @@ class _ViewModeButton extends StatelessWidget {
         disabledBackgroundColor: scheme.primaryContainer,
         disabledForegroundColor: scheme.onPrimaryContainer,
       ),
-      child: Text(mode.label),
+      child: Text(label),
     );
   }
 }
@@ -415,17 +454,19 @@ class _SourceFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final labels = controller.sourceLabels;
+    final strings = controller.strings;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('来源过滤', style: Theme.of(context).textTheme.labelLarge),
+        Text(strings.sourceFilter,
+            style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
             for (final source in labels)
-              FilterChip(
+              _SettingsFilterChip(
                 label: Text(source),
                 selected: controller.isSourceVisible(source),
                 onSelected: (selected) =>
@@ -448,35 +489,67 @@ class _DisplayItems extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('显示项', style: Theme.of(context).textTheme.labelLarge),
+        Text(controller.strings.displayItems,
+            style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
-            FilterChip(
-              label: const Text('时间戳'),
+            _SettingsFilterChip(
+              label: Text(controller.strings.timestamp),
               selected: controller.showTimestamp,
               onSelected: controller.setTimestampVisible,
             ),
-            FilterChip(
-              label: const Text('来源'),
+            _SettingsFilterChip(
+              label: Text(controller.strings.source),
               selected: controller.showSource,
               onSelected: controller.setSourceVisible,
             ),
-            FilterChip(
-              label: const Text('收发'),
+            _SettingsFilterChip(
+              label: Text(controller.strings.direction),
               selected: controller.showDirection,
               onSelected: controller.setDirectionVisible,
             ),
-            FilterChip(
-              label: const Text('内容'),
+            _SettingsFilterChip(
+              label: Text(controller.strings.content),
               selected: controller.showContent,
               onSelected: controller.setContentVisible,
             ),
           ],
         ),
       ],
+    );
+  }
+}
+
+class _SettingsFilterChip extends StatelessWidget {
+  const _SettingsFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final Widget label;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return FilterChip(
+      showCheckmark: false,
+      avatar: SizedBox.square(
+        dimension: 16,
+        child: Icon(
+          selected ? Icons.check : Icons.close,
+          size: 14,
+          color: selected ? scheme.primary : scheme.onSurfaceVariant,
+        ),
+      ),
+      label: label,
+      selected: selected,
+      onSelected: onSelected,
     );
   }
 }

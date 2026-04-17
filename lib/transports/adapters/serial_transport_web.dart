@@ -61,7 +61,8 @@ class WebSerialTransportSession implements TransportSession {
   Future<void> connect() async {
     final port = _selectedPort;
     if (port == null) {
-      throw StateError('请先在串口下拉列表中选择 Web Serial 串口。');
+      throw StateError(
+          'Select a Web Serial port from the serial port list first.');
     }
 
     final options = <String, Object>{
