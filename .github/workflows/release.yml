@@ -149,6 +149,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install macOS build dependencies
+        run: brew install automake libtool autoconf pkg-config
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
