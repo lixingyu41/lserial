@@ -6,6 +6,7 @@ import '../features/connection/connection_panel.dart';
 import '../features/console/workspace_console_panel.dart';
 import '../features/quick_commands/quick_commands_panel.dart';
 import '../features/send_panel/send_panel.dart';
+import '../widgets/wheel_stepper.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.controller});
@@ -479,31 +480,35 @@ class _SendTargetSelector extends StatelessWidget {
     final selectedValue = connectedIndexes.contains(controller.sendTargetIndex)
         ? controller.sendTargetIndex
         : null;
-    return DropdownButtonFormField<int>(
-      key: ValueKey(
-        'send-target-${controller.sendTargetIndex}-${connectedIndexes.join("|")}',
-      ),
-      initialValue: selectedValue,
-      isExpanded: true,
-      decoration: InputDecoration(labelText: controller.strings.sendTo),
-      hint: Text(controller.strings.noConnectedTarget),
-      items: [
-        for (final i in connectedIndexes)
-          DropdownMenuItem<int>(
-            value: i,
-            child: Text(
-              controller.sessionLabel(i),
-              overflow: TextOverflow.ellipsis,
+    return WheelStepper(
+      enabled: connectedIndexes.length > 1,
+      onStep: controller.stepSendTarget,
+      child: DropdownButtonFormField<int>(
+        key: ValueKey(
+          'send-target-${controller.sendTargetIndex}-${connectedIndexes.join("|")}',
+        ),
+        initialValue: selectedValue,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: controller.strings.sendTo),
+        hint: Text(controller.strings.noConnectedTarget),
+        items: [
+          for (final i in connectedIndexes)
+            DropdownMenuItem<int>(
+              value: i,
+              child: Text(
+                controller.sessionLabel(i),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-      ],
-      onChanged: connectedIndexes.isEmpty
-          ? null
-          : (index) {
-              if (index != null) {
-                controller.setSendTargetIndex(index);
-              }
-            },
+        ],
+        onChanged: connectedIndexes.isEmpty
+            ? null
+            : (index) {
+                if (index != null) {
+                  controller.setSendTargetIndex(index);
+                }
+              },
+      ),
     );
   }
 }

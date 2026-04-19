@@ -62,4 +62,27 @@ void main() {
     expect(controller.sourceLabels, contains('COM1'));
     expect(controller.visibleSources, contains('COM1'));
   });
+
+  test('send target can step through connected sessions', () {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+
+    controller.activeSession.status = TransportStatus.connected;
+    controller.sessions.add(SessionController(serialAliasNumber: 2)
+      ..status = TransportStatus.connected);
+    controller.sessions.add(SessionController(serialAliasNumber: 3)
+      ..status = TransportStatus.connected);
+
+    controller.stepSendTarget(1);
+    expect(controller.sendTargetIndex, 1);
+
+    controller.stepSendTarget(1);
+    expect(controller.sendTargetIndex, 2);
+
+    controller.stepSendTarget(1);
+    expect(controller.sendTargetIndex, 0);
+
+    controller.stepSendTarget(-1);
+    expect(controller.sendTargetIndex, 2);
+  });
 }

@@ -204,6 +204,22 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void stepSendTarget(int step) {
+    final indexes = connectedSessionIndexes;
+    if (indexes.isEmpty || step == 0) {
+      return;
+    }
+    var index = indexes.indexOf(sendTargetIndex);
+    if (index < 0) {
+      index = step > 0 ? -1 : 0;
+    }
+    var nextIndex = (index + step) % indexes.length;
+    if (nextIndex < 0) {
+      nextIndex += indexes.length;
+    }
+    setSendTargetIndex(indexes[nextIndex]);
+  }
+
   String sessionLabel(int index) {
     return sessions[index].sourceLabel;
   }

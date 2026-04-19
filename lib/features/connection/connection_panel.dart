@@ -1,9 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../application/session_controller.dart';
 import '../../domain/connection_config.dart';
 import '../../domain/transport.dart';
 import '../../transports/adapters/serial_port_options.dart';
+import '../../widgets/wheel_stepper.dart';
+
+const _baudRateOptions = <int>[
+  9600,
+  19200,
+  38400,
+  57600,
+  115200,
+  230400,
+  460800,
+  921600,
+];
 
 class ConnectionPanel extends StatefulWidget {
   const ConnectionPanel({
@@ -258,6 +272,11 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
 
   Widget _serialFields(ConnectionConfig config) {
     final occupiedPorts = widget.occupiedSerialPorts;
+    final wheelPorts = controller.serialPorts
+        .where((portName) =>
+            !occupiedPorts.contains(portName) &&
+            !isSerialPickerOption(portName))
+        .toList(growable: false);
     final selectedPort =
         controller.serialPorts.contains(config.serial.portName) &&
                 !occupiedPorts.contains(config.serial.portName)
@@ -265,75 +284,75 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             : null;
     return Column(
       children: [
-        DropdownButtonFormField<String>(
-          key: ValueKey(
-              'serial-${controller.serialPorts.join("|")}-$selectedPort'),
-          initialValue: selectedPort,
-          decoration: InputDecoration(labelText: controller.strings.serialPort),
-          items: controller.serialPorts
-              .map(
-                (portName) => DropdownMenuItem(
-                  value: portName,
-                  enabled: !occupiedPorts.contains(portName),
-                  child: Text(
-                    serialPortOptionLabel(
-                      portName,
-                      pickLabel: controller.strings.chooseWebSerialPort,
-                      selectedLabel: controller.strings.webSerialSelectedPort,
+        WheelStepper(
+          enabled: !controller.isConnected && wheelPorts.length > 1,
+          onStep: (step) => _stepSerialPort(wheelPorts, step),
+          child: DropdownButtonFormField<String>(
+            key: ValueKey(
+                'serial-${controller.serialPorts.join("|")}-$selectedPort'),
+            initialValue: selectedPort,
+            decoration:
+                InputDecoration(labelText: controller.strings.serialPort),
+            items: controller.serialPorts
+                .map(
+                  (portName) => DropdownMenuItem(
+                    value: portName,
+                    enabled: !occupiedPorts.contains(portName),
+                    child: Text(
+                      serialPortOptionLabel(
+                        portName,
+                        pickLabel: controller.strings.chooseWebSerialPort,
+                        selectedLabel: controller.strings.webSerialSelectedPort,
+                      ),
+                      style: occupiedPorts.contains(portName)
+                          ? TextStyle(color: Theme.of(context).disabledColor)
+                          : null,
                     ),
-                    style: occupiedPorts.contains(portName)
-                        ? TextStyle(color: Theme.of(context).disabledColor)
-                        : null,
                   ),
-                ),
-              )
-              .toList(),
-          onChanged: controller.isConnected
-              ? null
-              : (value) {
-                  if (value != null) {
-                    controller.selectSerialPort(value);
-                  }
-                },
+                )
+                .toList(),
+            onChanged: controller.isConnected
+                ? null
+                : (value) {
+                    if (value != null) {
+                      controller.selectSerialPort(value);
+                    }
+                  },
+          ),
         ),
         const SizedBox(height: 8),
         LayoutBuilder(
           builder: (context, constraints) {
-            return DropdownMenu<int>(
-              controller: baudRate,
-              enabled: !controller.isConnected,
-              label: Text(controller.strings.baudRate),
-              enableFilter: true,
-              requestFocusOnTap: true,
-              width: constraints.maxWidth,
-              menuHeight: 260,
-              dropdownMenuEntries: const [
-                9600,
-                19200,
-                38400,
-                57600,
-                115200,
-                230400,
-                460800,
-                921600,
-              ]
-                  .map(
-                    (value) => DropdownMenuEntry<int>(
-                      value: value,
-                      label: '$value',
-                    ),
-                  )
-                  .toList(),
-              onSelected: (value) {
-                if (value != null) {
-                  baudRate.text = '$value';
-                  controller.updateConfig(
-                    config.copyWith(
-                      serial: config.serial.copyWith(baudRate: value),
-                    ),
-                  );
-                }
-              },
+            return WheelStepper(
+              enabled: !controller.isConnected && _baudRateOptions.length > 1,
+              onStep: _stepBaudRate,
+              child: DropdownMenu<int>(
+                controller: baudRate,
+                enabled: !controller.isConnected,
+                label: Text(controller.strings.baudRate),
+                enableFilter: true,
+                requestFocusOnTap: true,
+                width: constraints.maxWidth,
+                menuHeight: 260,
+                dropdownMenuEntries: _baudRateOptions
+                    .map(
+                      (value) => DropdownMenuEntry<int>(
+                        value: value,
+                        label: '$value',
+                      ),
+                    )
+                    .toList(),
+                onSelected: (value) {
+                  if (value != null) {
+                    baudRate.text = '$value';
+                    controller.updateConfig(
+                      config.copyWith(
+                        serial: config.serial.copyWith(baudRate: value),
+                      ),
+                    );
+                  }
+                },
+              ),
             );
           },
         ),
@@ -732,6 +751,75 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   }
 
   int _nonNegative(int value) => value < 0 ? 0 : value;
+
+  void _stepSerialPort(List<String> ports, int step) {
+    if (controller.isConnected) {
+      return;
+    }
+    final next = _steppedValue(ports, controller.config.serial.portName, step);
+    if (next != null) {
+      unawaited(controller.selectSerialPort(next));
+    }
+  }
+
+  void _stepBaudRate(int step) {
+    if (controller.isConnected) {
+      return;
+    }
+    final current = controller.config;
+    final currentBaud = int.tryParse(baudRate.text) ?? current.serial.baudRate;
+    final next = _nextBaudRate(currentBaud, step);
+    baudRate.text = '$next';
+    controller.updateConfig(
+      current.copyWith(
+        serial: current.serial.copyWith(baudRate: next),
+      ),
+    );
+  }
+
+  int _nextBaudRate(int current, int step) {
+    final exactIndex = _baudRateOptions.indexOf(current);
+    if (exactIndex >= 0) {
+      return _baudRateOptions[_wrappedIndex(
+        exactIndex,
+        step,
+        _baudRateOptions.length,
+      )];
+    }
+    if (step > 0) {
+      for (final rate in _baudRateOptions) {
+        if (rate > current) {
+          return rate;
+        }
+      }
+      return _baudRateOptions.first;
+    }
+    for (final rate in _baudRateOptions.reversed) {
+      if (rate < current) {
+        return rate;
+      }
+    }
+    return _baudRateOptions.last;
+  }
+
+  T? _steppedValue<T>(List<T> values, T? current, int step) {
+    if (values.isEmpty || step == 0) {
+      return null;
+    }
+    var index = current == null ? -1 : values.indexOf(current);
+    if (index < 0) {
+      index = step > 0 ? -1 : 0;
+    }
+    return values[_wrappedIndex(index, step, values.length)];
+  }
+
+  int _wrappedIndex(int index, int step, int length) {
+    var next = (index + step) % length;
+    if (next < 0) {
+      next += length;
+    }
+    return next;
+  }
 
   void _setPacketDelimiter(String value) {
     final current = controller.config;
