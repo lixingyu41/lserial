@@ -63,4 +63,91 @@ void main() {
 
     pipeline.dispose();
   });
+
+  test('ReceivePipeline groups chunks by packet interval', () async {
+    final raw = ByteRingBuffer(1024);
+    final batches = <List<DataFrame>>[];
+    var sequence = 0;
+    final pipeline = ReceivePipeline(
+      rawBuffer: raw,
+      packetInterval: const Duration(milliseconds: 20),
+      flushInterval: const Duration(seconds: 1),
+      nextSequence: () => ++sequence,
+      onBatch: batches.add,
+    );
+
+    pipeline.addBytes(<int>[0x41], source: 'rx');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    pipeline.addBytes(<int>[0x42], source: 'rx');
+
+    expect(batches, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    expect(batches, hasLength(1));
+    expect(batches.single, hasLength(1));
+    expect(batches.single.single.bytes, Uint8List.fromList(<int>[0x41, 0x42]));
+    expect(raw.length, 2);
+
+    pipeline.dispose();
+  });
+
+  test('ReceivePipeline waits for idle gap before flushing packet', () async {
+    final raw = ByteRingBuffer(1024);
+    final batches = <List<DataFrame>>[];
+    var sequence = 0;
+    final pipeline = ReceivePipeline(
+      rawBuffer: raw,
+      packetInterval: const Duration(milliseconds: 20),
+      flushInterval: const Duration(seconds: 1),
+      nextSequence: () => ++sequence,
+      onBatch: batches.add,
+    );
+
+    pipeline.addBytes(<int>[0], source: 'rx');
+    for (var i = 1; i < 8; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 8));
+      pipeline.addBytes(<int>[i], source: 'rx');
+    }
+
+    expect(batches, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    expect(batches, hasLength(1));
+    expect(batches.single.single.bytes,
+        Uint8List.fromList(List<int>.generate(8, (index) => index)));
+    expect(raw.length, 8);
+
+    pipeline.dispose();
+  });
+
+  test('ReceivePipeline splits packets by delimiter', () async {
+    final raw = ByteRingBuffer(1024);
+    final batches = <List<DataFrame>>[];
+    var sequence = 0;
+    final pipeline = ReceivePipeline(
+      rawBuffer: raw,
+      packetDelimiter: const <int>[0x0d, 0x0a],
+      flushInterval: const Duration(seconds: 1),
+      nextSequence: () => ++sequence,
+      onBatch: batches.add,
+    );
+
+    pipeline.addBytes(<int>[0x41, 0x0d], source: 'rx');
+    expect(batches, isEmpty);
+
+    pipeline.addBytes(<int>[0x0a, 0x42, 0x0d, 0x0a], source: 'rx');
+
+    expect(batches, hasLength(1));
+    expect(batches.single, hasLength(2));
+    expect(
+      batches.single.map((frame) => frame.bytes).toList(),
+      <Uint8List>[
+        Uint8List.fromList(<int>[0x41, 0x0d, 0x0a]),
+        Uint8List.fromList(<int>[0x42, 0x0d, 0x0a]),
+      ],
+    );
+    expect(raw.length, 6);
+
+    pipeline.dispose();
+  });
 }

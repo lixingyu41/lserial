@@ -31,6 +31,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   late final TextEditingController remoteHost;
   late final TextEditingController remotePort;
   late final TextEditingController baudRate;
+  late final TextEditingController packetInterval;
+  late final TextEditingController packetDelimiter;
   late final TextEditingController bluetoothDeviceId;
   late final TextEditingController bluetoothServiceUuid;
   late final TextEditingController bluetoothWriteCharacteristicUuid;
@@ -49,6 +51,10 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     remoteHost = TextEditingController(text: config.udp.remoteHost);
     remotePort = TextEditingController(text: config.udp.remotePort.toString());
     baudRate = TextEditingController(text: config.serial.baudRate.toString());
+    packetInterval =
+        TextEditingController(text: config.serial.packetIntervalMs.toString());
+    packetDelimiter =
+        TextEditingController(text: config.serial.packetDelimiter);
     bluetoothDeviceId = TextEditingController(text: config.bluetooth.deviceId);
     bluetoothServiceUuid =
         TextEditingController(text: config.bluetooth.serviceUuid);
@@ -77,6 +83,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     remoteHost.dispose();
     remotePort.dispose();
     baudRate.dispose();
+    packetInterval.dispose();
+    packetDelimiter.dispose();
     bluetoothDeviceId.dispose();
     bluetoothServiceUuid.dispose();
     bluetoothWriteCharacteristicUuid.dispose();
@@ -238,6 +246,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     remoteHost.text = config.udp.remoteHost;
     remotePort.text = config.udp.remotePort.toString();
     baudRate.text = config.serial.baudRate.toString();
+    packetInterval.text = config.serial.packetIntervalMs.toString();
+    packetDelimiter.text = config.serial.packetDelimiter;
     bluetoothDeviceId.text = config.bluetooth.deviceId;
     bluetoothServiceUuid.text = config.bluetooth.serviceUuid;
     bluetoothWriteCharacteristicUuid.text =
@@ -326,6 +336,64 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               },
             );
           },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: packetInterval,
+          enabled: !controller.isConnected,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: controller.strings.packetIntervalMs,
+          ),
+          onChanged: (value) {
+            final intervalMs = int.tryParse(value.trim());
+            if (intervalMs == null) {
+              return;
+            }
+            final current = controller.config;
+            controller.updateConfig(
+              current.copyWith(
+                serial: current.serial.copyWith(
+                  packetIntervalMs: _nonNegative(intervalMs),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: packetDelimiter,
+          enabled: !controller.isConnected,
+          decoration: InputDecoration(
+            labelText: controller.strings.packetDelimiter,
+            suffixIcon: PopupMenuButton<String>(
+              tooltip: controller.strings.packetDelimiterPresets,
+              enabled: !controller.isConnected,
+              icon: const Icon(Icons.arrow_drop_down),
+              onSelected: (value) {
+                packetDelimiter.text = value;
+                _setPacketDelimiter(value);
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: '',
+                  child: Text(controller.strings.packetDelimiterNone),
+                ),
+                for (final value in const <String>[
+                  r'\r',
+                  r'\n',
+                  r'\r\n',
+                  '/R/N',
+                  r'\x00',
+                ])
+                  PopupMenuItem(
+                    value: value,
+                    child: Text(value),
+                  ),
+              ],
+            ),
+          ),
+          onChanged: _setPacketDelimiter,
         ),
         const SizedBox(height: 8),
         Row(
@@ -618,13 +686,21 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   Future<void> _connect() async {
     final current = controller.config;
     final serialBaud = int.tryParse(baudRate.text) ?? current.serial.baudRate;
+    final serialPacketInterval = _parseNonNegativeInt(
+      packetInterval.text,
+      current.serial.packetIntervalMs,
+    );
     final tcpPort = int.tryParse(port.text) ?? current.tcpClient.port;
     final udpLocal = int.tryParse(localPort.text) ?? current.udp.localPort;
     final udpRemote = int.tryParse(remotePort.text) ?? current.udp.remotePort;
 
     controller.updateConfig(
       current.copyWith(
-        serial: current.serial.copyWith(baudRate: serialBaud),
+        serial: current.serial.copyWith(
+          baudRate: serialBaud,
+          packetIntervalMs: serialPacketInterval,
+          packetDelimiter: packetDelimiter.text,
+        ),
         tcpClient:
             current.tcpClient.copyWith(host: host.text.trim(), port: tcpPort),
         tcpServer: current.tcpServer.copyWith(
@@ -648,6 +724,22 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       ),
     );
     await controller.connect();
+  }
+
+  int _parseNonNegativeInt(String text, int fallback) {
+    final value = int.tryParse(text.trim());
+    return value == null ? fallback : _nonNegative(value);
+  }
+
+  int _nonNegative(int value) => value < 0 ? 0 : value;
+
+  void _setPacketDelimiter(String value) {
+    final current = controller.config;
+    controller.updateConfig(
+      current.copyWith(
+        serial: current.serial.copyWith(packetDelimiter: value),
+      ),
+    );
   }
 
   void _syncBluetoothConfig() {

@@ -80,6 +80,11 @@ class AppStrings {
   String get webSerialSelectedPort =>
       isZh ? 'Web Serial 已选择串口' : 'Web Serial port selected';
   String get baudRate => isZh ? '波特率' : 'Baud';
+  String get packetIntervalMs => isZh ? '分包间隔 ms' : 'Packet gap ms';
+  String get packetDelimiter => isZh ? '分包分隔符' : 'Packet delimiter';
+  String get packetDelimiterPresets =>
+      isZh ? '分包分隔符预设' : 'Packet delimiter presets';
+  String get packetDelimiterNone => isZh ? '无' : 'None';
   String get dataBits => isZh ? '数据位' : 'Data';
   String get stopBits => isZh ? '停止位' : 'Stop';
   String get parity => isZh ? '校验' : 'Parity';

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/application/workspace_controller.dart';
+import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/domain/transport.dart';
 
 void main() {
@@ -39,5 +40,26 @@ void main() {
 
     expect(controller.activeSessionIndex, 0);
     expect(controller.pageIndicator, '1/2');
+  });
+
+  test('source filter keeps labels from disconnected session logs', () {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+
+    final session = controller.activeSession;
+    session.logBuffer.addAll(<DataFrame>[
+      DataFrame(
+        sequence: 1,
+        timestamp: DateTime(2026),
+        direction: FrameDirection.rx,
+        bytes: <int>[0x41],
+        source: 'COM1',
+      ),
+    ]);
+
+    session.status = TransportStatus.disconnected;
+
+    expect(controller.sourceLabels, contains('COM1'));
+    expect(controller.visibleSources, contains('COM1'));
   });
 }

@@ -334,6 +334,7 @@ class SessionController extends ChangeNotifier {
 
   void updateConfig(ConnectionConfig next) {
     config = next;
+    _syncReceivePacketOptions();
     notifyListeners();
   }
 
@@ -346,6 +347,7 @@ class SessionController extends ChangeNotifier {
           config = config.copyWith(
             serial: config.serial.copyWith(portName: selected),
           );
+          _syncReceivePacketOptions();
           _setStatusMessage(strings.webSerialPortSelected);
         }
       } on Object catch (error) {
@@ -357,6 +359,7 @@ class SessionController extends ChangeNotifier {
     config = config.copyWith(
       serial: config.serial.copyWith(portName: value),
     );
+    _syncReceivePacketOptions();
     notifyListeners();
   }
 
@@ -367,6 +370,7 @@ class SessionController extends ChangeNotifier {
       return;
     }
     config = config.copyWith(type: type);
+    _syncReceivePacketOptions();
     notifyListeners();
   }
 
@@ -483,6 +487,7 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      _syncReceivePacketOptions();
       final session = await registry.create(config);
       await session.connect();
       _session = session;
@@ -834,6 +839,17 @@ class SessionController extends ChangeNotifier {
   void _setStatusMessage(String message) {
     statusMessage = message;
     notifyListeners();
+  }
+
+  void _syncReceivePacketOptions() {
+    _pipeline.configurePacket(
+      packetInterval: config.type == TransportType.serial
+          ? config.serial.packetInterval
+          : Duration.zero,
+      packetDelimiter: config.type == TransportType.serial
+          ? config.serial.packetDelimiterBytes
+          : const <int>[],
+    );
   }
 
   String _formatError(Object error) {

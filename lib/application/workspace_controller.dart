@@ -102,8 +102,11 @@ class WorkspaceController extends ChangeNotifier {
   List<String> get sourceLabels {
     final labels = <String>{'SYS'};
     for (final session in sessions) {
-      if (!session.isConnected) {
-        continue;
+      for (final frame in session.logBuffer.snapshot(paused: false).frames) {
+        final source = formatter.sourceToken(frame).trim();
+        if (source.isNotEmpty) {
+          labels.add(source);
+        }
       }
       final label = session.sourceLabel.trim();
       if (label.isNotEmpty) {

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'transport.dart';
 
 enum SerialParity {
@@ -21,6 +23,8 @@ class SerialConfig {
     this.dataBits = 8,
     this.stopBits = 1,
     this.parity = SerialParity.none,
+    this.packetIntervalMs = 0,
+    this.packetDelimiter = '',
   });
 
   final String portName;
@@ -28,6 +32,16 @@ class SerialConfig {
   final int dataBits;
   final int stopBits;
   final SerialParity parity;
+  final int packetIntervalMs;
+  final String packetDelimiter;
+
+  Duration get packetInterval {
+    final milliseconds = packetIntervalMs < 0 ? 0 : packetIntervalMs;
+    return Duration(milliseconds: milliseconds);
+  }
+
+  List<int> get packetDelimiterBytes =>
+      parseSerialPacketDelimiter(packetDelimiter);
 
   SerialConfig copyWith({
     String? portName,
@@ -35,6 +49,8 @@ class SerialConfig {
     int? dataBits,
     int? stopBits,
     SerialParity? parity,
+    int? packetIntervalMs,
+    String? packetDelimiter,
   }) {
     return SerialConfig(
       portName: portName ?? this.portName,
@@ -42,9 +58,97 @@ class SerialConfig {
       dataBits: dataBits ?? this.dataBits,
       stopBits: stopBits ?? this.stopBits,
       parity: parity ?? this.parity,
+      packetIntervalMs: packetIntervalMs ?? this.packetIntervalMs,
+      packetDelimiter: packetDelimiter ?? this.packetDelimiter,
     );
   }
 }
+
+List<int> parseSerialPacketDelimiter(String value) {
+  if (value.isEmpty) {
+    return const <int>[];
+  }
+
+  final shortcut = _delimiterShortcut(value.trim());
+  if (shortcut != null) {
+    return shortcut;
+  }
+
+  final bytes = <int>[];
+  var index = 0;
+  while (index < value.length) {
+    final marker = value.codeUnitAt(index);
+    if ((marker == _backslash || marker == _slash) &&
+        index + 1 < value.length) {
+      final next = value.codeUnitAt(index + 1);
+      final lower = _lowerAscii(next);
+      if (lower == _r) {
+        bytes.add(0x0d);
+        index += 2;
+        continue;
+      }
+      if (lower == _n) {
+        bytes.add(0x0a);
+        index += 2;
+        continue;
+      }
+      if (lower == _t) {
+        bytes.add(0x09);
+        index += 2;
+        continue;
+      }
+      if (next == _zero) {
+        bytes.add(0x00);
+        index += 2;
+        continue;
+      }
+      if (lower == _x && index + 3 < value.length) {
+        final hex = value.substring(index + 2, index + 4);
+        final parsed = int.tryParse(hex, radix: 16);
+        if (parsed != null) {
+          bytes.add(parsed);
+          index += 4;
+          continue;
+        }
+      }
+    }
+
+    final codeUnit = value.codeUnitAt(index);
+    final nextIndex = _isLeadSurrogate(codeUnit) && index + 1 < value.length
+        ? index + 2
+        : index + 1;
+    bytes.addAll(utf8.encode(value.substring(index, nextIndex)));
+    index = nextIndex;
+  }
+
+  return bytes;
+}
+
+List<int>? _delimiterShortcut(String value) {
+  final normalized = value.toUpperCase().replaceAll(RegExp(r'[\s_\-+]'), '');
+  return switch (normalized) {
+    'CR' => const <int>[0x0d],
+    'LF' => const <int>[0x0a],
+    'CRLF' => const <int>[0x0d, 0x0a],
+    _ => null,
+  };
+}
+
+bool _isLeadSurrogate(int codeUnit) {
+  return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
+}
+
+int _lowerAscii(int codeUnit) {
+  return codeUnit >= 0x41 && codeUnit <= 0x5a ? codeUnit + 0x20 : codeUnit;
+}
+
+const _backslash = 0x5c;
+const _slash = 0x2f;
+const _n = 0x6e;
+const _r = 0x72;
+const _t = 0x74;
+const _x = 0x78;
+const _zero = 0x30;
 
 class TcpClientConfig {
   const TcpClientConfig({
