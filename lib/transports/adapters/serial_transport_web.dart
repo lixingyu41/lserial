@@ -42,6 +42,8 @@ class WebSerialTransportSession implements TransportSession {
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
   JSObject? _port;
+  JSObject? _reader;
+  Future<void>? _readTask;
   bool _connected = false;
   bool _closing = false;
 
@@ -80,7 +82,8 @@ class WebSerialTransportSession implements TransportSession {
     _port = port;
     _connected = true;
     _closing = false;
-    unawaited(_readLoop(port));
+    _readTask = _readLoop(port);
+    unawaited(_readTask);
   }
 
   Future<void> _readLoop(JSObject port) async {
@@ -92,6 +95,7 @@ class WebSerialTransportSession implements TransportSession {
           continue;
         }
         final reader = readable.callMethod<JSObject>('getReader'.toJS);
+        _reader = reader;
         try {
           while (!_closing) {
             final result = await reader
@@ -110,7 +114,14 @@ class WebSerialTransportSession implements TransportSession {
             }
           }
         } finally {
-          reader.callMethod<JSAny?>('releaseLock'.toJS);
+          if (_reader == reader) {
+            _reader = null;
+          }
+          try {
+            reader.callMethod<JSAny?>('releaseLock'.toJS);
+          } on Object {
+            // The reader may already be released by the browser after cancel.
+          }
         }
       }
     } catch (error, stackTrace) {
@@ -147,10 +158,37 @@ class WebSerialTransportSession implements TransportSession {
   Future<void> disconnect() async {
     _closing = true;
     _connected = false;
+    final reader = _reader;
+    if (reader != null) {
+      try {
+        await reader
+            .callMethod<JSPromise<JSAny?>>('cancel'.toJS)
+            .toDart
+            .timeout(const Duration(seconds: 2));
+      } on Object {
+        // Continue closing the port even if cancel rejects or times out.
+      }
+    }
+    try {
+      await _readTask?.timeout(const Duration(seconds: 2));
+    } on Object {
+      // Do not leave the UI stuck in disconnecting if the browser read loop hangs.
+    } finally {
+      _readTask = null;
+      _reader = null;
+    }
     final port = _port;
     _port = null;
     if (port != null) {
-      await port.callMethod<JSPromise<JSAny?>>('close'.toJS).toDart;
+      try {
+        await port
+            .callMethod<JSPromise<JSAny?>>('close'.toJS)
+            .toDart
+            .timeout(const Duration(seconds: 2));
+      } on Object {
+        // The session is considered closed locally; a new session will reopen
+        // the selected Web Serial port when the browser has released it.
+      }
     }
     if (!_incoming.isClosed) {
       await _incoming.close();
