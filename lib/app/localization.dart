@@ -74,7 +74,7 @@ class AppStrings {
   String get refreshList => isZh ? '刷新列表' : 'Refresh';
   String get stopScan => isZh ? '停止扫描' : 'Stop scan';
   String get connectionType => isZh ? '连接方式' : 'Transport';
-  String get disabled => isZh ? '禁用' : 'disabled';
+  String get disabled => isZh ? '不支持' : 'unsupported';
   String get serialPort => isZh ? '串口' : 'Serial port';
   String get chooseWebSerialPort =>
       isZh ? '选择 Web Serial 串口...' : 'Choose Web Serial port...';
@@ -224,8 +224,35 @@ class AppStrings {
   String serialPortSelectFailed(Object error) => isZh
       ? '选择串口失败：${errorMessage(error)}'
       : 'Serial port selection failed: $error';
-  String transportDisabled(TransportType type, String reason) =>
-      '${transportType(type)} ${isZh ? '已禁用' : 'disabled'}: $reason';
+  String unsupportedTransportOption(TransportType type, String reason) {
+    final label = transportType(type);
+    if (_isWebUnsupportedReason(reason)) {
+      return isZh ? '$label（Web 不支持）' : '$label (web unsupported)';
+    }
+    return isZh ? '$label（不支持）' : '$label (unsupported)';
+  }
+
+  String transportDisabled(TransportType type, String reason) {
+    final label = transportType(type);
+    if (_isWebUnsupportedReason(reason)) {
+      return isZh
+          ? '$label Web 不支持：$reason'
+          : '$label is not supported on web: $reason';
+    }
+    return isZh ? '$label 不支持：$reason' : '$label unsupported: $reason';
+  }
+
+  bool _isWebUnsupportedReason(String reason) {
+    if (isZh) {
+      return reason.contains('浏览器') || reason.contains('Web 不支持');
+    }
+    return reason.contains('Browser') ||
+        reason.contains('browser') ||
+        reason.contains('web app') ||
+        reason.contains('Web apps') ||
+        reason.contains('Static Web');
+  }
+
   String get unsupportedPlatform => isZh ? '当前平台不支持' : 'Unsupported platform.';
   String platformReason(String reason) {
     if (!isZh) {
@@ -240,17 +267,17 @@ class AppStrings {
       'Web Bluetooth is not available in this browser.' =>
         '当前浏览器不支持 Web Bluetooth。',
       'Browsers do not expose raw TCP sockets to static web apps.' =>
-        '浏览器不会向纯静态 Web 应用开放原始 TCP Socket。',
+        '浏览器不开放原始 TCP Socket 给 Web 页面。',
       'Browsers cannot listen as raw TCP servers without a backend.' =>
-        '浏览器没有后端时不能作为原始 TCP Server 监听。',
+        '浏览器页面不能监听原始 TCP 端口，需要后端服务。',
       'Browsers do not expose raw UDP sockets to static web apps.' =>
-        '浏览器不会向纯静态 Web 应用开放原始 UDP Socket。',
+        '浏览器不开放原始 UDP Socket 给 Web 页面。',
       'Static Web apps cannot open raw TCP sockets in Chrome.' =>
-        'Chrome 里的纯静态 Web 应用不能打开原始 TCP Socket。',
+        'Chrome 中的 Web 页面不能直接打开原始 TCP Socket。',
       'Static Web apps cannot listen as raw TCP servers in Chrome.' =>
-        'Chrome 里的纯静态 Web 应用不能监听原始 TCP Server。',
+        'Chrome 中的 Web 页面不能监听原始 TCP 端口。',
       'Static Web apps cannot open raw UDP sockets in Chrome.' =>
-        'Chrome 里的纯静态 Web 应用不能打开原始 UDP Socket。',
+        'Chrome 中的 Web 页面不能直接打开原始 UDP Socket。',
       'Web Bluetooth capability detected; BLE GATT implementation is the next adapter step.' =>
         '检测到 Web Bluetooth 能力，但当前 Web 蓝牙适配器还未启用 BLE GATT 连接。',
       'Serial is not supported on this platform.' => '当前平台不支持串口。',

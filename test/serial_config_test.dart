@@ -2,9 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/domain/connection_config.dart';
 
 void main() {
-  test('SerialConfig defaults to driver chunk packet interval', () {
+  test('SerialConfig defaults to CRLF packet delimiter', () {
     expect(const SerialConfig().packetIntervalMs, 0);
     expect(const SerialConfig().packetInterval, Duration.zero);
+    expect(const SerialConfig().packetDelimiter, defaultSerialPacketDelimiter);
+    expect(const SerialConfig().packetDelimiterBytes, <int>[0x0d, 0x0a]);
   });
 
   test('parseSerialPacketDelimiter supports line ending escapes', () {

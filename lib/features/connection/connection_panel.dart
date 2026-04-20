@@ -144,12 +144,17 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       InputDecoration(labelText: strings.connectionType),
                   items: TransportType.values.map((type) {
                     final supported = controller.isTypeSupported(type);
-                    final label = strings.transportType(type);
+                    final label = supported
+                        ? strings.transportType(type)
+                        : strings.unsupportedTransportOption(
+                            type,
+                            controller.unsupportedReason(type),
+                          );
                     return DropdownMenuItem(
                       value: type,
                       enabled: supported,
                       child: Text(
-                        supported ? label : '$label (${strings.disabled})',
+                        label,
                       ),
                     );
                   }).toList(),

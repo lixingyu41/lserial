@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'transport.dart';
 
+const defaultSerialPacketDelimiter = r'\r\n';
+
 enum SerialParity {
   none,
   odd,
@@ -24,7 +26,7 @@ class SerialConfig {
     this.stopBits = 1,
     this.parity = SerialParity.none,
     this.packetIntervalMs = 0,
-    this.packetDelimiter = '',
+    this.packetDelimiter = defaultSerialPacketDelimiter,
   });
 
   final String portName;

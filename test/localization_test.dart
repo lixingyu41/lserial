@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/app/localization.dart';
+import 'package:lserial/domain/transport.dart';
 
 void main() {
   test('Chinese localization translates common transport errors', () {
@@ -26,7 +27,25 @@ void main() {
         UnsupportedError(
             'Static Web apps cannot open raw TCP sockets in Chrome.'),
       ),
-      'Chrome 里的纯静态 Web 应用不能打开原始 TCP Socket。',
+      'Chrome 中的 Web 页面不能直接打开原始 TCP Socket。',
+    );
+    expect(
+      strings.unsupportedTransportOption(
+        TransportType.tcpClient,
+        strings.platformReason(
+          'Browsers do not expose raw TCP sockets to static web apps.',
+        ),
+      ),
+      'TCP 客户端（Web 不支持）',
+    );
+    expect(
+      strings.transportDisabled(
+        TransportType.tcpClient,
+        strings.platformReason(
+          'Browsers do not expose raw TCP sockets to static web apps.',
+        ),
+      ),
+      'TCP 客户端 Web 不支持：浏览器不开放原始 TCP Socket 给 Web 页面。',
     );
   });
 }
