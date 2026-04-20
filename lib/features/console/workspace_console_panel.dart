@@ -179,6 +179,7 @@ class _LogSettingsButton extends StatefulWidget {
 
 class _LogSettingsButtonState extends State<_LogSettingsButton> {
   final LayerLink _layerLink = LayerLink();
+  final GlobalKey _buttonKey = GlobalKey();
   OverlayEntry? _entry;
 
   @override
@@ -192,6 +193,7 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
     return CompositedTransformTarget(
       link: _layerLink,
       child: SizedBox.square(
+        key: _buttonKey,
         dimension: 34,
         child: IconButton.outlined(
           tooltip: widget.controller.strings.logSettings,
@@ -216,6 +218,8 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
     final overlay = Overlay.of(context);
     _entry = OverlayEntry(
       builder: (context) {
+        final viewportSize = MediaQuery.sizeOf(context);
+        final popupMaxHeight = _popupMaxHeight(viewportSize);
         return Stack(
           children: [
             Positioned.fill(
@@ -233,6 +237,7 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
               child: _LogSettingsPopup(
                 controller: widget.controller,
                 onClose: _removeEntry,
+                maxHeight: popupMaxHeight,
               ),
             ),
           ],
@@ -240,6 +245,15 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
       },
     );
     overlay.insert(_entry!);
+  }
+
+  double _popupMaxHeight(Size viewportSize) {
+    final renderObject = _buttonKey.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      return math.max(0.0, viewportSize.height - 24);
+    }
+    final targetTop = renderObject.localToGlobal(Offset.zero).dy;
+    return math.max(0.0, math.min(520.0, targetTop - 16));
   }
 
   void _removeEntry() {
@@ -252,18 +266,18 @@ class _LogSettingsPopup extends StatelessWidget {
   const _LogSettingsPopup({
     required this.controller,
     required this.onClose,
+    required this.maxHeight,
   });
 
   final WorkspaceController controller;
   final VoidCallback onClose;
+  final double maxHeight;
 
   @override
   Widget build(BuildContext context) {
     final viewportSize = MediaQuery.sizeOf(context);
     final availableWidth = math.max(0.0, viewportSize.width - 24);
-    final availableHeight = math.max(0.0, viewportSize.height - 24);
     final popupWidth = math.min(380.0, availableWidth);
-    final popupMaxHeight = math.min(520.0, availableHeight);
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
@@ -279,7 +293,7 @@ class _LogSettingsPopup extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: popupWidth,
-              maxHeight: popupMaxHeight,
+              maxHeight: maxHeight,
             ),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(12),
@@ -332,6 +346,18 @@ class _LogSettingsPopup extends StatelessWidget {
                     value: controller.autoScroll,
                     onChanged: controller.setAutoScroll,
                     title: Text(strings.autoScroll),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  SwitchListTile(
+                    value: controller.showQuickCommandsPanel,
+                    onChanged: controller.setQuickCommandsPanelVisible,
+                    title: Text(strings.quickCommands),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  SwitchListTile(
+                    value: controller.showConnectionPanel,
+                    onChanged: controller.setConnectionPanelVisible,
+                    title: Text(strings.leftConfigPanel),
                     contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 6),

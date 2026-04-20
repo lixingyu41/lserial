@@ -49,16 +49,17 @@ class _AppShellState extends State<AppShell> {
                 );
                 return Column(
                   children: [
-                    _AnimatedConnectionTopPanel(
-                      controller: controller,
-                      session: activeSession,
-                      height: topHeight,
-                      onResize: (delta) => setState(() {
-                        _connectionTopHeight = (_connectionTopHeight + delta)
-                            .clamp(160, 440)
-                            .toDouble();
-                      }),
-                    ),
+                    if (controller.showConnectionPanel)
+                      _AnimatedConnectionTopPanel(
+                        controller: controller,
+                        session: activeSession,
+                        height: topHeight,
+                        onResize: (delta) => setState(() {
+                          _connectionTopHeight = (_connectionTopHeight + delta)
+                              .clamp(160, 440)
+                              .toDouble();
+                        }),
+                      ),
                     Expanded(
                       flex: 4,
                       child: WorkspaceConsolePanel(controller: controller),
@@ -73,29 +74,32 @@ class _AppShellState extends State<AppShell> {
                         ),
                       ),
                     ),
-                    _AnimatedQuickCommandsBottomPanel(
-                      controller: sendTarget,
-                      height: quickHeight,
-                      onResize: (delta) => setState(() {
-                        _quickBottomHeight = (_quickBottomHeight - delta)
-                            .clamp(160, 440)
-                            .toDouble();
-                      }),
-                    ),
+                    if (controller.showQuickCommandsPanel)
+                      _AnimatedQuickCommandsBottomPanel(
+                        controller: sendTarget,
+                        height: quickHeight,
+                        onResize: (delta) => setState(() {
+                          _quickBottomHeight = (_quickBottomHeight - delta)
+                              .clamp(160, 440)
+                              .toDouble();
+                        }),
+                      ),
                   ],
                 );
               }
               return Row(
                 children: [
-                  _AnimatedConnectionSidePanel(
-                    controller: controller,
-                    session: activeSession,
-                    width: _connectionWidth,
-                    onResize: (delta) => setState(() {
-                      _connectionWidth =
-                          (_connectionWidth + delta).clamp(280, 520).toDouble();
-                    }),
-                  ),
+                  if (controller.showConnectionPanel)
+                    _AnimatedConnectionSidePanel(
+                      controller: controller,
+                      session: activeSession,
+                      width: _connectionWidth,
+                      onResize: (delta) => setState(() {
+                        _connectionWidth = (_connectionWidth + delta)
+                            .clamp(280, 520)
+                            .toDouble();
+                      }),
+                    ),
                   Expanded(
                     child: Column(
                       children: [
@@ -120,14 +124,15 @@ class _AppShellState extends State<AppShell> {
                       ],
                     ),
                   ),
-                  _AnimatedQuickCommandsSidePanel(
-                    controller: sendTarget,
-                    width: _quickWidth,
-                    onResize: (delta) => setState(() {
-                      _quickWidth =
-                          (_quickWidth - delta).clamp(260, 520).toDouble();
-                    }),
-                  ),
+                  if (controller.showQuickCommandsPanel)
+                    _AnimatedQuickCommandsSidePanel(
+                      controller: sendTarget,
+                      width: _quickWidth,
+                      onResize: (delta) => setState(() {
+                        _quickWidth =
+                            (_quickWidth - delta).clamp(260, 520).toDouble();
+                      }),
+                    ),
                 ],
               );
             },

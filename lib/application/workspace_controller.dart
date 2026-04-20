@@ -34,6 +34,8 @@ class WorkspaceController extends ChangeNotifier {
   bool showSource = true;
   bool showContent = true;
   bool autoScroll = true;
+  bool showConnectionPanel = true;
+  bool showQuickCommandsPanel = true;
   bool pauseDisplay = false;
   double logFontSize = 12;
   AppLanguage language = AppLanguage.zh;
@@ -282,6 +284,22 @@ class WorkspaceController extends ChangeNotifier {
 
   void setAutoScroll(bool value) {
     autoScroll = value;
+    notifyListeners();
+  }
+
+  void setConnectionPanelVisible(bool value) {
+    if (showConnectionPanel == value) {
+      return;
+    }
+    showConnectionPanel = value;
+    notifyListeners();
+  }
+
+  void setQuickCommandsPanelVisible(bool value) {
+    if (showQuickCommandsPanel == value) {
+      return;
+    }
+    showQuickCommandsPanel = value;
     notifyListeners();
   }
 

@@ -85,4 +85,18 @@ void main() {
     controller.stepSendTarget(-1);
     expect(controller.sendTargetIndex, 2);
   });
+
+  test('panel visibility settings can be toggled', () {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+
+    expect(controller.showConnectionPanel, isTrue);
+    expect(controller.showQuickCommandsPanel, isTrue);
+
+    controller.setConnectionPanelVisible(false);
+    controller.setQuickCommandsPanelVisible(false);
+
+    expect(controller.showConnectionPanel, isFalse);
+    expect(controller.showQuickCommandsPanel, isFalse);
+  });
 }

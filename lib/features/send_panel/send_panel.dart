@@ -215,6 +215,13 @@ class _SendOptionsRow extends StatelessWidget {
     required this.onSend,
   });
 
+  static const double _gap = 8;
+  static const double _targetWidth = 190;
+  static const double _formatWidth = 104;
+  static const double _lineEndingWidth = 92;
+  static const double _shortcutWidth = 128;
+  static const double _sendMinWidth = 96;
+
   final SessionController controller;
   final Widget? targetSelector;
   final VoidCallback onSend;
@@ -223,50 +230,81 @@ class _SendOptionsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = SizedBox(width: 8);
-        final children = [
-          if (targetSelector != null) ...[
-            SizedBox(width: 190, child: targetSelector!),
-            gap,
-          ],
-          _FormatField(controller: controller, width: 104),
-          gap,
-          _LineEndingField(controller: controller, width: 92),
-          gap,
-          _ShortcutModeField(controller: controller, width: 128),
-          gap,
-          Expanded(
-            child: FilledButton(
-              onPressed: onSend,
-              child: Text(controller.strings.send),
-            ),
-          ),
-        ];
-
-        if (constraints.maxWidth >= 700) {
-          return Row(children: children);
+        final hasTarget = targetSelector != null;
+        final inlineMinWidth = _inlineMinWidth(hasTarget: hasTarget);
+        if (constraints.maxWidth >= inlineMinWidth) {
+          return Row(
+            children: [
+              if (targetSelector != null) ...[
+                SizedBox(width: _targetWidth, child: targetSelector!),
+                const SizedBox(width: _gap),
+              ],
+              _FormatField(controller: controller, width: _formatWidth),
+              const SizedBox(width: _gap),
+              _LineEndingField(controller: controller, width: _lineEndingWidth),
+              const SizedBox(width: _gap),
+              _ShortcutModeField(controller: controller, width: _shortcutWidth),
+              const SizedBox(width: _gap),
+              Expanded(
+                child: _SendButton(
+                  label: controller.strings.send,
+                  onPressed: onSend,
+                ),
+              ),
+            ],
+          );
         }
 
+        const optionsWidth =
+            _formatWidth + _lineEndingWidth + _shortcutWidth + _gap * 2;
+        final sendFitsAfterOptions =
+            constraints.maxWidth >= optionsWidth + _gap + _sendMinWidth;
+        final sendWidth = sendFitsAfterOptions
+            ? constraints.maxWidth - optionsWidth - _gap
+            : constraints.maxWidth;
+
         return Wrap(
-          spacing: 8,
+          spacing: _gap,
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             if (targetSelector != null)
               SizedBox(width: constraints.maxWidth, child: targetSelector!),
-            _FormatField(controller: controller, width: 104),
-            _LineEndingField(controller: controller, width: 92),
-            _ShortcutModeField(controller: controller, width: 128),
+            _FormatField(controller: controller, width: _formatWidth),
+            _LineEndingField(controller: controller, width: _lineEndingWidth),
+            _ShortcutModeField(controller: controller, width: _shortcutWidth),
             SizedBox(
-              width: constraints.maxWidth,
-              child: FilledButton(
+              width: sendWidth,
+              child: _SendButton(
+                label: controller.strings.send,
                 onPressed: onSend,
-                child: Text(controller.strings.send),
               ),
             ),
           ],
         );
       },
+    );
+  }
+
+  double _inlineMinWidth({required bool hasTarget}) {
+    const fieldWidth = _formatWidth + _lineEndingWidth + _shortcutWidth;
+    final fixedWidth = hasTarget ? fieldWidth + _targetWidth : fieldWidth;
+    final gapCount = hasTarget ? 4 : 3;
+    return fixedWidth + _sendMinWidth + _gap * gapCount;
+  }
+}
+
+class _SendButton extends StatelessWidget {
+  const _SendButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onPressed,
+      child: Text(label),
     );
   }
 }

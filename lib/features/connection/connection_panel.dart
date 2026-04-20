@@ -277,6 +277,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             !occupiedPorts.contains(portName) &&
             !isSerialPickerOption(portName))
         .toList(growable: false);
+    final baudOptions = _baudOptionsFor(config.serial.baudRate);
     final selectedPort =
         controller.serialPorts.contains(config.serial.portName) &&
                 !occupiedPorts.contains(config.serial.portName)
@@ -321,40 +322,38 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           ),
         ),
         const SizedBox(height: 8),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return WheelStepper(
-              enabled: !controller.isConnected && _baudRateOptions.length > 1,
-              onStep: _stepBaudRate,
-              child: DropdownMenu<int>(
-                controller: baudRate,
-                enabled: !controller.isConnected,
-                label: Text(controller.strings.baudRate),
-                enableFilter: true,
-                requestFocusOnTap: true,
-                width: constraints.maxWidth,
-                menuHeight: 260,
-                dropdownMenuEntries: _baudRateOptions
-                    .map(
-                      (value) => DropdownMenuEntry<int>(
-                        value: value,
-                        label: '$value',
-                      ),
-                    )
-                    .toList(),
-                onSelected: (value) {
-                  if (value != null) {
-                    baudRate.text = '$value';
-                    controller.updateConfig(
-                      config.copyWith(
-                        serial: config.serial.copyWith(baudRate: value),
-                      ),
-                    );
-                  }
-                },
-              ),
-            );
-          },
+        WheelStepper(
+          enabled: !controller.isConnected && _baudRateOptions.length > 1,
+          onStep: _stepBaudRate,
+          child: DropdownButtonFormField<int>(
+            key: ValueKey(
+              'baud-${identityHashCode(controller)}-${config.serial.baudRate}',
+            ),
+            initialValue: config.serial.baudRate,
+            isExpanded: true,
+            menuMaxHeight: 260,
+            decoration: InputDecoration(labelText: controller.strings.baudRate),
+            items: baudOptions
+                .map(
+                  (value) => DropdownMenuItem<int>(
+                    value: value,
+                    child: Text('$value'),
+                  ),
+                )
+                .toList(),
+            onChanged: controller.isConnected
+                ? null
+                : (value) {
+                    if (value != null) {
+                      baudRate.text = '$value';
+                      controller.updateConfig(
+                        config.copyWith(
+                          serial: config.serial.copyWith(baudRate: value),
+                        ),
+                      );
+                    }
+                  },
+          ),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -387,6 +386,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             labelText: controller.strings.packetDelimiter,
             suffixIcon: PopupMenuButton<String>(
               tooltip: controller.strings.packetDelimiterPresets,
+              initialValue: _delimiterPresetValue(packetDelimiter.text),
               enabled: !controller.isConnected,
               icon: const Icon(Icons.arrow_drop_down),
               onSelected: (value) {
@@ -752,6 +752,13 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
 
   int _nonNegative(int value) => value < 0 ? 0 : value;
 
+  List<int> _baudOptionsFor(int current) {
+    if (_baudRateOptions.contains(current)) {
+      return _baudRateOptions;
+    }
+    return <int>[..._baudRateOptions, current]..sort();
+  }
+
   void _stepSerialPort(List<String> ports, int step) {
     if (controller.isConnected) {
       return;
@@ -828,6 +835,19 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         serial: current.serial.copyWith(packetDelimiter: value),
       ),
     );
+  }
+
+  String? _delimiterPresetValue(String value) {
+    return const <String>{
+      '',
+      r'\r',
+      r'\n',
+      r'\r\n',
+      '/R/N',
+      r'\x00',
+    }.contains(value)
+        ? value
+        : null;
   }
 
   void _syncBluetoothConfig() {

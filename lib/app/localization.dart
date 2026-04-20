@@ -64,6 +64,7 @@ class AppStrings {
   String get source => isZh ? '来源' : 'Source';
   String get direction => isZh ? '收发' : 'Direction';
   String get content => isZh ? '内容' : 'Content';
+  String get leftConfigPanel => isZh ? '左侧配置' : 'Left config';
   String get languageSetting => isZh ? '语言' : 'Language';
 
   String get connect => isZh ? '连接' : 'Connect';
