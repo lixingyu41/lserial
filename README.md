@@ -137,6 +137,33 @@ flutter pub get
 flutter build windows
 ```
 
+## 飞牛 fnOS Docker 包
+
+仓库内已提供一套可直接打包成飞牛 Docker 应用源码包的模板和脚本，目录结构与官方 `fnpack create my-app -t docker` 生成的项目一致。
+
+本地生成流程：
+
+```powershell
+flutter build web --release
+pwsh ./scripts/build_fnos_package.ps1
+```
+
+输出：
+
+```text
+dist/fnos/lserial-fnos-web-x86
+dist/fnos/lserial-fnos-web-arm
+dist/fnos/LSerial-FNOS-Docker-<version>-x86.zip
+dist/fnos/LSerial-FNOS-Docker-<version>-arm.zip
+```
+
+说明：
+
+- 该包只托管现有 Flutter Web 静态页面，不包含后端串口转发。
+- Docker 容器使用 `nginx:alpine` 挂载静态产物，不额外构建自定义镜像。
+- `fnOS` 的 `manifest platform=all` 在官方文档里仍标注为“即将支持”，所以脚本默认直接产出 `x86` 和 `arm` 两个源码包，安装时选与你设备架构一致的那一份。
+- 浏览器侧的 Web Serial / Web Bluetooth 仍要求安全上下文；如果 fnOS 最终以纯 HTTP 打开页面，页面可访问，但串口和 BLE 能力可能被 Chrome 禁用。
+
 ## 测试
 
 ```bash

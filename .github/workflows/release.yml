@@ -95,11 +95,22 @@ jobs:
           cd build/web
           zip -r "../../dist/web/LSerial-${RELEASE_VERSION}-Web.zip" .
 
+      - name: Create FNOS Docker source package
+        shell: pwsh
+        run: |
+          ./scripts/build_fnos_package.ps1 -Version "${env:RELEASE_VERSION}" -WebBuildPath build/web -OutputRoot dist/fnos
+
       - name: Upload Web artifacts
         uses: actions/upload-artifact@v4
         with:
           name: web
           path: dist/web/*.zip
+
+      - name: Upload FNOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnos
+          path: dist/fnos/*.zip
 
   build-linux:
     name: Linux

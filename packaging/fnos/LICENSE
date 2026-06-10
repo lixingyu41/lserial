@@ -1,0 +1,8 @@
+LSerial FNOS package
+Copyright (c) lixingyu
+
+This package bundles the existing LSerial Flutter Web frontend for
+self-hosted deployment on fnOS.
+
+Replace this file with your intended distribution license before
+publishing to a public marketplace if needed.
