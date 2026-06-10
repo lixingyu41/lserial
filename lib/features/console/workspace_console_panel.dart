@@ -32,18 +32,23 @@ class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
     return Column(
       children: [
         Expanded(
-          child: ValueListenableBuilder<LogSnapshot>(
-            valueListenable: widget.controller.displaySnapshot,
-            builder: (context, snapshot, _) {
-              return FrameListView(
-                snapshot: snapshot,
-                formatter: widget.controller.formatter,
-                options: widget.controller.formatOptions,
-                logFontSize: widget.controller.logFontSize,
-                autoScroll: widget.controller.autoScroll,
-                pauseDisplay: widget.controller.pauseDisplay,
-                filter: search.text,
-                visibleSources: widget.controller.visibleSources,
+          child: AnimatedBuilder(
+            animation: widget.controller,
+            builder: (context, _) {
+              return ValueListenableBuilder<LogSnapshot>(
+                valueListenable: widget.controller.displaySnapshot,
+                builder: (context, snapshot, _) {
+                  return FrameListView(
+                    snapshot: snapshot,
+                    formatter: widget.controller.formatter,
+                    options: widget.controller.formatOptions,
+                    logFontSize: widget.controller.logFontSize,
+                    autoScroll: widget.controller.autoScroll,
+                    pauseDisplay: widget.controller.pauseDisplay,
+                    filter: search.text,
+                    visibleSources: widget.controller.visibleSources,
+                  );
+                },
               );
             },
           ),

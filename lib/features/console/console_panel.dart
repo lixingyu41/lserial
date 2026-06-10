@@ -30,23 +30,32 @@ class _ConsolePanelState extends State<ConsolePanel> {
     return Column(
       children: [
         Expanded(
-          child: ValueListenableBuilder<LogSnapshot>(
-            valueListenable: widget.controller.displaySnapshot,
-            builder: (context, snapshot, _) {
-              return FrameListView(
-                snapshot: snapshot,
-                formatter: widget.controller.formatter,
-                options: widget.controller.formatOptions,
-                logFontSize: widget.controller.logFontSize,
-                autoScroll: widget.controller.autoScroll,
-                pauseDisplay: widget.controller.pauseDisplay,
-                filter: search.text,
+          child: AnimatedBuilder(
+            animation: widget.controller,
+            builder: (context, _) {
+              return ValueListenableBuilder<LogSnapshot>(
+                valueListenable: widget.controller.displaySnapshot,
+                builder: (context, snapshot, _) {
+                  return FrameListView(
+                    snapshot: snapshot,
+                    formatter: widget.controller.formatter,
+                    options: widget.controller.formatOptions,
+                    logFontSize: widget.controller.logFontSize,
+                    autoScroll: widget.controller.autoScroll,
+                    pauseDisplay: widget.controller.pauseDisplay,
+                    filter: search.text,
+                  );
+                },
               );
             },
           ),
         ),
         const Divider(height: 1),
-        _ConsoleToolbar(controller: widget.controller, search: search),
+        _ConsoleToolbar(
+          controller: widget.controller,
+          search: search,
+          onSearchChanged: () => setState(() {}),
+        ),
       ],
     );
   }
@@ -56,10 +65,12 @@ class _ConsoleToolbar extends StatelessWidget {
   const _ConsoleToolbar({
     required this.controller,
     required this.search,
+    required this.onSearchChanged,
   });
 
   final SessionController controller;
   final TextEditingController search;
+  final VoidCallback onSearchChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -70,6 +81,7 @@ class _ConsoleToolbar extends StatelessWidget {
           final searchField = _SearchField(
             controller: controller,
             search: search,
+            onChanged: onSearchChanged,
           );
           final rightActions = _RightActions(controller: controller);
 
@@ -130,10 +142,12 @@ class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.controller,
     required this.search,
+    required this.onChanged,
   });
 
   final SessionController controller;
   final TextEditingController search;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -150,11 +164,7 @@ class _SearchField extends StatelessWidget {
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
         ),
-        onChanged: (_) {
-          controller.displaySnapshot.value = controller.logBuffer.snapshot(
-            paused: controller.pauseDisplay,
-          );
-        },
+        onChanged: (_) => onChanged(),
       ),
     );
   }

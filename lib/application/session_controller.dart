@@ -52,6 +52,7 @@ class SessionController extends ChangeNotifier {
   AppLanguage language;
   final ValueNotifier<LogSnapshot> displaySnapshot =
       ValueNotifier<LogSnapshot>(LogSnapshot.empty());
+  final ChangeNotifier _statsNotifier = ChangeNotifier();
 
   late final ReceivePipeline _pipeline;
   StreamSubscription<List<int>>? _incomingSubscription;
@@ -131,6 +132,8 @@ class SessionController extends ChangeNotifier {
   bool get isConnected => status == TransportStatus.connected;
 
   bool get isAutoSending => _autoSendTimer != null;
+
+  Listenable get statsListenable => _statsNotifier;
 
   String get sourceLabel => switch (config.type) {
         TransportType.serial => serialDisplayName,
@@ -676,6 +679,7 @@ class SessionController extends ChangeNotifier {
     rawBuffer.clear();
     _resetStats();
     _publishSnapshot();
+    _statsNotifier.notifyListeners();
     notifyListeners();
   }
 
@@ -717,7 +721,7 @@ class SessionController extends ChangeNotifier {
     }
     if (trafficChanged) {
       _updateCurrentRates();
-      notifyListeners();
+      _statsNotifier.notifyListeners();
     }
   }
 
@@ -803,7 +807,7 @@ class SessionController extends ChangeNotifier {
     _lastRateTxBytes = txByteCount;
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _updateCurrentRates(force: true);
-      notifyListeners();
+      _statsNotifier.notifyListeners();
     });
   }
 
@@ -815,6 +819,7 @@ class SessionController extends ChangeNotifier {
     _lastRateTxBytes = txByteCount;
     currentRxBytesPerSecond = 0;
     currentTxBytesPerSecond = 0;
+    _statsNotifier.notifyListeners();
   }
 
   double _averageBytesPerSecond(double bytes, {required DateTime? startedAt}) {
@@ -902,6 +907,7 @@ class SessionController extends ChangeNotifier {
     _session?.disconnect();
     _pipeline.dispose();
     displaySnapshot.dispose();
+    _statsNotifier.dispose();
     super.dispose();
   }
 }

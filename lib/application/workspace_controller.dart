@@ -41,6 +41,7 @@ class WorkspaceController extends ChangeNotifier {
   AppLanguage language = AppLanguage.zh;
 
   final Set<String> _hiddenSources = <String>{};
+  final Set<String> _sourceLabels = <String>{'SYS'};
   int _revision = 0;
 
   SessionController get activeSession => sessions[activeSessionIndex];
@@ -102,24 +103,13 @@ class WorkspaceController extends ChangeNotifier {
       );
 
   List<String> get sourceLabels {
-    final labels = <String>{'SYS'};
-    for (final session in sessions) {
-      for (final frame in session.logBuffer.snapshot(paused: false).frames) {
-        final source = formatter.sourceToken(frame).trim();
-        if (source.isNotEmpty) {
-          labels.add(source);
-        }
-      }
-      final label = session.sourceLabel.trim();
-      if (label.isNotEmpty) {
-        labels.add(label);
-      }
-    }
-    return labels.toList(growable: false);
+    _syncSourceLabels();
+    return List<String>.unmodifiable(_sourceLabels);
   }
 
   Set<String> get visibleSources {
-    return sourceLabels
+    _syncSourceLabels();
+    return _sourceLabels
         .where((source) => !_hiddenSources.contains(source))
         .toSet();
   }
@@ -363,22 +353,25 @@ class WorkspaceController extends ChangeNotifier {
 
   void _handleSessionChanged() {
     _syncSendTargetIndex();
+    _syncSourceLabels();
     notifyListeners();
   }
 
   void _handleSessionSnapshotChanged() {
-    if (!pauseDisplay) {
-      _publishSnapshot();
+    final sourcesChanged = _publishSnapshot();
+    if (sourcesChanged) {
+      notifyListeners();
     }
-    notifyListeners();
   }
 
-  void _publishSnapshot({bool force = false}) {
+  bool _publishSnapshot({bool force = false}) {
+    final sourcesChanged = _syncSourceLabels();
     if (pauseDisplay && !force) {
-      return;
+      return sourcesChanged;
     }
     _revision++;
     displaySnapshot.value = _buildSnapshot(paused: pauseDisplay);
+    return sourcesChanged;
   }
 
   LogSnapshot _buildSnapshot({required bool paused}) {
@@ -427,6 +420,30 @@ class WorkspaceController extends ChangeNotifier {
 
   String _sourceKey(DataFrame frame) {
     return formatter.sourceToken(frame);
+  }
+
+  bool _syncSourceLabels() {
+    final next = <String>{'SYS'};
+    for (final session in sessions) {
+      for (final source in session.logBuffer.retainedSourceLabels) {
+        final label = source.trim();
+        if (label.isNotEmpty) {
+          next.add(label);
+        }
+      }
+      final label = session.sourceLabel.trim();
+      if (label.isNotEmpty) {
+        next.add(label);
+      }
+    }
+    if (setEquals(_sourceLabels, next)) {
+      return false;
+    }
+    _sourceLabels
+      ..clear()
+      ..addAll(next);
+    _hiddenSources.removeWhere((source) => !_sourceLabels.contains(source));
+    return true;
   }
 
   void _syncSendTargetIndex() {

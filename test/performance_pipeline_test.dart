@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/application/receive_pipeline.dart';
+import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/core/buffer/byte_ring_buffer.dart';
+import 'package:lserial/domain/connection_config.dart';
 import 'package:lserial/domain/data_frame.dart';
+import 'package:lserial/domain/transport.dart';
 import 'package:lserial/storage/log_buffer.dart';
+import 'package:lserial/transports/transport_registry.dart';
 
 void main() {
   test('ByteRingBuffer keeps recent bytes and tracks dropped bytes', () {
@@ -36,6 +41,38 @@ void main() {
     final snapshot = buffer.snapshot(paused: false);
     expect(snapshot.frames.map((frame) => frame.sequence), <int>[3, 4, 5]);
     expect(snapshot.droppedFrames, 2);
+  });
+
+  test('LogBuffer keeps retained source labels in sync with trimmed frames',
+      () {
+    final buffer = LogBuffer(maxFrames: 2, maxBytes: 1024);
+
+    buffer.addAll(<DataFrame>[
+      DataFrame(
+        sequence: 1,
+        timestamp: DateTime(2026),
+        direction: FrameDirection.rx,
+        bytes: <int>[0x41],
+        source: 'COM1',
+      ),
+      DataFrame(
+        sequence: 2,
+        timestamp: DateTime(2026),
+        direction: FrameDirection.rx,
+        bytes: <int>[0x42],
+        source: 'COM2',
+      ),
+      DataFrame(
+        sequence: 3,
+        timestamp: DateTime(2026),
+        direction: FrameDirection.rx,
+        bytes: <int>[0x43],
+        source: 'COM3',
+      ),
+    ]);
+
+    expect(buffer.retainedSourceLabels, isNot(contains('COM1')));
+    expect(buffer.retainedSourceLabels, containsAll(<String>['COM2', 'COM3']));
   });
 
   test('ReceivePipeline batches high-frequency chunks before UI commit',
@@ -150,4 +187,93 @@ void main() {
 
     pipeline.dispose();
   });
+
+  test('SessionController receive path updates snapshots and stats only',
+      () async {
+    final transport = _FakeTransportSession();
+    final controller = SessionController(
+      registry: _FakeTransportRegistry(transport),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        type: TransportType.serial,
+        serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+      ),
+    );
+
+    await controller.connect();
+
+    var controllerNotifications = 0;
+    var snapshotNotifications = 0;
+    var statsNotifications = 0;
+    controller.addListener(() => controllerNotifications++);
+    controller.displaySnapshot.addListener(() => snapshotNotifications++);
+    controller.statsListenable.addListener(() => statsNotifications++);
+
+    transport.addIncoming(<int>[0x41]);
+    transport.addIncoming(<int>[0x42]);
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(controller.displaySnapshot.value.frames.last.bytes,
+        Uint8List.fromList(<int>[0x42]));
+    expect(snapshotNotifications, greaterThan(0));
+    expect(statsNotifications, greaterThan(0));
+    expect(controllerNotifications, 0);
+  });
+}
+
+class _FakeTransportRegistry extends TransportRegistry {
+  const _FakeTransportRegistry(this.session);
+
+  final _FakeTransportSession session;
+
+  @override
+  Future<TransportSession> create(ConnectionConfig config) async => session;
+
+  @override
+  Future<List<String>> serialPorts() async => const <String>['COM1'];
+}
+
+class _FakeTransportSession implements TransportSession {
+  final StreamController<List<int>> _incoming =
+      StreamController<List<int>>.broadcast();
+  var _connected = false;
+
+  @override
+  TransportType get type => TransportType.serial;
+
+  @override
+  String get label => 'COM1';
+
+  @override
+  bool get isConnected => _connected;
+
+  @override
+  Stream<List<int>> get incoming => _incoming.stream;
+
+  @override
+  Future<void> connect() async {
+    _connected = true;
+  }
+
+  @override
+  Future<void> disconnect() async {
+    _connected = false;
+    await _incoming.close();
+  }
+
+  @override
+  Future<void> send(List<int> bytes) async {}
+
+  void addIncoming(List<int> bytes) {
+    _incoming.add(bytes);
+  }
 }

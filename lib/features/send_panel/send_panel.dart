@@ -70,49 +70,54 @@ class _SendPanelState extends State<SendPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = widget.controller;
-    return Padding(
-      padding: const EdgeInsets.all(14),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final inputHeight = _inputHeightFor(constraints);
-          return ListView(
-            children: [
-              SizedBox(
-                height: inputHeight,
-                child: Focus(
-                  onKeyEvent: _handleSendKey,
-                  child: TextField(
-                    controller: input,
-                    expands: true,
-                    minLines: null,
-                    maxLines: null,
-                    textAlignVertical: TextAlignVertical.top,
-                    decoration: InputDecoration(
-                      labelText: controller.strings.sendData,
-                      alignLabelWithHint: true,
-                      floatingLabelBehavior: FloatingLabelBehavior.always,
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        final controller = widget.controller;
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final inputHeight = _inputHeightFor(constraints);
+              return ListView(
+                children: [
+                  SizedBox(
+                    height: inputHeight,
+                    child: Focus(
+                      onKeyEvent: _handleSendKey,
+                      child: TextField(
+                        controller: input,
+                        expands: true,
+                        minLines: null,
+                        maxLines: null,
+                        textAlignVertical: TextAlignVertical.top,
+                        decoration: InputDecoration(
+                          labelText: controller.strings.sendData,
+                          alignLabelWithHint: true,
+                          floatingLabelBehavior: FloatingLabelBehavior.always,
+                        ),
+                        onEditingComplete: () {},
+                      ),
                     ),
-                    onEditingComplete: () {},
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _SendOptionsRow(
-                controller: controller,
-                targetSelector: widget.targetSelector,
-                onSend: _sendNow,
-              ),
-              const SizedBox(height: 8),
-              _AutoSendRow(
-                controller: controller,
-                interval: interval,
-                onStart: _startAutoSend,
-              ),
-            ],
-          );
-        },
-      ),
+                  const SizedBox(height: 8),
+                  _SendOptionsRow(
+                    controller: controller,
+                    targetSelector: widget.targetSelector,
+                    onSend: _sendNow,
+                  ),
+                  const SizedBox(height: 8),
+                  _AutoSendRow(
+                    controller: controller,
+                    interval: interval,
+                    onStart: _startAutoSend,
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 

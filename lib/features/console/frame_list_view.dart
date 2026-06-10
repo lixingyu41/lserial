@@ -1,5 +1,8 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 
+import '../../core/encoding/data_format.dart';
 import '../../domain/data_frame.dart';
 import '../../protocol/frame_formatter.dart';
 import '../../storage/log_buffer.dart';
@@ -32,14 +35,38 @@ class FrameListView extends StatefulWidget {
 
 class _FrameListViewState extends State<FrameListView> {
   final ScrollController scroll = ScrollController();
+  final Map<DataFrame, String> _timestampCache =
+      HashMap<DataFrame, String>.identity();
+  final Map<_FrameFormatKey, String> _formattedFrameCache =
+      <_FrameFormatKey, String>{};
+  final Map<_FrameFormatKey, String> _lowerFormattedFrameCache =
+      <_FrameFormatKey, String>{};
+  final Map<_PayloadKey, String> _payloadCache = <_PayloadKey, String>{};
+
+  List<DataFrame>? _filteredFramesCache;
+  int? _filteredRevision;
+  String? _filteredFilter;
+  ConsoleFormatOptions? _filteredOptions;
+  Set<String>? _filteredVisibleSources;
+  bool _scrollPending = false;
 
   @override
   void didUpdateWidget(FrameListView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.snapshot.revision != oldWidget.snapshot.revision) {
+      _pruneFrameCaches();
+    }
+    if (widget.options != oldWidget.options) {
+      _formattedFrameCache.clear();
+      _lowerFormattedFrameCache.clear();
+    }
+    if (widget.options.viewMode != oldWidget.options.viewMode) {
+      _payloadCache.clear();
+    }
     if (widget.autoScroll &&
         !widget.pauseDisplay &&
         widget.snapshot.revision != oldWidget.snapshot.revision) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      _scheduleScrollToBottom();
     }
   }
 
@@ -104,6 +131,29 @@ class _FrameListViewState extends State<FrameListView> {
   List<DataFrame> _filteredFrames() {
     final filter = widget.filter.trim().toLowerCase();
     final visibleSources = widget.visibleSources;
+    if (_filteredFramesCache != null &&
+        _filteredRevision == widget.snapshot.revision &&
+        _filteredFilter == filter &&
+        _filteredOptions == widget.options &&
+        _sameSources(_filteredVisibleSources, visibleSources)) {
+      return _filteredFramesCache!;
+    }
+
+    final frames = _buildFilteredFrames(filter, visibleSources);
+    _filteredFramesCache = frames;
+    _filteredRevision = widget.snapshot.revision;
+    _filteredFilter = filter;
+    _filteredOptions = widget.options;
+    _filteredVisibleSources = visibleSources == null
+        ? null
+        : Set<String>.unmodifiable(visibleSources);
+    return frames;
+  }
+
+  List<DataFrame> _buildFilteredFrames(
+    String filter,
+    Set<String>? visibleSources,
+  ) {
     if (filter.isEmpty && visibleSources == null) {
       return widget.snapshot.frames;
     }
@@ -117,10 +167,7 @@ class _FrameListViewState extends State<FrameListView> {
       if (filter.isEmpty) {
         return true;
       }
-      return formatter
-          .formatFrame(frame, options)
-          .toLowerCase()
-          .contains(filter);
+      return _lowerFormattedFrame(frame, formatter, options).contains(filter);
     }).toList(growable: false);
   }
 
@@ -160,7 +207,7 @@ class _FrameListViewState extends State<FrameListView> {
     if (options.showTimestamp) {
       spans.addAll(
         _highlightedTextSpans(
-          '${formatter.formatTimestamp(frame.timestamp)} ',
+          '${_timestampText(frame, formatter)} ',
           filter,
           TextStyle(color: tokenColor, fontWeight: FontWeight.w600),
           highlightStyle,
@@ -199,7 +246,7 @@ class _FrameListViewState extends State<FrameListView> {
     if (options.showContent) {
       spans.addAll(
         _highlightedTextSpans(
-          formatter.formatPayload(frame, options.viewMode),
+          _payloadText(frame, formatter, options.viewMode),
           filter,
           null,
           highlightStyle,
@@ -264,4 +311,121 @@ class _FrameListViewState extends State<FrameListView> {
     }
     scroll.jumpTo(scroll.position.maxScrollExtent);
   }
+
+  void _scheduleScrollToBottom() {
+    if (_scrollPending) {
+      return;
+    }
+    _scrollPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollPending = false;
+      if (!mounted) {
+        return;
+      }
+      _scrollToBottom();
+    });
+  }
+
+  String _timestampText(DataFrame frame, FrameFormatter formatter) {
+    return _timestampCache.putIfAbsent(
+      frame,
+      () => formatter.formatTimestamp(frame.timestamp),
+    );
+  }
+
+  String _payloadText(
+    DataFrame frame,
+    FrameFormatter formatter,
+    ConsoleViewMode viewMode,
+  ) {
+    return _payloadCache.putIfAbsent(
+      _PayloadKey(frame, viewMode),
+      () => formatter.formatPayload(frame, viewMode),
+    );
+  }
+
+  String _formattedFrame(
+    DataFrame frame,
+    FrameFormatter formatter,
+    ConsoleFormatOptions options,
+  ) {
+    return _formattedFrameCache.putIfAbsent(
+      _FrameFormatKey(frame, options),
+      () => formatter.formatFrame(frame, options),
+    );
+  }
+
+  String _lowerFormattedFrame(
+    DataFrame frame,
+    FrameFormatter formatter,
+    ConsoleFormatOptions options,
+  ) {
+    return _lowerFormattedFrameCache.putIfAbsent(
+      _FrameFormatKey(frame, options),
+      () => _formattedFrame(frame, formatter, options).toLowerCase(),
+    );
+  }
+
+  bool _sameSources(Set<String>? left, Set<String>? right) {
+    if (left == null || right == null) {
+      return left == right;
+    }
+    if (left.length != right.length) {
+      return false;
+    }
+    for (final source in left) {
+      if (!right.contains(source)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _pruneFrameCaches() {
+    final retained = HashSet<DataFrame>.identity()
+      ..addAll(widget.snapshot.frames);
+    _timestampCache.removeWhere((frame, _) => !retained.contains(frame));
+    _formattedFrameCache.removeWhere(
+      (key, _) => !retained.contains(key.frame),
+    );
+    _lowerFormattedFrameCache.removeWhere(
+      (key, _) => !retained.contains(key.frame),
+    );
+    _payloadCache.removeWhere((key, _) => !retained.contains(key.frame));
+    _filteredFramesCache = null;
+  }
+}
+
+class _FrameFormatKey {
+  const _FrameFormatKey(this.frame, this.options);
+
+  final DataFrame frame;
+  final ConsoleFormatOptions options;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _FrameFormatKey &&
+        identical(other.frame, frame) &&
+        other.options == options;
+  }
+
+  @override
+  int get hashCode => Object.hash(identityHashCode(frame), options);
+}
+
+class _PayloadKey {
+  const _PayloadKey(this.frame, this.viewMode);
+
+  final DataFrame frame;
+  final ConsoleViewMode viewMode;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _PayloadKey &&
+        identical(other.frame, frame) &&
+        other.viewMode == viewMode;
+  }
+
+  @override
+  int get hashCode => Object.hash(identityHashCode(frame), viewMode);
 }

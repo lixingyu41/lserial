@@ -63,6 +63,45 @@ void main() {
     expect(controller.visibleSources, contains('COM1'));
   });
 
+  test('known source snapshot updates do not notify whole workspace', () {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+    final session = controller.activeSession;
+
+    var workspaceNotifications = 0;
+    var snapshotNotifications = 0;
+    controller.addListener(() => workspaceNotifications++);
+    controller.displaySnapshot.addListener(() => snapshotNotifications++);
+
+    session.logBuffer.addAll(<DataFrame>[
+      DataFrame(
+        sequence: 1,
+        timestamp: DateTime(2026),
+        direction: FrameDirection.rx,
+        bytes: <int>[0x41],
+        source: 'COM1',
+      ),
+    ]);
+    session.displaySnapshot.value = session.logBuffer.snapshot(paused: false);
+    expect(workspaceNotifications, 1);
+
+    workspaceNotifications = 0;
+    snapshotNotifications = 0;
+    session.logBuffer.addAll(<DataFrame>[
+      DataFrame(
+        sequence: 2,
+        timestamp: DateTime(2026),
+        direction: FrameDirection.rx,
+        bytes: <int>[0x42],
+        source: 'COM1',
+      ),
+    ]);
+    session.displaySnapshot.value = session.logBuffer.snapshot(paused: false);
+
+    expect(snapshotNotifications, 1);
+    expect(workspaceNotifications, 0);
+  });
+
   test('send target can step through connected sessions', () {
     final controller = WorkspaceController();
     addTearDown(controller.dispose);

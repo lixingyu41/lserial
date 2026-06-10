@@ -34,6 +34,25 @@ class ConsoleFormatOptions {
       showContent: showContent ?? this.showContent,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is ConsoleFormatOptions &&
+        other.viewMode == viewMode &&
+        other.showTimestamp == showTimestamp &&
+        other.showDirection == showDirection &&
+        other.showSource == showSource &&
+        other.showContent == showContent;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        viewMode,
+        showTimestamp,
+        showDirection,
+        showSource,
+        showContent,
+      );
 }
 
 class FrameFormatter {

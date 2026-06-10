@@ -53,6 +53,9 @@ class LogBuffer {
   int _droppedBytes = 0;
   int _droppedDataFrames = 0;
   int _droppedDataBytes = 0;
+  int _retainedDataFrames = 0;
+  int _retainedDataBytes = 0;
+  final Map<String, int> _retainedSourceCounts = <String, int>{};
 
   int get totalFrames => _totalFrames;
 
@@ -66,16 +69,16 @@ class LogBuffer {
 
   int get retainedBytes => _bytes;
 
-  int get retainedDataFrames =>
-      _frames.where((frame) => frame.direction != FrameDirection.system).length;
+  int get retainedDataFrames => _retainedDataFrames;
 
-  int get retainedDataBytes => _frames
-      .where((frame) => frame.direction != FrameDirection.system)
-      .fold<int>(0, (total, frame) => total + frame.byteLength);
+  int get retainedDataBytes => _retainedDataBytes;
 
   int get droppedDataFrames => _droppedDataFrames;
 
   int get droppedDataBytes => _droppedDataBytes;
+
+  List<String> get retainedSourceLabels =>
+      List<String>.unmodifiable(_retainedSourceCounts.keys);
 
   void addAll(Iterable<DataFrame> frames) {
     var changed = false;
@@ -84,6 +87,11 @@ class LogBuffer {
       _bytes += frame.byteLength;
       _totalFrames++;
       _totalBytes += frame.byteLength;
+      if (frame.direction != FrameDirection.system) {
+        _retainedDataFrames++;
+        _retainedDataBytes += frame.byteLength;
+      }
+      _incrementSource(frame);
       changed = true;
     }
     if (!changed) {
@@ -97,9 +105,12 @@ class LogBuffer {
       _droppedFrames++;
       _droppedBytes += removed.byteLength;
       if (removed.direction != FrameDirection.system) {
+        _retainedDataFrames--;
+        _retainedDataBytes -= removed.byteLength;
         _droppedDataFrames++;
         _droppedDataBytes += removed.byteLength;
       }
+      _decrementSource(removed);
     }
     _revision++;
   }
@@ -113,6 +124,9 @@ class LogBuffer {
     _droppedBytes = 0;
     _droppedDataFrames = 0;
     _droppedDataBytes = 0;
+    _retainedDataFrames = 0;
+    _retainedDataBytes = 0;
+    _retainedSourceCounts.clear();
     _revision++;
   }
 
@@ -134,5 +148,31 @@ class LogBuffer {
       buffer.writeln(formatter.formatFrame(frame, options));
     }
     return buffer.toString();
+  }
+
+  void _incrementSource(DataFrame frame) {
+    final source = _sourceToken(frame);
+    _retainedSourceCounts[source] = (_retainedSourceCounts[source] ?? 0) + 1;
+  }
+
+  void _decrementSource(DataFrame frame) {
+    final source = _sourceToken(frame);
+    final count = _retainedSourceCounts[source];
+    if (count == null) {
+      return;
+    }
+    if (count <= 1) {
+      _retainedSourceCounts.remove(source);
+    } else {
+      _retainedSourceCounts[source] = count - 1;
+    }
+  }
+
+  String _sourceToken(DataFrame frame) {
+    if (frame.direction == FrameDirection.system) {
+      return 'SYS';
+    }
+    final source = frame.source.trim();
+    return source.isEmpty ? frame.direction.label : source;
   }
 }

@@ -62,15 +62,19 @@ class _AppShellState extends State<AppShell> {
                       ),
                     Expanded(
                       flex: 4,
-                      child: WorkspaceConsolePanel(controller: controller),
+                      child: RepaintBoundary(
+                        child: WorkspaceConsolePanel(controller: controller),
+                      ),
                     ),
                     const Divider(height: 1),
                     Expanded(
                       flex: 2,
-                      child: SendPanel(
-                        controller: sendTarget,
-                        targetSelector: _SendTargetSelector(
-                          controller: controller,
+                      child: RepaintBoundary(
+                        child: SendPanel(
+                          controller: sendTarget,
+                          targetSelector: _SendTargetSelector(
+                            controller: controller,
+                          ),
                         ),
                       ),
                     ),
@@ -104,7 +108,11 @@ class _AppShellState extends State<AppShell> {
                     child: Column(
                       children: [
                         Expanded(
-                          child: WorkspaceConsolePanel(controller: controller),
+                          child: RepaintBoundary(
+                            child: WorkspaceConsolePanel(
+                              controller: controller,
+                            ),
+                          ),
                         ),
                         _HorizontalDragDivider(
                           onDrag: (delta) => setState(() {
@@ -115,10 +123,12 @@ class _AppShellState extends State<AppShell> {
                         ),
                         SizedBox(
                             height: _sendHeight,
-                            child: SendPanel(
-                              controller: sendTarget,
-                              targetSelector: _SendTargetSelector(
-                                controller: controller,
+                            child: RepaintBoundary(
+                              child: SendPanel(
+                                controller: sendTarget,
+                                targetSelector: _SendTargetSelector(
+                                  controller: controller,
+                                ),
                               ),
                             )),
                       ],
@@ -295,7 +305,9 @@ class _AnimatedQuickCommandsBottomPanel extends StatelessWidget {
           _HorizontalDragDivider(onDrag: onResize),
           SizedBox(
             height: height,
-            child: QuickCommandsPanel(controller: controller),
+            child: RepaintBoundary(
+              child: QuickCommandsPanel(controller: controller),
+            ),
           ),
         ],
       ),
@@ -347,7 +359,9 @@ class _AnimatedQuickCommandsSidePanel extends StatelessWidget {
           _VerticalDragDivider(onDrag: onResize),
           SizedBox(
             width: width,
-            child: QuickCommandsPanel(controller: controller),
+            child: RepaintBoundary(
+              child: QuickCommandsPanel(controller: controller),
+            ),
           ),
         ],
       ),
@@ -374,12 +388,14 @@ class _ConnectionPageArea extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Expanded(
-          child: ConnectionPanel(
-            key: ValueKey<SessionController>(controller),
-            controller: controller,
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-            occupiedSerialPorts: workspace.occupiedSerialPortsExcept(
-              controller,
+          child: RepaintBoundary(
+            child: ConnectionPanel(
+              key: ValueKey<SessionController>(controller),
+              controller: controller,
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              occupiedSerialPorts: workspace.occupiedSerialPortsExcept(
+                controller,
+              ),
             ),
           ),
         ),

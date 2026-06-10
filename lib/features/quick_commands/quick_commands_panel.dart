@@ -23,65 +23,71 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final hasHistory = controller.sendHistory.isNotEmpty;
-    final strings = controller.strings;
-    return Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final hasHistory = controller.sendHistory.isNotEmpty;
+        final strings = controller.strings;
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(strings.quickCommands,
-                  style: Theme.of(context).textTheme.titleSmall),
+              Row(
+                children: [
+                  Text(strings.quickCommands,
+                      style: Theme.of(context).textTheme.titleSmall),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (!hasHistory)
+                Expanded(
+                  child: _QuickCommandList(
+                    controller: controller,
+                    onEdit: (command) => _openEditor(context, command),
+                    onAdd: () => _openEditor(context, null),
+                  ),
+                )
+              else
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final quickHeight = _quickHeight(constraints.maxHeight);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            height: quickHeight,
+                            child: _QuickCommandList(
+                              controller: controller,
+                              onEdit: (command) =>
+                                  _openEditor(context, command),
+                              onAdd: () => _openEditor(context, null),
+                            ),
+                          ),
+                          _HistorySplitDivider(
+                            onDrag: (delta) => _resizeHistorySplit(
+                              delta,
+                              constraints.maxHeight,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, bottom: 8),
+                            child: Text(
+                              strings.sendHistory,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                          Expanded(child: _HistoryList(controller: controller)),
+                        ],
+                      );
+                    },
+                  ),
+                ),
             ],
           ),
-          const SizedBox(height: 8),
-          if (!hasHistory)
-            Expanded(
-              child: _QuickCommandList(
-                controller: controller,
-                onEdit: (command) => _openEditor(context, command),
-                onAdd: () => _openEditor(context, null),
-              ),
-            )
-          else
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final quickHeight = _quickHeight(constraints.maxHeight);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        height: quickHeight,
-                        child: _QuickCommandList(
-                          controller: controller,
-                          onEdit: (command) => _openEditor(context, command),
-                          onAdd: () => _openEditor(context, null),
-                        ),
-                      ),
-                      _HistorySplitDivider(
-                        onDrag: (delta) => _resizeHistorySplit(
-                          delta,
-                          constraints.maxHeight,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8, bottom: 8),
-                        child: Text(
-                          strings.sendHistory,
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                      ),
-                      Expanded(child: _HistoryList(controller: controller)),
-                    ],
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 

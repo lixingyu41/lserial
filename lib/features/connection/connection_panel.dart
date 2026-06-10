@@ -108,73 +108,79 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final config = controller.config;
-    final strings = controller.strings;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.sessionHeader != null)
-          Padding(
-            padding: widget.padding,
-            child: Column(
-              children: [
-                widget.sessionHeader!,
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        Expanded(
-          child: ScrollConfiguration(
-            behavior:
-                ScrollConfiguration.of(context).copyWith(scrollbars: false),
-            child: ListView(
-              padding: widget.padding,
-              physics: const ClampingScrollPhysics(),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              children: [
-                _StatusLine(controller: controller),
-                const SizedBox(height: 8),
-                _connectionActions(config),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<TransportType>(
-                  key: ValueKey(
-                      'type-${identityHashCode(controller)}-${config.type}'),
-                  initialValue: config.type,
-                  decoration:
-                      InputDecoration(labelText: strings.connectionType),
-                  items: TransportType.values.map((type) {
-                    final supported = controller.isTypeSupported(type);
-                    final label = supported
-                        ? strings.transportType(type)
-                        : strings.unsupportedTransportOption(
-                            type,
-                            controller.unsupportedReason(type),
-                          );
-                    return DropdownMenuItem(
-                      value: type,
-                      enabled: supported,
-                      child: Text(
-                        label,
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: controller.isConnected
-                      ? null
-                      : (type) {
-                          if (type != null) {
-                            controller.setTransportType(type);
-                          }
-                        },
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final config = controller.config;
+        final strings = controller.strings;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.sessionHeader != null)
+              Padding(
+                padding: widget.padding,
+                child: Column(
+                  children: [
+                    widget.sessionHeader!,
+                    const SizedBox(height: 8),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                _fieldsFor(config),
-                const SizedBox(height: 8),
-                _StatsPanel(controller: controller),
-              ],
+              ),
+            Expanded(
+              child: ScrollConfiguration(
+                behavior:
+                    ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: ListView(
+                  padding: widget.padding,
+                  physics: const ClampingScrollPhysics(),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  children: [
+                    _StatusLine(controller: controller),
+                    const SizedBox(height: 8),
+                    _connectionActions(config),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<TransportType>(
+                      key: ValueKey(
+                          'type-${identityHashCode(controller)}-${config.type}'),
+                      initialValue: config.type,
+                      decoration:
+                          InputDecoration(labelText: strings.connectionType),
+                      items: TransportType.values.map((type) {
+                        final supported = controller.isTypeSupported(type);
+                        final label = supported
+                            ? strings.transportType(type)
+                            : strings.unsupportedTransportOption(
+                                type,
+                                controller.unsupportedReason(type),
+                              );
+                        return DropdownMenuItem(
+                          value: type,
+                          enabled: supported,
+                          child: Text(
+                            label,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: controller.isConnected
+                          ? null
+                          : (type) {
+                              if (type != null) {
+                                controller.setTransportType(type);
+                              }
+                            },
+                    ),
+                    const SizedBox(height: 8),
+                    _fieldsFor(config),
+                    const SizedBox(height: 8),
+                    _StatsPanel(controller: controller),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -1042,6 +1048,13 @@ class _StatsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller.statsListenable,
+      builder: (context, _) => _buildStats(context),
+    );
+  }
+
+  Widget _buildStats(BuildContext context) {
     final strings = controller.strings;
     final items = <Widget>[
       if (controller.isStatVisible(SessionStat.rxCount))
