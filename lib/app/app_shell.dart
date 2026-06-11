@@ -69,18 +69,20 @@ class _AppShellState extends State<AppShell> {
                         ),
                       ),
                     ),
-                    const Divider(height: 1),
-                    Expanded(
-                      flex: 2,
-                      child: RepaintBoundary(
-                        child: SendPanel(
-                          controller: sendTarget,
-                          targetSelector: _SendTargetSelector(
-                            controller: controller,
+                    if (controller.showSendPanel) ...[
+                      const Divider(height: 1),
+                      Expanded(
+                        flex: 2,
+                        child: RepaintBoundary(
+                          child: SendPanel(
+                            controller: sendTarget,
+                            targetSelector: _SendTargetSelector(
+                              controller: controller,
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                     if (controller.showQuickCommandsPanel)
                       _AnimatedQuickCommandsBottomPanel(
                         controller: sendTarget,
@@ -118,23 +120,25 @@ class _AppShellState extends State<AppShell> {
                             ),
                           ),
                         ),
-                        _HorizontalDragDivider(
-                          onDrag: (delta) => setState(() {
-                            _sendHeight = (_sendHeight - delta)
-                                .clamp(160, 420)
-                                .toDouble();
-                          }),
-                        ),
-                        SizedBox(
-                            height: _sendHeight,
-                            child: RepaintBoundary(
-                              child: SendPanel(
-                                controller: sendTarget,
-                                targetSelector: _SendTargetSelector(
-                                  controller: controller,
+                        if (controller.showSendPanel) ...[
+                          _HorizontalDragDivider(
+                            onDrag: (delta) => setState(() {
+                              _sendHeight = (_sendHeight - delta)
+                                  .clamp(160, 420)
+                                  .toDouble();
+                            }),
+                          ),
+                          SizedBox(
+                              height: _sendHeight,
+                              child: RepaintBoundary(
+                                child: SendPanel(
+                                  controller: sendTarget,
+                                  targetSelector: _SendTargetSelector(
+                                    controller: controller,
+                                  ),
                                 ),
-                              ),
-                            )),
+                              )),
+                        ],
                       ],
                     ),
                   ),

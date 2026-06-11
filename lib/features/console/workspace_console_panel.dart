@@ -165,6 +165,15 @@ class _RightActions extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             _PanelToggleButton(
+              tooltip: controller.strings.sendData,
+              selected: controller.showSendPanel,
+              icon: Icons.keyboard,
+              onPressed: () => controller.setSendPanelVisible(
+                !controller.showSendPanel,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _PanelToggleButton(
               tooltip: controller.strings.quickCommands,
               selected: controller.showQuickCommandsPanel,
               icon: panelsStackVertically

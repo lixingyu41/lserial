@@ -1347,7 +1347,7 @@ class _StatsPanel extends StatelessWidget {
                     stat,
                     !controller.isStatVisible(stat),
                   ),
-                  itemBuilder: (context) => SessionStat.values
+                  itemBuilder: (context) => sessionStatDisplayOrder
                       .map(
                         (stat) => CheckedPopupMenuItem<SessionStat>(
                           value: stat,

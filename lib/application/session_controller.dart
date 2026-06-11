@@ -95,17 +95,8 @@ class SessionController extends ChangeNotifier {
   int txByteCount = 0;
   double currentRxBytesPerSecond = 0;
   double currentTxBytesPerSecond = 0;
-  final Set<SessionStat> visibleStats = <SessionStat>{
-    SessionStat.rxCount,
-    SessionStat.txCount,
-    SessionStat.rxCurrentRate,
-    SessionStat.txCurrentRate,
-    SessionStat.rxRate,
-    SessionStat.txRate,
-    SessionStat.sessionDuration,
-    SessionStat.displayCache,
-    SessionStat.droppedData,
-  };
+  final Set<SessionStat> visibleStats =
+      Set<SessionStat>.of(sessionStatDisplayOrder);
   final List<QuickCommand> quickCommands = <QuickCommand>[
     const QuickCommand(
       id: 1,

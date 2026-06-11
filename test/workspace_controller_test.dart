@@ -126,16 +126,33 @@ void main() {
   });
 
   test('panel visibility settings can be toggled', () {
-    final controller = WorkspaceController();
+    final savedQuickPanelValues = <bool>[];
+    final controller = WorkspaceController(
+      saveQuickCommandsPanelVisible: (value) async {
+        savedQuickPanelValues.add(value);
+      },
+    );
     addTearDown(controller.dispose);
 
     expect(controller.showConnectionPanel, isTrue);
-    expect(controller.showQuickCommandsPanel, isTrue);
+    expect(controller.showSendPanel, isTrue);
+    expect(controller.showQuickCommandsPanel, isFalse);
 
     controller.setConnectionPanelVisible(false);
-    controller.setQuickCommandsPanelVisible(false);
+    controller.setSendPanelVisible(false);
+    controller.setQuickCommandsPanelVisible(true);
 
     expect(controller.showConnectionPanel, isFalse);
-    expect(controller.showQuickCommandsPanel, isFalse);
+    expect(controller.showSendPanel, isFalse);
+    expect(controller.showQuickCommandsPanel, isTrue);
+    expect(savedQuickPanelValues, <bool>[true]);
+  });
+
+  test('stats filter defaults to all display stats', () {
+    final controller = SessionController();
+    addTearDown(controller.dispose);
+
+    expect(controller.visibleStats, containsAll(sessionStatDisplayOrder));
+    expect(controller.visibleStats, hasLength(sessionStatDisplayOrder.length));
   });
 }

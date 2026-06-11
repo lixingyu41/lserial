@@ -40,52 +40,127 @@
       background: #111418;
     }
 
-    #web-startup-help {
-      box-sizing: border-box;
-      max-width: 680px;
-      margin: 96px auto;
-      padding: 24px;
-      color: #e7edf1;
-      border: 1px solid #58626b;
-      border-radius: 8px;
-      font: 14px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #171b20;
+    body {
+      overflow: hidden;
     }
 
-    #web-startup-help code {
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: #252b32;
+    #web-startup-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      box-sizing: border-box;
+      color: #e7edf1;
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 50% 42%, rgba(0, 122, 255, 0.16), transparent 32%),
+        #111418;
+      transition: opacity 180ms ease;
+    }
+
+    #web-startup-loader[data-hidden="true"] {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .startup-mark {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+    }
+
+    .startup-mark::before,
+    .startup-mark::after {
+      position: absolute;
+      inset: 0;
+      content: "";
+      border-radius: 50%;
+    }
+
+    .startup-mark::before {
+      border: 2px solid rgba(231, 237, 241, 0.16);
+    }
+
+    .startup-mark::after {
+      border: 2px solid transparent;
+      border-top-color: #007aff;
+      border-right-color: rgba(52, 199, 89, 0.86);
+      animation: startup-spin 780ms linear infinite;
+    }
+
+    .startup-name {
+      font-size: 17px;
+      font-weight: 650;
+      letter-spacing: 0;
+      text-align: center;
+    }
+
+    .startup-status {
+      margin-top: 6px;
+      color: rgba(231, 237, 241, 0.68);
+      font-size: 13px;
+      letter-spacing: 0;
+      text-align: center;
+    }
+
+    @keyframes startup-spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
   </style>
 </head>
 <body>
-  <div id="web-startup-help" hidden>
-    <strong>LSerial 没有启动。</strong>
-    <p>不要直接双击 <code>build/web/index.html</code> 用 <code>file://</code> 打开。请用 HTTP 服务访问，例如：</p>
-    <p><code>flutter run -d chrome</code></p>
-    <p>或：</p>
-    <p><code>python -m http.server 8010 --directory build/web</code></p>
-    <p>然后打开 <code>http://127.0.0.1:8010/</code>。</p>
+  <div id="web-startup-loader" aria-live="polite" aria-busy="true">
+    <div>
+      <div class="startup-mark" aria-hidden="true"></div>
+      <div class="startup-name">LSerial</div>
+      <div class="startup-status">正在启动</div>
+    </div>
   </div>
   <script>
     (function () {
-      const help = document.getElementById('web-startup-help');
+      const loader = document.getElementById('web-startup-loader');
+      const shownAt = performance.now();
       const isFlutterMounted = () =>
         document.querySelector('flutter-view, flt-glass-pane') !== null;
+      const nextPaint = () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        );
+      const fontsReady = () =>
+        document.fonts && document.fonts.ready
+          ? document.fonts.ready.catch(() => undefined)
+          : Promise.resolve();
 
-      setTimeout(function () {
-        if (!isFlutterMounted()) {
-          help.hidden = false;
+      async function hideStartupLoader() {
+        const elapsed = performance.now() - shownAt;
+        const minimumVisibleMs = 700;
+        if (elapsed < minimumVisibleMs) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, minimumVisibleMs - elapsed),
+          );
         }
-      }, 3000);
+        await fontsReady();
+        await nextPaint();
+        loader.dataset.hidden = 'true';
+        loader.setAttribute('aria-busy', 'false');
+        document.body.style.overflow = '';
+        window.setTimeout(() => loader.remove(), 220);
+      }
 
-      const timer = setInterval(function () {
+      window.addEventListener('flutter-first-frame', hideStartupLoader, {
+        once: true,
+      });
+
+      const timer = window.setInterval(function () {
         if (isFlutterMounted()) {
-          help.hidden = true;
           clearInterval(timer);
+          hideStartupLoader();
         }
-      }, 500);
+      }, 250);
     })();
   </script>
   <script src="flutter_bootstrap.js" async></script>

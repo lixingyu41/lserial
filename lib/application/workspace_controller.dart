@@ -9,19 +9,28 @@ import '../domain/transport.dart';
 import '../protocol/frame_formatter.dart';
 import '../storage/log_buffer.dart';
 import '../storage/log_exporter.dart';
+import '../storage/workspace_preferences.dart';
 import '../transports/adapters/serial_port_options.dart';
 import 'session_controller.dart';
 
 class WorkspaceController extends ChangeNotifier {
   WorkspaceController({
     this.maxCombinedFrames = 30000,
-  }) : sessions = <SessionController>[] {
+    Future<bool?> Function()? loadQuickCommandsPanelVisible,
+    Future<void> Function(bool value)? saveQuickCommandsPanelVisible,
+  })  : sessions = <SessionController>[],
+        _loadQuickCommandsPanelVisible =
+            loadQuickCommandsPanelVisible ?? readQuickCommandsPanelVisible,
+        _saveQuickCommandsPanelVisible =
+            saveQuickCommandsPanelVisible ?? writeQuickCommandsPanelVisible {
     _addSession(initialize: false);
     _publishSnapshot(force: true);
   }
 
   final int maxCombinedFrames;
   final List<SessionController> sessions;
+  final Future<bool?> Function() _loadQuickCommandsPanelVisible;
+  final Future<void> Function(bool value) _saveQuickCommandsPanelVisible;
   final FrameFormatter formatter = const FrameFormatter();
   final ValueNotifier<LogSnapshot> displaySnapshot =
       ValueNotifier<LogSnapshot>(LogSnapshot.empty());
@@ -36,7 +45,8 @@ class WorkspaceController extends ChangeNotifier {
   bool showLineEndingSymbols = true;
   bool autoScroll = true;
   bool showConnectionPanel = true;
-  bool showQuickCommandsPanel = true;
+  bool showSendPanel = true;
+  bool showQuickCommandsPanel = false;
   bool pauseDisplay = false;
   double logFontSize = 12;
   AppLanguage language = AppLanguage.zh;
@@ -44,6 +54,7 @@ class WorkspaceController extends ChangeNotifier {
   final Set<String> _hiddenSources = <String>{};
   final Set<String> _sourceLabels = <String>{'SYS'};
   int _revision = 0;
+  bool _quickCommandsPanelVisibilityChanged = false;
 
   SessionController get activeSession => sessions[activeSessionIndex];
 
@@ -127,6 +138,15 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    try {
+      final storedQuickPanelVisible = await _loadQuickCommandsPanelVisible();
+      if (storedQuickPanelVisible != null &&
+          !_quickCommandsPanelVisibilityChanged) {
+        showQuickCommandsPanel = storedQuickPanelVisible;
+      }
+    } on Object {
+      // Preference loading must not block the communication UI.
+    }
     await Future.wait(sessions.map((session) => session.initialize()));
     _publishSnapshot(force: true);
     notifyListeners();
@@ -296,11 +316,21 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSendPanelVisible(bool value) {
+    if (showSendPanel == value) {
+      return;
+    }
+    showSendPanel = value;
+    notifyListeners();
+  }
+
   void setQuickCommandsPanelVisible(bool value) {
     if (showQuickCommandsPanel == value) {
       return;
     }
     showQuickCommandsPanel = value;
+    _quickCommandsPanelVisibilityChanged = true;
+    unawaited(_saveQuickCommandsPanelVisible(value));
     notifyListeners();
   }
 
