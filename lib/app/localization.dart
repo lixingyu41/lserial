@@ -49,6 +49,8 @@ class AppStrings {
   String get noConnectedTarget => isZh ? '无已连接目标' : 'No connected target';
 
   String get clear => isZh ? '清空' : 'Clear';
+  String get terminalMode => isZh ? '终端模式' : 'Terminal mode';
+  String get terminalInput => isZh ? '终端输入' : 'Terminal input';
   String get searchFilter => isZh ? '搜索过滤' : 'Search filter';
   String get logSettings => isZh ? '日志设置' : 'Log settings';
   String get close => isZh ? '关闭' : 'Close';

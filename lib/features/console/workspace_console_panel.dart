@@ -1,12 +1,16 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/localization.dart';
+import '../../application/session_controller.dart';
 import '../../application/workspace_controller.dart';
 import '../../core/encoding/data_format.dart';
+import '../../core/encoding/hex_codec.dart';
 import '../../platform/external_link.dart';
 import '../../storage/log_buffer.dart';
+import '../send_panel/send_controls.dart';
 import 'frame_list_view.dart';
 
 class WorkspaceConsolePanel extends StatefulWidget {
@@ -57,6 +61,21 @@ class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
               );
             },
           ),
+        ),
+        AnimatedBuilder(
+          animation: widget.controller,
+          builder: (context, _) {
+            if (!widget.controller.terminalMode) {
+              return const SizedBox.shrink();
+            }
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Divider(height: 1),
+                _TerminalInputBar(controller: widget.controller.sendTarget),
+              ],
+            );
+          },
         ),
         const Divider(height: 1),
         _WorkspaceConsoleToolbar(
@@ -117,8 +136,8 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(width: 220, child: searchField),
-              const Spacer(),
-              rightActions,
+              const SizedBox(width: 8),
+              Expanded(child: rightActions),
             ],
           );
         },
@@ -133,6 +152,12 @@ class _RightActions extends StatelessWidget {
     required this.panelsStackVertically,
   });
 
+  static const double _gap = 8;
+  static const double _targetWidth = 190;
+  static const double _formatWidth = 110;
+  static const double _lineEndingWidth = 96;
+  static const double _shortcutWidth = 136;
+
   final WorkspaceController controller;
   final bool panelsStackVertically;
 
@@ -141,8 +166,13 @@ class _RightActions extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
+        final sendController = controller.sendTarget;
+        return Wrap(
+          alignment: WrapAlignment.end,
+          runAlignment: WrapAlignment.end,
+          spacing: _gap,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             SizedBox(
               height: 34,
@@ -152,7 +182,27 @@ class _RightActions extends StatelessWidget {
                 label: Text(controller.strings.clear),
               ),
             ),
-            const SizedBox(width: 8),
+            _TerminalModeButton(controller: controller),
+            SendTargetField(
+              controller: controller,
+              width: _targetWidth,
+              compact: true,
+            ),
+            SendFormatField(
+              controller: sendController,
+              width: _formatWidth,
+              compact: true,
+            ),
+            LineEndingField(
+              controller: sendController,
+              width: _lineEndingWidth,
+              compact: true,
+            ),
+            ShortcutModeField(
+              controller: sendController,
+              width: _shortcutWidth,
+              compact: true,
+            ),
             _PanelToggleButton(
               tooltip: controller.strings.leftConfigPanel,
               selected: controller.showConnectionPanel,
@@ -163,7 +213,6 @@ class _RightActions extends StatelessWidget {
                 !controller.showConnectionPanel,
               ),
             ),
-            const SizedBox(width: 8),
             _PanelToggleButton(
               tooltip: controller.strings.sendData,
               selected: controller.showSendPanel,
@@ -172,7 +221,6 @@ class _RightActions extends StatelessWidget {
                 !controller.showSendPanel,
               ),
             ),
-            const SizedBox(width: 8),
             _PanelToggleButton(
               tooltip: controller.strings.quickCommands,
               selected: controller.showQuickCommandsPanel,
@@ -183,11 +231,37 @@ class _RightActions extends StatelessWidget {
                 !controller.showQuickCommandsPanel,
               ),
             ),
-            const SizedBox(width: 8),
             _LogSettingsButton(controller: controller),
           ],
         );
       },
+    );
+  }
+}
+
+class _TerminalModeButton extends StatelessWidget {
+  const _TerminalModeButton({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = controller.terminalMode;
+    return SizedBox(
+      height: 34,
+      child: OutlinedButton.icon(
+        onPressed: () => controller.setTerminalMode(!selected),
+        icon: const Icon(Icons.terminal),
+        label: Text(controller.strings.terminalMode),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: selected ? scheme.primaryContainer : null,
+          foregroundColor: selected ? scheme.onPrimaryContainer : null,
+          side: BorderSide(
+            color: selected ? scheme.primary : scheme.outline,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -256,6 +330,183 @@ class _SearchField extends StatelessWidget {
               const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
         ),
         onChanged: (_) => onChanged(),
+      ),
+    );
+  }
+}
+
+class _TerminalInputBar extends StatefulWidget {
+  const _TerminalInputBar({required this.controller});
+
+  final SessionController controller;
+
+  @override
+  State<_TerminalInputBar> createState() => _TerminalInputBarState();
+}
+
+class _TerminalInputBarState extends State<_TerminalInputBar> {
+  late final TextEditingController input;
+
+  @override
+  void initState() {
+    super.initState();
+    input = TextEditingController(text: widget.controller.sendDraftText);
+    input.addListener(_saveInputDraft);
+  }
+
+  @override
+  void didUpdateWidget(_TerminalInputBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) {
+      return;
+    }
+    input
+      ..removeListener(_saveInputDraft)
+      ..text = widget.controller.sendDraftText
+      ..addListener(_saveInputDraft);
+  }
+
+  @override
+  void dispose() {
+    input.removeListener(_saveInputDraft);
+    input.dispose();
+    super.dispose();
+  }
+
+  void _saveInputDraft() {
+    widget.controller.saveSendDraftText(input.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        final scheme = Theme.of(context).colorScheme;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.36),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.terminal,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Focus(
+                    onKeyEvent: _handleSendKey,
+                    child: TextField(
+                      controller: input,
+                      minLines: 1,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: widget.controller.strings.terminalInput,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
+                      ),
+                      onEditingComplete: () {},
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox.square(
+                  dimension: 40,
+                  child: IconButton.filled(
+                    tooltip: widget.controller.strings.send,
+                    onPressed: _sendNow,
+                    icon: const Icon(Icons.send),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  KeyEventResult _handleSendKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (!isEnter) {
+      return KeyEventResult.ignored;
+    }
+
+    final ctrlPressed = HardwareKeyboard.instance.isControlPressed;
+    final shouldSend =
+        widget.controller.sendShortcutMode == SendShortcutMode.enter
+            ? !ctrlPressed
+            : ctrlPressed;
+    if (shouldSend) {
+      _sendNow();
+      return KeyEventResult.handled;
+    }
+
+    _insertNewline();
+    return KeyEventResult.handled;
+  }
+
+  void _insertNewline() {
+    final value = input.value;
+    final text = value.text;
+    final start =
+        value.selection.start < 0 ? text.length : value.selection.start;
+    final end = value.selection.end < 0 ? text.length : value.selection.end;
+    final nextText = text.replaceRange(start, end, '\n');
+    input.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: start + 1),
+    );
+  }
+
+  void _sendNow() {
+    if (!_validateHexInput()) {
+      return;
+    }
+    final text = input.text;
+    if (text.isEmpty) {
+      return;
+    }
+    widget.controller.sendText(text);
+  }
+
+  bool _validateHexInput() {
+    if (widget.controller.sendFormat != PayloadFormat.hex) {
+      return true;
+    }
+    try {
+      HexCodec.decode(input.text);
+      return true;
+    } on FormatException catch (error) {
+      final message = switch (error.message) {
+        'HEX input must contain an even number of digits.' =>
+          widget.controller.strings.hexNeedsEvenDigits,
+        _ => widget.controller.strings.hexInvalidChars,
+      };
+      _showFloatingTip(message);
+      return false;
+    }
+  }
+
+  void _showFloatingTip(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
       ),
     );
   }

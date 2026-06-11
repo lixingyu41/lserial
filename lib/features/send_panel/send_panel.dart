@@ -11,11 +11,9 @@ class SendPanel extends StatefulWidget {
   const SendPanel({
     super.key,
     required this.controller,
-    this.targetSelector,
   });
 
   final SessionController controller;
-  final Widget? targetSelector;
 
   @override
   State<SendPanel> createState() => _SendPanelState();
@@ -101,15 +99,10 @@ class _SendPanelState extends State<SendPanel> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  _SendOptionsRow(
-                    controller: controller,
-                    targetSelector: widget.targetSelector,
-                    onSend: _sendNow,
-                  ),
-                  const SizedBox(height: 8),
-                  _AutoSendRow(
+                  _SendActionsRow(
                     controller: controller,
                     interval: interval,
+                    onSend: _sendNow,
                     onStart: _startAutoSend,
                   ),
                 ],
@@ -125,8 +118,8 @@ class _SendPanelState extends State<SendPanel> {
     if (!constraints.maxHeight.isFinite) {
       return 92;
     }
-    final optionsWrap = constraints.maxWidth < 700;
-    final reservedHeight = optionsWrap ? 178.0 : 118.0;
+    final actionsWrap = constraints.maxWidth < 390;
+    final reservedHeight = actionsWrap ? 96.0 : 56.0;
     return math.max(52, constraints.maxHeight - reservedHeight);
   }
 
@@ -213,42 +206,44 @@ class _SendPanelState extends State<SendPanel> {
   }
 }
 
-class _SendOptionsRow extends StatelessWidget {
-  const _SendOptionsRow({
+class _SendActionsRow extends StatelessWidget {
+  const _SendActionsRow({
     required this.controller,
-    required this.targetSelector,
+    required this.interval,
     required this.onSend,
+    required this.onStart,
   });
 
   static const double _gap = 8;
-  static const double _targetWidth = 190;
-  static const double _formatWidth = 104;
-  static const double _lineEndingWidth = 92;
-  static const double _shortcutWidth = 128;
+  static const double _intervalWidth = 120;
+  static const double _autoSendWidth = 150;
   static const double _sendMinWidth = 96;
 
   final SessionController controller;
-  final Widget? targetSelector;
+  final TextEditingController interval;
   final VoidCallback onSend;
+  final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final hasTarget = targetSelector != null;
-        final inlineMinWidth = _inlineMinWidth(hasTarget: hasTarget);
+        const inlineMinWidth =
+            _intervalWidth + _autoSendWidth + _sendMinWidth + _gap * 2;
         if (constraints.maxWidth >= inlineMinWidth) {
           return Row(
             children: [
-              if (targetSelector != null) ...[
-                SizedBox(width: _targetWidth, child: targetSelector!),
-                const SizedBox(width: _gap),
-              ],
-              _FormatField(controller: controller, width: _formatWidth),
+              _AutoSendIntervalField(
+                controller: controller,
+                interval: interval,
+                width: _intervalWidth,
+              ),
               const SizedBox(width: _gap),
-              _LineEndingField(controller: controller, width: _lineEndingWidth),
-              const SizedBox(width: _gap),
-              _ShortcutModeField(controller: controller, width: _shortcutWidth),
+              _AutoSendButton(
+                controller: controller,
+                width: _autoSendWidth,
+                onStart: onStart,
+              ),
               const SizedBox(width: _gap),
               Expanded(
                 child: _SendButton(
@@ -260,12 +255,11 @@ class _SendOptionsRow extends StatelessWidget {
           );
         }
 
-        const optionsWidth =
-            _formatWidth + _lineEndingWidth + _shortcutWidth + _gap * 2;
-        final sendFitsAfterOptions =
-            constraints.maxWidth >= optionsWidth + _gap + _sendMinWidth;
-        final sendWidth = sendFitsAfterOptions
-            ? constraints.maxWidth - optionsWidth - _gap
+        const autoControlsWidth = _intervalWidth + _autoSendWidth + _gap;
+        final sendFitsAfterAuto =
+            constraints.maxWidth >= autoControlsWidth + _gap + _sendMinWidth;
+        final sendWidth = sendFitsAfterAuto
+            ? constraints.maxWidth - autoControlsWidth - _gap
             : constraints.maxWidth;
 
         return Wrap(
@@ -273,11 +267,16 @@ class _SendOptionsRow extends StatelessWidget {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            if (targetSelector != null)
-              SizedBox(width: constraints.maxWidth, child: targetSelector!),
-            _FormatField(controller: controller, width: _formatWidth),
-            _LineEndingField(controller: controller, width: _lineEndingWidth),
-            _ShortcutModeField(controller: controller, width: _shortcutWidth),
+            _AutoSendIntervalField(
+              controller: controller,
+              interval: interval,
+              width: _intervalWidth,
+            ),
+            _AutoSendButton(
+              controller: controller,
+              width: _autoSendWidth,
+              onStart: onStart,
+            ),
             SizedBox(
               width: sendWidth,
               child: _SendButton(
@@ -289,13 +288,6 @@ class _SendOptionsRow extends StatelessWidget {
         );
       },
     );
-  }
-
-  double _inlineMinWidth({required bool hasTarget}) {
-    const fieldWidth = _formatWidth + _lineEndingWidth + _shortcutWidth;
-    final fixedWidth = hasTarget ? fieldWidth + _targetWidth : fieldWidth;
-    final gapCount = hasTarget ? 4 : 3;
-    return fixedWidth + _sendMinWidth + _gap * gapCount;
   }
 }
 
@@ -314,149 +306,55 @@ class _SendButton extends StatelessWidget {
   }
 }
 
-class _FormatField extends StatelessWidget {
-  const _FormatField({required this.controller, required this.width});
-
-  final SessionController controller;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: DropdownButtonFormField<PayloadFormat>(
-        key: ValueKey(
-          'send-format-${identityHashCode(controller)}-${controller.sendFormat}',
-        ),
-        initialValue: controller.sendFormat,
-        isExpanded: true,
-        decoration: InputDecoration(labelText: controller.strings.inputFormat),
-        items: PayloadFormat.values
-            .map(
-              (format) => DropdownMenuItem(
-                value: format,
-                child: Text(controller.strings.payloadFormat(format)),
-              ),
-            )
-            .toList(),
-        onChanged: (format) {
-          if (format != null) {
-            controller.setSendFormat(format);
-          }
-        },
-      ),
-    );
-  }
-}
-
-class _LineEndingField extends StatelessWidget {
-  const _LineEndingField({required this.controller, required this.width});
-
-  final SessionController controller;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: DropdownButtonFormField<LineEnding>(
-        key: ValueKey(
-          'line-ending-${identityHashCode(controller)}-${controller.lineEnding}',
-        ),
-        initialValue: controller.lineEnding,
-        isExpanded: true,
-        decoration: InputDecoration(labelText: controller.strings.lineEnding),
-        items: LineEnding.values
-            .map(
-              (ending) => DropdownMenuItem(
-                value: ending,
-                child: Text(controller.strings.lineEndingLabel(ending)),
-              ),
-            )
-            .toList(),
-        onChanged: (ending) {
-          if (ending != null) {
-            controller.setLineEnding(ending);
-          }
-        },
-      ),
-    );
-  }
-}
-
-class _ShortcutModeField extends StatelessWidget {
-  const _ShortcutModeField({required this.controller, required this.width});
-
-  final SessionController controller;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      child: DropdownButtonFormField<SendShortcutMode>(
-        key: ValueKey(
-          'shortcut-${identityHashCode(controller)}-${controller.sendShortcutMode}',
-        ),
-        initialValue: controller.sendShortcutMode,
-        isExpanded: true,
-        decoration: InputDecoration(labelText: controller.strings.sendShortcut),
-        items: SendShortcutMode.values
-            .map(
-              (mode) => DropdownMenuItem(
-                value: mode,
-                child: Text(controller.strings.shortcutMode(mode)),
-              ),
-            )
-            .toList(),
-        onChanged: (mode) {
-          if (mode != null) {
-            controller.setSendShortcutMode(mode);
-          }
-        },
-      ),
-    );
-  }
-}
-
-class _AutoSendRow extends StatelessWidget {
-  const _AutoSendRow({
+class _AutoSendIntervalField extends StatelessWidget {
+  const _AutoSendIntervalField({
     required this.controller,
     required this.interval,
-    required this.onStart,
+    required this.width,
   });
 
   final SessionController controller;
   final TextEditingController interval;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: TextField(
+        controller: interval,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: controller.strings.autoSendMs),
+      ),
+    );
+  }
+}
+
+class _AutoSendButton extends StatelessWidget {
+  const _AutoSendButton({
+    required this.controller,
+    required this.width,
+    required this.onStart,
+  });
+
+  final SessionController controller;
+  final double width;
   final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 120,
-          child: TextField(
-            controller: interval,
-            keyboardType: TextInputType.number,
-            decoration:
-                InputDecoration(labelText: controller.strings.autoSendMs),
-          ),
+    return SizedBox(
+      width: width,
+      child: OutlinedButton.icon(
+        onPressed: controller.isAutoSending ? controller.stopAutoSend : onStart,
+        icon: Icon(controller.isAutoSending ? Icons.stop : Icons.timer),
+        label: Text(
+          controller.isAutoSending
+              ? controller.strings.stopAutoSend
+              : controller.strings.startAutoSend,
+          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed:
-                controller.isAutoSending ? controller.stopAutoSend : onStart,
-            icon: Icon(controller.isAutoSending ? Icons.stop : Icons.timer),
-            label: Text(
-              controller.isAutoSending
-                  ? controller.strings.stopAutoSend
-                  : controller.strings.startAutoSend,
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

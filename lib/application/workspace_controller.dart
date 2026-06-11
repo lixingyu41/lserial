@@ -47,6 +47,7 @@ class WorkspaceController extends ChangeNotifier {
   bool showConnectionPanel = true;
   bool showSendPanel = true;
   bool showQuickCommandsPanel = false;
+  bool terminalMode = false;
   bool pauseDisplay = false;
   double logFontSize = 12;
   AppLanguage language = AppLanguage.zh;
@@ -317,10 +318,27 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void setSendPanelVisible(bool value) {
+    if (value && terminalMode) {
+      terminalMode = false;
+    }
     if (showSendPanel == value) {
+      if (value) {
+        notifyListeners();
+      }
       return;
     }
     showSendPanel = value;
+    notifyListeners();
+  }
+
+  void setTerminalMode(bool value) {
+    if (terminalMode == value) {
+      return;
+    }
+    terminalMode = value;
+    if (value) {
+      showSendPanel = false;
+    }
     notifyListeners();
   }
 

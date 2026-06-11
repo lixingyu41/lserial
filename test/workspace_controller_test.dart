@@ -151,6 +151,24 @@ void main() {
     expect(savedQuickPanelValues, <bool>[true]);
   });
 
+  test('terminal mode is exclusive with the bottom send panel', () {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+
+    expect(controller.terminalMode, isFalse);
+    expect(controller.showSendPanel, isTrue);
+
+    controller.setTerminalMode(true);
+
+    expect(controller.terminalMode, isTrue);
+    expect(controller.showSendPanel, isFalse);
+
+    controller.setSendPanelVisible(true);
+
+    expect(controller.terminalMode, isFalse);
+    expect(controller.showSendPanel, isTrue);
+  });
+
   test('stats filter defaults to all display stats', () {
     final controller = SessionController();
     addTearDown(controller.dispose);
