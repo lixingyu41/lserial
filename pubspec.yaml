@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_libserialport: ^0.4.0
+  package_info_plus: ^8.3.1
   path_provider: ^2.1.5
   universal_ble: ^1.2.0
   window_manager: ^0.5.1

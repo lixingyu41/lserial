@@ -2,14 +2,64 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+import '../application/workspace_settings.dart';
 import '../core/encoding/data_format.dart';
 import '../domain/quick_command.dart';
 
 @JS('localStorage')
 external JSObject get _localStorage;
 
+const _workspaceSettingsKey = 'lserial.workspaceSettings';
 const _quickCommandsPanelVisibleKey = 'lserial.showQuickCommandsPanel';
 const _quickCommandsKey = 'lserial.quickCommands';
+
+Future<WorkspaceSettings?> readWorkspaceSettings() async {
+  try {
+    final value = _localStorage
+        .callMethod<JSString?>(
+          'getItem'.toJS,
+          _workspaceSettingsKey.toJS,
+        )
+        ?.toDart;
+    if (value != null) {
+      final decoded = jsonDecode(value);
+      if (decoded is Map<String, Object?>) {
+        return WorkspaceSettings.fromJson(decoded);
+      }
+      if (decoded is Map) {
+        return WorkspaceSettings.fromJson(
+          decoded.map((key, value) => MapEntry(key.toString(), value)),
+        );
+      }
+    }
+    final legacyQuickPanelVisible = await readQuickCommandsPanelVisible();
+    if (legacyQuickPanelVisible != null) {
+      return WorkspaceSettings(
+        showQuickCommandsPanel: legacyQuickPanelVisible,
+      );
+    }
+    return null;
+  } on Object {
+    return null;
+  }
+}
+
+Future<void> writeWorkspaceSettings(WorkspaceSettings value) async {
+  try {
+    _localStorage.callMethod<JSAny?>(
+      'setItem'.toJS,
+      _workspaceSettingsKey.toJS,
+      jsonEncode(value.toJson()).toJS,
+    );
+    _localStorage.callMethod<JSAny?>(
+      'setItem'.toJS,
+      _quickCommandsPanelVisibleKey.toJS,
+      value.showQuickCommandsPanel.toString().toJS,
+    );
+  } on Object {
+    return;
+  }
+}
 
 Future<bool?> readQuickCommandsPanelVisible() async {
   try {

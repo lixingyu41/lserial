@@ -120,6 +120,7 @@ void main() {
           showTimestamp: false,
           showDirection: true,
           showSource: true,
+          showLineEndingSymbols: true,
         ),
         filter: '',
         visibleSources: const <String>{'COM1'},
@@ -151,6 +152,25 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining(r'\r\n', findRichText: true), findsNothing);
+  });
+
+  test('ASCII control bytes use terminal caret notation', () {
+    const formatter = FrameFormatter();
+    const options = ConsoleFormatOptions(
+      viewMode: ConsoleViewMode.ascii,
+      showTimestamp: false,
+      showDirection: true,
+      showSource: true,
+    );
+    final frame = DataFrame(
+      sequence: 1,
+      timestamp: DateTime(2026),
+      direction: FrameDirection.tx,
+      bytes: <int>[0x03, 0x04, 0x1b, 0x7f],
+      source: 'COM1',
+    );
+
+    expect(formatter.formatPayload(frame, options), r'^C^D^[^?');
   });
 }
 

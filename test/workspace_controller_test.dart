@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lserial/app/localization.dart';
 import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/application/workspace_controller.dart';
+import 'package:lserial/application/workspace_settings.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/domain/quick_command.dart';
@@ -128,11 +130,57 @@ void main() {
     expect(controller.sendTargetIndex, 2);
   });
 
-  test('panel visibility settings can be toggled', () {
-    final savedQuickPanelValues = <bool>[];
+  test('workspace settings load and save display preferences', () async {
+    final savedSettings = <WorkspaceSettings>[];
     final controller = WorkspaceController(
-      saveQuickCommandsPanelVisible: (value) async {
-        savedQuickPanelValues.add(value);
+      loadWorkspaceSettings: () async => const WorkspaceSettings(
+        viewMode: ConsoleViewMode.hex,
+        showTimestamp: false,
+        showDirection: false,
+        showSource: false,
+        showContent: false,
+        showLineEndingSymbols: true,
+        autoScroll: false,
+        showConnectionPanel: false,
+        showSendPanel: false,
+        showQuickCommandsPanel: true,
+        terminalMode: false,
+        logFontSize: 16,
+        language: AppLanguage.en,
+      ),
+      saveWorkspaceSettings: (settings) async {
+        savedSettings.add(settings);
+      },
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+
+    expect(controller.viewMode, ConsoleViewMode.hex);
+    expect(controller.showTimestamp, isFalse);
+    expect(controller.showDirection, isFalse);
+    expect(controller.showSource, isFalse);
+    expect(controller.showContent, isFalse);
+    expect(controller.showLineEndingSymbols, isTrue);
+    expect(controller.autoScroll, isFalse);
+    expect(controller.showConnectionPanel, isFalse);
+    expect(controller.showSendPanel, isFalse);
+    expect(controller.showQuickCommandsPanel, isTrue);
+    expect(controller.logFontSize, 16);
+    expect(controller.language, AppLanguage.en);
+
+    controller.setLineEndingSymbolsVisible(false);
+    controller.setLogSourceVisible('COM1', false);
+
+    expect(savedSettings.first.showLineEndingSymbols, isFalse);
+    expect(savedSettings.last.hiddenSources, contains('COM1'));
+  });
+
+  test('panel visibility settings can be toggled', () {
+    final savedSettings = <WorkspaceSettings>[];
+    final controller = WorkspaceController(
+      saveWorkspaceSettings: (settings) async {
+        savedSettings.add(settings);
       },
     );
     addTearDown(controller.dispose);
@@ -148,7 +196,10 @@ void main() {
     expect(controller.showConnectionPanel, isFalse);
     expect(controller.showSendPanel, isFalse);
     expect(controller.showQuickCommandsPanel, isTrue);
-    expect(savedQuickPanelValues, <bool>[true]);
+    expect(savedSettings, hasLength(3));
+    expect(savedSettings.last.showConnectionPanel, isFalse);
+    expect(savedSettings.last.showSendPanel, isFalse);
+    expect(savedSettings.last.showQuickCommandsPanel, isTrue);
   });
 
   test('terminal mode is exclusive with the bottom send panel', () {

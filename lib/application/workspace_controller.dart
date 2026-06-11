@@ -12,25 +12,26 @@ import '../storage/log_exporter.dart';
 import '../storage/workspace_preferences.dart';
 import '../transports/adapters/serial_port_options.dart';
 import 'session_controller.dart';
+import 'workspace_settings.dart';
 
 class WorkspaceController extends ChangeNotifier {
   WorkspaceController({
     this.maxCombinedFrames = 30000,
-    Future<bool?> Function()? loadQuickCommandsPanelVisible,
-    Future<void> Function(bool value)? saveQuickCommandsPanelVisible,
+    Future<WorkspaceSettings?> Function()? loadWorkspaceSettings,
+    Future<void> Function(WorkspaceSettings settings)? saveWorkspaceSettings,
   })  : sessions = <SessionController>[],
-        _loadQuickCommandsPanelVisible =
-            loadQuickCommandsPanelVisible ?? readQuickCommandsPanelVisible,
-        _saveQuickCommandsPanelVisible =
-            saveQuickCommandsPanelVisible ?? writeQuickCommandsPanelVisible {
+        _loadWorkspaceSettings = loadWorkspaceSettings ?? readWorkspaceSettings,
+        _saveWorkspaceSettings =
+            saveWorkspaceSettings ?? writeWorkspaceSettings {
     _addSession(initialize: false);
     _publishSnapshot(force: true);
   }
 
   final int maxCombinedFrames;
   final List<SessionController> sessions;
-  final Future<bool?> Function() _loadQuickCommandsPanelVisible;
-  final Future<void> Function(bool value) _saveQuickCommandsPanelVisible;
+  final Future<WorkspaceSettings?> Function() _loadWorkspaceSettings;
+  final Future<void> Function(WorkspaceSettings settings)
+      _saveWorkspaceSettings;
   final FrameFormatter formatter = const FrameFormatter();
   final ValueNotifier<LogSnapshot> displaySnapshot =
       ValueNotifier<LogSnapshot>(LogSnapshot.empty());
@@ -42,7 +43,7 @@ class WorkspaceController extends ChangeNotifier {
   bool showDirection = true;
   bool showSource = true;
   bool showContent = true;
-  bool showLineEndingSymbols = true;
+  bool showLineEndingSymbols = false;
   bool autoScroll = true;
   bool showConnectionPanel = true;
   bool showSendPanel = true;
@@ -55,7 +56,7 @@ class WorkspaceController extends ChangeNotifier {
   final Set<String> _hiddenSources = <String>{};
   final Set<String> _sourceLabels = <String>{'SYS'};
   int _revision = 0;
-  bool _quickCommandsPanelVisibilityChanged = false;
+  bool _settingsChanged = false;
 
   SessionController get activeSession => sessions[activeSessionIndex];
 
@@ -104,6 +105,7 @@ class WorkspaceController extends ChangeNotifier {
     for (final session in sessions) {
       session.setLanguage(next);
     }
+    _persistSettings();
     notifyListeners();
   }
 
@@ -140,10 +142,9 @@ class WorkspaceController extends ChangeNotifier {
 
   Future<void> initialize() async {
     try {
-      final storedQuickPanelVisible = await _loadQuickCommandsPanelVisible();
-      if (storedQuickPanelVisible != null &&
-          !_quickCommandsPanelVisibilityChanged) {
-        showQuickCommandsPanel = storedQuickPanelVisible;
+      final storedSettings = await _loadWorkspaceSettings();
+      if (storedSettings != null && !_settingsChanged) {
+        _applySettings(storedSettings);
       }
     } on Object {
       // Preference loading must not block the communication UI.
@@ -255,6 +256,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     viewMode = mode;
+    _persistSettings();
     _publishSnapshot(force: true);
     notifyListeners();
   }
@@ -264,6 +266,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showTimestamp = value;
+    _persistSettings();
     _publishSnapshot(force: true);
     notifyListeners();
   }
@@ -273,6 +276,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showSource = value;
+    _persistSettings();
     _publishSnapshot(force: true);
     notifyListeners();
   }
@@ -282,6 +286,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showDirection = value;
+    _persistSettings();
     _publishSnapshot(force: true);
     notifyListeners();
   }
@@ -291,6 +296,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showContent = value;
+    _persistSettings();
     _publishSnapshot(force: true);
     notifyListeners();
   }
@@ -300,12 +306,17 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showLineEndingSymbols = value;
+    _persistSettings();
     _publishSnapshot(force: true);
     notifyListeners();
   }
 
   void setAutoScroll(bool value) {
+    if (autoScroll == value) {
+      return;
+    }
     autoScroll = value;
+    _persistSettings();
     notifyListeners();
   }
 
@@ -314,20 +325,27 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showConnectionPanel = value;
+    _persistSettings();
     notifyListeners();
   }
 
   void setSendPanelVisible(bool value) {
+    var changed = false;
     if (value && terminalMode) {
       terminalMode = false;
+      changed = true;
     }
     if (showSendPanel == value) {
       if (value) {
+        if (changed) {
+          _persistSettings();
+        }
         notifyListeners();
       }
       return;
     }
     showSendPanel = value;
+    _persistSettings();
     notifyListeners();
   }
 
@@ -339,6 +357,7 @@ class WorkspaceController extends ChangeNotifier {
     if (value) {
       showSendPanel = false;
     }
+    _persistSettings();
     notifyListeners();
   }
 
@@ -347,8 +366,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showQuickCommandsPanel = value;
-    _quickCommandsPanelVisibilityChanged = true;
-    unawaited(_saveQuickCommandsPanelVisible(value));
+    _persistSettings();
     notifyListeners();
   }
 
@@ -367,6 +385,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     logFontSize = next;
+    _persistSettings();
     notifyListeners();
   }
 
@@ -377,11 +396,16 @@ class WorkspaceController extends ChangeNotifier {
   bool isSourceVisible(String source) => !_hiddenSources.contains(source);
 
   void setLogSourceVisible(String source, bool visible) {
+    final wasVisible = isSourceVisible(source);
+    if (wasVisible == visible) {
+      return;
+    }
     if (visible) {
       _hiddenSources.remove(source);
     } else {
       _hiddenSources.add(source);
     }
+    _persistSettings();
     notifyListeners();
   }
 
@@ -501,7 +525,6 @@ class WorkspaceController extends ChangeNotifier {
     _sourceLabels
       ..clear()
       ..addAll(next);
-    _hiddenSources.removeWhere((source) => !_sourceLabels.contains(source));
     return true;
   }
 
@@ -552,6 +575,50 @@ class WorkspaceController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  WorkspaceSettings _settingsSnapshot() => WorkspaceSettings(
+        viewMode: viewMode,
+        showTimestamp: showTimestamp,
+        showDirection: showDirection,
+        showSource: showSource,
+        showContent: showContent,
+        showLineEndingSymbols: showLineEndingSymbols,
+        autoScroll: autoScroll,
+        showConnectionPanel: showConnectionPanel,
+        showSendPanel: showSendPanel,
+        showQuickCommandsPanel: showQuickCommandsPanel,
+        terminalMode: terminalMode,
+        logFontSize: logFontSize,
+        language: language,
+        hiddenSources: Set<String>.unmodifiable(_hiddenSources),
+      );
+
+  void _applySettings(WorkspaceSettings settings) {
+    viewMode = settings.viewMode;
+    showTimestamp = settings.showTimestamp;
+    showDirection = settings.showDirection;
+    showSource = settings.showSource;
+    showContent = settings.showContent;
+    showLineEndingSymbols = settings.showLineEndingSymbols;
+    autoScroll = settings.autoScroll;
+    showConnectionPanel = settings.showConnectionPanel;
+    terminalMode = settings.terminalMode;
+    showSendPanel = settings.terminalMode ? false : settings.showSendPanel;
+    showQuickCommandsPanel = settings.showQuickCommandsPanel;
+    logFontSize = settings.logFontSize.clamp(10, 22).toDouble();
+    language = settings.language;
+    _hiddenSources
+      ..clear()
+      ..addAll(settings.hiddenSources);
+    for (final session in sessions) {
+      session.setLanguage(language);
+    }
+  }
+
+  void _persistSettings() {
+    _settingsChanged = true;
+    unawaited(_saveWorkspaceSettings(_settingsSnapshot()));
   }
 
   @override

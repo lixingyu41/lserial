@@ -11,7 +11,7 @@ class ConsoleFormatOptions {
     required this.showDirection,
     this.showSource = false,
     this.showContent = true,
-    this.showLineEndingSymbols = true,
+    this.showLineEndingSymbols = false,
   });
 
   final ConsoleViewMode viewMode;
@@ -121,10 +121,25 @@ class FrameFormatter {
     required bool showLineEndingSymbols,
   }) {
     final text = utf8.decode(frame.bytes, allowMalformed: true);
-    if (showLineEndingSymbols) {
-      return text.replaceAll('\r', r'\r').replaceAll('\n', r'\n');
+    final buffer = StringBuffer();
+    for (final rune in text.runes) {
+      if (rune == 0x0d) {
+        if (showLineEndingSymbols) {
+          buffer.write(r'\r');
+        }
+      } else if (rune == 0x0a) {
+        if (showLineEndingSymbols) {
+          buffer.write(r'\n');
+        }
+      } else if (rune < 0x20) {
+        buffer.write('^${String.fromCharCode(rune + 0x40)}');
+      } else if (rune == 0x7f) {
+        buffer.write('^?');
+      } else {
+        buffer.write(String.fromCharCode(rune));
+      }
     }
-    return text.replaceAll('\r', '').replaceAll('\n', '');
+    return buffer.toString();
   }
 
   String formatTimestamp(DateTime value) {

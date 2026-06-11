@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../app/localization.dart';
 import '../../application/session_controller.dart';
@@ -417,11 +418,13 @@ class _TerminalInputLine extends StatefulWidget {
 
 class _TerminalInputLineState extends State<_TerminalInputLine> {
   late final TextEditingController input;
+  late final FocusNode focusNode;
 
   @override
   void initState() {
     super.initState();
     input = TextEditingController(text: widget.controller.sendDraftText);
+    focusNode = FocusNode(onKeyEvent: _handleSendKey);
     input.addListener(_saveInputDraft);
   }
 
@@ -441,6 +444,7 @@ class _TerminalInputLineState extends State<_TerminalInputLine> {
   void dispose() {
     input.removeListener(_saveInputDraft);
     input.dispose();
+    focusNode.dispose();
     super.dispose();
   }
 
@@ -454,52 +458,39 @@ class _TerminalInputLineState extends State<_TerminalInputLine> {
       animation: widget.controller,
       builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            border: Border(top: BorderSide(color: scheme.outlineVariant)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              children: [
-                Text(
-                  '>',
-                  style: TextStyle(
-                    fontFamily: 'Consolas',
-                    fontSize: widget.logFontSize,
-                    height: 1,
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
+        final textStyle = TextStyle(
+          fontFamily: 'Consolas',
+          fontSize: widget.logFontSize,
+          height: 1.35,
+          letterSpacing: 0,
+          color: scheme.onSurface,
+        );
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Text(
+                '>',
+                style: textStyle.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Focus(
-                    onKeyEvent: _handleSendKey,
-                    child: TextField(
-                      controller: input,
-                      autofocus: true,
-                      minLines: 1,
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontFamily: 'Consolas',
-                        fontSize: widget.logFontSize,
-                        height: 1.25,
-                        letterSpacing: 0,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: widget.controller.strings.terminalInput,
-                        isDense: true,
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onEditingComplete: () {},
-                    ),
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: EditableText(
+                  controller: input,
+                  focusNode: focusNode,
+                  autofocus: true,
+                  maxLines: 1,
+                  style: textStyle,
+                  cursorColor: scheme.primary,
+                  backgroundCursorColor: scheme.onSurfaceVariant,
+                  selectionColor: scheme.primary.withValues(alpha: 0.28),
+                  keyboardType: TextInputType.text,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
@@ -777,7 +768,9 @@ class _LogSettingsPopup extends StatelessWidget {
                   const SizedBox(height: 12),
                   const Divider(height: 1),
                   const SizedBox(height: 8),
-                  const _CopyrightLink(),
+                  const _AppVersionText(),
+                  const SizedBox(height: 4),
+                  const _SettingsFooterLinks(),
                 ],
               ),
             ),
@@ -936,6 +929,126 @@ class _SettingsFilterChip extends StatelessWidget {
   }
 }
 
+class _AppVersionText extends StatelessWidget {
+  const _AppVersionText();
+
+  static final Future<String?> _label = _loadVersionLabel();
+
+  static Future<String?> _loadVersionLabel() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = info.version.trim();
+      final buildNumber = info.buildNumber.trim();
+      if (version.isEmpty) {
+        return null;
+      }
+      return buildNumber.isEmpty ? 'v$version' : 'v$version+$buildNumber';
+    } on Object {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: _label,
+      builder: (context, snapshot) {
+        final label = snapshot.data;
+        if (label == null || label.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Text(
+          label,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        );
+      },
+    );
+  }
+}
+
+class _SettingsFooterLinks extends StatelessWidget {
+  const _SettingsFooterLinks();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        _PlatformDownloadLinks(),
+        Spacer(),
+        _CopyrightLink(),
+      ],
+    );
+  }
+}
+
+class _PlatformDownloadLinks extends StatelessWidget {
+  const _PlatformDownloadLinks();
+
+  static final Uri _macUrl = Uri.parse(
+    'https://github.com/lixingyu41/lserial/releases/download/v1.0.2/LSerial-v1.0.2-macOS.dmg',
+  );
+  static final Uri _linuxUrl = Uri.parse(
+    'https://github.com/lixingyu41/lserial/releases/download/v1.0.2/LSerial-v1.0.2-Linux-x64.tar.gz',
+  );
+  static final Uri _windowsUrl = Uri.parse(
+    'https://github.com/lixingyu41/lserial/releases/download/v1.0.2/LSerial-v1.0.2-Windows-x64-Setup.exe',
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 2,
+      children: [
+        _DownloadIconButton(
+          tooltip: 'macOS',
+          icon: Icons.laptop_mac,
+          url: _macUrl,
+        ),
+        _DownloadIconButton(
+          tooltip: 'Linux',
+          icon: Icons.terminal,
+          url: _linuxUrl,
+        ),
+        _DownloadIconButton(
+          tooltip: 'Windows',
+          icon: Icons.desktop_windows,
+          url: _windowsUrl,
+        ),
+      ],
+    );
+  }
+}
+
+class _DownloadIconButton extends StatelessWidget {
+  const _DownloadIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.url,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final Uri url;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: () => _openFooterLink(context, url),
+      icon: Icon(icon),
+      style: IconButton.styleFrom(
+        minimumSize: const Size.square(28),
+        fixedSize: const Size.square(28),
+        iconSize: 16,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+}
+
 class _CopyrightLink extends StatelessWidget {
   const _CopyrightLink();
 
@@ -944,39 +1057,38 @@ class _CopyrightLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Align(
-      alignment: Alignment.center,
-      child: InkWell(
-        onTap: () async {
-          try {
-            await openExternalLink(_url);
-          } on Object catch (error) {
-            if (!context.mounted) {
-              return;
-            }
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                SnackBar(
-                  content: Text(error.toString()),
-                  behavior: SnackBarBehavior.floating,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Text(
-            'Copyright LIXINGYU',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: scheme.primary,
-                  decoration: TextDecoration.underline,
-                  decorationColor: scheme.primary,
-                ),
-          ),
+    return InkWell(
+      onTap: () => _openFooterLink(context, _url),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Text(
+          'Copyright LIXINGYU',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.primary,
+                decoration: TextDecoration.underline,
+                decorationColor: scheme.primary,
+              ),
         ),
       ),
     );
+  }
+}
+
+Future<void> _openFooterLink(BuildContext context, Uri url) async {
+  try {
+    await openExternalLink(url);
+  } on Object catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(error.toString()),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
   }
 }

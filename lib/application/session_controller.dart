@@ -109,7 +109,7 @@ class SessionController extends ChangeNotifier {
   LineEnding lineEnding = LineEnding.none;
   bool showTimestamp = true;
   bool showDirection = true;
-  bool showLineEndingSymbols = true;
+  bool showLineEndingSymbols = false;
   bool autoScroll = true;
   bool pauseDisplay = false;
   bool isScanningBluetooth = false;

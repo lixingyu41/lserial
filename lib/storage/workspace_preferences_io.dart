@@ -3,11 +3,55 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../application/workspace_settings.dart';
 import '../core/encoding/data_format.dart';
 import '../domain/quick_command.dart';
 
+const _workspaceSettingsKey = 'workspaceSettings';
 const _quickCommandsPanelVisibleKey = 'showQuickCommandsPanel';
 const _quickCommandsKey = 'quickCommands';
+
+Future<WorkspaceSettings?> readWorkspaceSettings() async {
+  try {
+    final file = await _settingsFile();
+    if (!await file.exists()) {
+      return null;
+    }
+    final settings = await _readSettings(file);
+    final value = settings[_workspaceSettingsKey];
+    if (value is Map<String, Object?>) {
+      return WorkspaceSettings.fromJson(value);
+    }
+    if (value is Map) {
+      return WorkspaceSettings.fromJson(
+        value.map((key, value) => MapEntry(key.toString(), value)),
+      );
+    }
+    final legacyQuickPanelVisible = settings[_quickCommandsPanelVisibleKey];
+    if (legacyQuickPanelVisible is bool) {
+      return WorkspaceSettings(
+        showQuickCommandsPanel: legacyQuickPanelVisible,
+      );
+    }
+    return null;
+  } on Object {
+    return null;
+  }
+}
+
+Future<void> writeWorkspaceSettings(WorkspaceSettings value) async {
+  try {
+    final file = await _settingsFile();
+    final settings =
+        await file.exists() ? await _readSettings(file) : <String, Object?>{};
+    settings[_workspaceSettingsKey] = value.toJson();
+    settings[_quickCommandsPanelVisibleKey] = value.showQuickCommandsPanel;
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonEncode(settings), flush: true);
+  } on Object {
+    return;
+  }
+}
 
 Future<bool?> readQuickCommandsPanelVisible() async {
   try {
