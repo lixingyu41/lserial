@@ -569,6 +569,10 @@ class SessionController extends ChangeNotifier {
     );
   }
 
+  Future<void> sendRawBytes(List<int> bytes) async {
+    await _sendBytes(bytes, rememberHistory: false);
+  }
+
   Future<void> sendQuickCommand(QuickCommand command) async {
     await _sendPayload(
       text: command.content,
@@ -601,6 +605,23 @@ class SessionController extends ChangeNotifier {
     if (request.bytes.isEmpty) {
       return;
     }
+    await _sendBytes(
+      request.bytes,
+      rememberHistory: rememberHistory,
+      historyText: text,
+      historyFormat: format,
+    );
+  }
+
+  Future<void> _sendBytes(
+    List<int> bytes, {
+    required bool rememberHistory,
+    String? historyText,
+    PayloadFormat? historyFormat,
+  }) async {
+    if (bytes.isEmpty) {
+      return;
+    }
     final session = _session;
     if (session == null || !session.isConnected) {
       _appendSystem(strings.sendSkippedNoConnection);
@@ -608,18 +629,18 @@ class SessionController extends ChangeNotifier {
     }
 
     try {
-      await session.send(request.bytes);
+      await session.send(bytes);
       _commitFrames(<DataFrame>[
         DataFrame(
           sequence: _nextSequence(),
           timestamp: DateTime.now(),
           direction: FrameDirection.tx,
-          bytes: request.bytes,
+          bytes: bytes,
           source: sourceLabel,
         ),
       ]);
-      if (rememberHistory) {
-        _rememberHistory(text, format);
+      if (rememberHistory && historyText != null && historyFormat != null) {
+        _rememberHistory(historyText, historyFormat);
       }
     } on Object catch (error) {
       _appendSystem(strings.sendFailed(_formatError(error)));

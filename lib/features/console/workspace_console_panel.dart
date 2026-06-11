@@ -28,6 +28,8 @@ class WorkspaceConsolePanel extends StatefulWidget {
 }
 
 class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
+  static const double _terminalInputHeight = 42;
+
   final TextEditingController search = TextEditingController();
 
   @override
@@ -47,35 +49,40 @@ class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
               return ValueListenableBuilder<LogSnapshot>(
                 valueListenable: widget.controller.displaySnapshot,
                 builder: (context, snapshot, _) {
-                  return FrameListView(
-                    snapshot: snapshot,
-                    formatter: widget.controller.formatter,
-                    options: widget.controller.formatOptions,
-                    logFontSize: widget.controller.logFontSize,
-                    autoScroll: widget.controller.autoScroll,
-                    pauseDisplay: widget.controller.pauseDisplay,
-                    filter: search.text,
-                    visibleSources: widget.controller.visibleSources,
+                  final terminalMode = widget.controller.terminalMode;
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: FrameListView(
+                          snapshot: snapshot,
+                          formatter: widget.controller.formatter,
+                          options: widget.controller.formatOptions,
+                          logFontSize: widget.controller.logFontSize,
+                          autoScroll: widget.controller.autoScroll,
+                          pauseDisplay: widget.controller.pauseDisplay,
+                          filter: search.text,
+                          visibleSources: widget.controller.visibleSources,
+                          bottomPadding:
+                              terminalMode ? _terminalInputHeight : 0,
+                        ),
+                      ),
+                      if (terminalMode)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: _terminalInputHeight,
+                          child: _TerminalInputLine(
+                            controller: widget.controller.sendTarget,
+                            logFontSize: widget.controller.logFontSize,
+                          ),
+                        ),
+                    ],
                   );
                 },
               );
             },
           ),
-        ),
-        AnimatedBuilder(
-          animation: widget.controller,
-          builder: (context, _) {
-            if (!widget.controller.terminalMode) {
-              return const SizedBox.shrink();
-            }
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Divider(height: 1),
-                _TerminalInputBar(controller: widget.controller.sendTarget),
-              ],
-            );
-          },
         ),
         const Divider(height: 1),
         _WorkspaceConsoleToolbar(
@@ -108,9 +115,9 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 5, 14, 5),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final searchField = _SearchField(
+          final searchAndView = _SearchAndViewMode(
+            controller: controller,
             search: search,
-            hintText: controller.strings.searchFilter,
             onChanged: onSearchChanged,
           );
           final rightActions = _RightActions(
@@ -122,7 +129,7 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                searchField,
+                searchAndView,
                 const SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerRight,
@@ -135,7 +142,7 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 220, child: searchField),
+              SizedBox(width: 326, child: searchAndView),
               const SizedBox(width: 8),
               Expanded(child: rightActions),
             ],
@@ -154,7 +161,7 @@ class _RightActions extends StatelessWidget {
 
   static const double _gap = 8;
   static const double _targetWidth = 190;
-  static const double _formatWidth = 110;
+  static const double _formatWidth = 96;
   static const double _lineEndingWidth = 96;
   static const double _shortcutWidth = 136;
 
@@ -188,10 +195,9 @@ class _RightActions extends StatelessWidget {
               width: _targetWidth,
               compact: true,
             ),
-            SendFormatField(
+            SendFormatToggleButton(
               controller: sendController,
               width: _formatWidth,
-              compact: true,
             ),
             LineEndingField(
               controller: sendController,
@@ -303,6 +309,67 @@ class _PanelToggleButton extends StatelessWidget {
   }
 }
 
+class _SearchAndViewMode extends StatelessWidget {
+  const _SearchAndViewMode({
+    required this.controller,
+    required this.search,
+    required this.onChanged,
+  });
+
+  final WorkspaceController controller;
+  final TextEditingController search;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _SearchField(
+            search: search,
+            hintText: controller.strings.searchFilter,
+            onChanged: onChanged,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _ViewModeToggleButton(controller: controller),
+      ],
+    );
+  }
+}
+
+class _ViewModeToggleButton extends StatelessWidget {
+  const _ViewModeToggleButton({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        return Tooltip(
+          message: controller.strings.viewFormat,
+          child: SizedBox(
+            width: 98,
+            height: 34,
+            child: OutlinedButton.icon(
+              onPressed: () => controller.setViewMode(
+                controller.viewMode == ConsoleViewMode.ascii
+                    ? ConsoleViewMode.hex
+                    : ConsoleViewMode.ascii,
+              ),
+              icon: const Icon(Icons.visibility),
+              label:
+                  Text(controller.strings.consoleViewMode(controller.viewMode)),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.search,
@@ -335,16 +402,20 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _TerminalInputBar extends StatefulWidget {
-  const _TerminalInputBar({required this.controller});
+class _TerminalInputLine extends StatefulWidget {
+  const _TerminalInputLine({
+    required this.controller,
+    required this.logFontSize,
+  });
 
   final SessionController controller;
+  final double logFontSize;
 
   @override
-  State<_TerminalInputBar> createState() => _TerminalInputBarState();
+  State<_TerminalInputLine> createState() => _TerminalInputLineState();
 }
 
-class _TerminalInputBarState extends State<_TerminalInputBar> {
+class _TerminalInputLineState extends State<_TerminalInputLine> {
   late final TextEditingController input;
 
   @override
@@ -355,7 +426,7 @@ class _TerminalInputBarState extends State<_TerminalInputBar> {
   }
 
   @override
-  void didUpdateWidget(_TerminalInputBar oldWidget) {
+  void didUpdateWidget(_TerminalInputLine oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller == widget.controller) {
       return;
@@ -385,16 +456,22 @@ class _TerminalInputBarState extends State<_TerminalInputBar> {
         final scheme = Theme.of(context).colorScheme;
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.36),
+            color: scheme.surface,
+            border: Border(top: BorderSide(color: scheme.outlineVariant)),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Row(
               children: [
-                Icon(
-                  Icons.terminal,
-                  size: 18,
-                  color: scheme.onSurfaceVariant,
+                Text(
+                  '>',
+                  style: TextStyle(
+                    fontFamily: 'Consolas',
+                    fontSize: widget.logFontSize,
+                    height: 1,
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -402,27 +479,23 @@ class _TerminalInputBarState extends State<_TerminalInputBar> {
                     onKeyEvent: _handleSendKey,
                     child: TextField(
                       controller: input,
+                      autofocus: true,
                       minLines: 1,
-                      maxLines: 3,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontFamily: 'Consolas',
+                        fontSize: widget.logFontSize,
+                        height: 1.25,
+                        letterSpacing: 0,
+                      ),
                       decoration: InputDecoration(
                         hintText: widget.controller.strings.terminalInput,
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 10,
-                        ),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
                       ),
                       onEditingComplete: () {},
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox.square(
-                  dimension: 40,
-                  child: IconButton.filled(
-                    tooltip: widget.controller.strings.send,
-                    onPressed: _sendNow,
-                    icon: const Icon(Icons.send),
                   ),
                 ),
               ],
@@ -437,48 +510,46 @@ class _TerminalInputBarState extends State<_TerminalInputBar> {
     if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
+    if (HardwareKeyboard.instance.isControlPressed) {
+      final controlByte = _controlByteFor(event.logicalKey);
+      if (controlByte != null) {
+        widget.controller.sendRawBytes(<int>[controlByte]);
+        return KeyEventResult.handled;
+      }
+    }
+
     final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (!isEnter) {
       return KeyEventResult.ignored;
     }
 
-    final ctrlPressed = HardwareKeyboard.instance.isControlPressed;
-    final shouldSend =
-        widget.controller.sendShortcutMode == SendShortcutMode.enter
-            ? !ctrlPressed
-            : ctrlPressed;
-    if (shouldSend) {
-      _sendNow();
-      return KeyEventResult.handled;
-    }
-
-    _insertNewline();
+    _sendLine();
     return KeyEventResult.handled;
   }
 
-  void _insertNewline() {
-    final value = input.value;
-    final text = value.text;
-    final start =
-        value.selection.start < 0 ? text.length : value.selection.start;
-    final end = value.selection.end < 0 ? text.length : value.selection.end;
-    final nextText = text.replaceRange(start, end, '\n');
-    input.value = TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: start + 1),
-    );
+  int? _controlByteFor(LogicalKeyboardKey key) {
+    return switch (key) {
+      LogicalKeyboardKey.keyC => 0x03,
+      LogicalKeyboardKey.keyD => 0x04,
+      LogicalKeyboardKey.keyZ => 0x1A,
+      LogicalKeyboardKey.backslash => 0x1C,
+      LogicalKeyboardKey.keyL => 0x0C,
+      LogicalKeyboardKey.bracketLeft => 0x1B,
+      _ => null,
+    };
   }
 
-  void _sendNow() {
+  void _sendLine() {
     if (!_validateHexInput()) {
       return;
     }
     final text = input.text;
-    if (text.isEmpty) {
-      return;
-    }
+    final shouldClear = widget.controller.isConnected;
     widget.controller.sendText(text);
+    if (shouldClear) {
+      input.clear();
+    }
   }
 
   bool _validateHexInput() {
@@ -660,8 +731,6 @@ class _LogSettingsPopup extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _ViewModeSelector(controller: controller),
-                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(child: Text(strings.logFontSize)),
@@ -750,61 +819,6 @@ class _LanguageSelector extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _ViewModeSelector extends StatelessWidget {
-  const _ViewModeSelector({required this.controller});
-
-  final WorkspaceController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        return Row(
-          children: [
-            SizedBox(width: 76, child: Text(controller.strings.viewFormat)),
-            for (final mode in ConsoleViewMode.values) ...[
-              Expanded(
-                child: _ViewModeButton(
-                  label: controller.strings.consoleViewMode(mode),
-                  selected: controller.viewMode == mode,
-                  onPressed: () => controller.setViewMode(mode),
-                ),
-              ),
-              if (mode != ConsoleViewMode.values.last) const SizedBox(width: 8),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _ViewModeButton extends StatelessWidget {
-  const _ViewModeButton({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return OutlinedButton(
-      onPressed: selected ? null : onPressed,
-      style: OutlinedButton.styleFrom(
-        disabledBackgroundColor: scheme.primaryContainer,
-        disabledForegroundColor: scheme.onPrimaryContainer,
-      ),
-      child: Text(label),
     );
   }
 }

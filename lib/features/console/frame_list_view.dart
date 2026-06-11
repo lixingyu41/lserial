@@ -17,6 +17,7 @@ class FrameListView extends StatefulWidget {
     required this.pauseDisplay,
     required this.filter,
     this.visibleSources,
+    this.bottomPadding = 0,
   });
 
   final LogSnapshot snapshot;
@@ -27,6 +28,7 @@ class FrameListView extends StatefulWidget {
   final bool pauseDisplay;
   final String filter;
   final Set<String>? visibleSources;
+  final double bottomPadding;
 
   @override
   State<FrameListView> createState() => _FrameListViewState();
@@ -84,6 +86,7 @@ class _FrameListViewState extends State<FrameListView> {
     return SelectionArea(
       child: ListView.builder(
         controller: scroll,
+        padding: EdgeInsets.only(bottom: widget.bottomPadding),
         itemCount: frames.length,
         itemBuilder: (context, index) {
           final frame = frames[index];

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/application/receive_pipeline.dart';
 import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/core/buffer/byte_ring_buffer.dart';
+import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/connection_config.dart';
 import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/domain/transport.dart';
@@ -261,6 +262,37 @@ void main() {
     expect(statsNotifications, greaterThan(0));
     expect(controllerNotifications, 0);
   });
+
+  test('SessionController sends raw terminal control bytes', () async {
+    final transport = _FakeTransportSession();
+    final controller = SessionController(
+      registry: _FakeTransportRegistry(transport),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        type: TransportType.serial,
+        serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+      ),
+    );
+
+    await controller.connect();
+    controller.setSendFormat(PayloadFormat.hex);
+
+    await controller.sendRawBytes(<int>[0x03]);
+
+    expect(transport.sentBytes.single, <int>[0x03]);
+    expect(controller.sendHistory, isEmpty);
+    expect(controller.displaySnapshot.value.frames.last.bytes,
+        Uint8List.fromList(<int>[0x03]));
+  });
 }
 
 class _FakeTransportRegistry extends TransportRegistry {
@@ -278,6 +310,7 @@ class _FakeTransportRegistry extends TransportRegistry {
 class _FakeTransportSession implements TransportSession {
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
+  final List<List<int>> sentBytes = <List<int>>[];
   var _connected = false;
 
   @override
@@ -304,7 +337,9 @@ class _FakeTransportSession implements TransportSession {
   }
 
   @override
-  Future<void> send(List<int> bytes) async {}
+  Future<void> send(List<int> bytes) async {
+    sentBytes.add(List<int>.of(bytes));
+  }
 
   void addIncoming(List<int> bytes) {
     _incoming.add(bytes);

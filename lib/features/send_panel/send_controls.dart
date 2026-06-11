@@ -118,6 +118,37 @@ class SendFormatField extends StatelessWidget {
   }
 }
 
+class SendFormatToggleButton extends StatelessWidget {
+  const SendFormatToggleButton({
+    super.key,
+    required this.controller,
+    required this.width,
+  });
+
+  final SessionController controller;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: controller.strings.inputFormat,
+      child: SizedBox(
+        width: width,
+        height: 34,
+        child: OutlinedButton.icon(
+          onPressed: () => controller.setSendFormat(
+            controller.sendFormat == PayloadFormat.ascii
+                ? PayloadFormat.hex
+                : PayloadFormat.ascii,
+          ),
+          icon: const Icon(Icons.input),
+          label: Text(controller.strings.payloadFormat(controller.sendFormat)),
+        ),
+      ),
+    );
+  }
+}
+
 class LineEndingField extends StatelessWidget {
   const LineEndingField({
     super.key,
