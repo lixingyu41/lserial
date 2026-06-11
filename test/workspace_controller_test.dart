@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/application/workspace_controller.dart';
+import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/data_frame.dart';
+import 'package:lserial/domain/quick_command.dart';
 import 'package:lserial/domain/transport.dart';
+import 'package:lserial/transports/transport_registry.dart';
 
 void main() {
   test('add action reuses existing empty page when active page is connected',
@@ -155,4 +158,64 @@ void main() {
     expect(controller.visibleStats, containsAll(sessionStatDisplayOrder));
     expect(controller.visibleStats, hasLength(sessionStatDisplayOrder.length));
   });
+
+  test('quick commands load from preferences during initialization', () async {
+    final controller = SessionController(
+      registry: const _NoPortsRegistry(),
+      loadQuickCommands: () async => const <QuickCommand>[
+        QuickCommand(
+          id: 8,
+          name: 'Boot',
+          content: 'boot',
+          format: PayloadFormat.hex,
+        ),
+      ],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+
+    expect(controller.quickCommands, hasLength(1));
+    expect(controller.quickCommands.single.name, 'Boot');
+    expect(controller.quickCommands.single.format, PayloadFormat.hex);
+  });
+
+  test('quick command edits are saved to preferences', () {
+    var savedCommands = const <QuickCommand>[];
+    final controller = SessionController(
+      saveQuickCommands: (commands) {
+        savedCommands = List<QuickCommand>.of(commands);
+        return Future<void>.value();
+      },
+    );
+    addTearDown(controller.dispose);
+
+    controller.addQuickCommand(
+      name: 'Version',
+      content: 'AT+GMR',
+      format: PayloadFormat.ascii,
+    );
+    expect(savedCommands.map((command) => command.name), contains('Version'));
+
+    final added = savedCommands.last;
+    controller.updateQuickCommand(
+      id: added.id,
+      name: 'Version Hex',
+      content: '0A',
+      format: PayloadFormat.hex,
+    );
+    expect(savedCommands.last.name, 'Version Hex');
+    expect(savedCommands.last.format, PayloadFormat.hex);
+
+    controller.removeQuickCommand(added.id);
+    expect(
+        savedCommands.map((command) => command.id), isNot(contains(added.id)));
+  });
+}
+
+class _NoPortsRegistry extends TransportRegistry {
+  const _NoPortsRegistry();
+
+  @override
+  Future<List<String>> serialPorts() async => const <String>[];
 }

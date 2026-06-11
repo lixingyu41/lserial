@@ -17,12 +17,34 @@ import '../platform/platform_capabilities.dart';
 import '../protocol/frame_formatter.dart';
 import '../storage/log_buffer.dart';
 import '../storage/log_exporter.dart';
+import '../storage/workspace_preferences.dart';
 import '../transports/adapters/serial_port_options.dart';
 import '../transports/transport_registry.dart';
 import 'receive_pipeline.dart';
 import 'session_options.dart';
 
 export 'session_options.dart';
+
+const List<QuickCommand> _defaultQuickCommands = <QuickCommand>[
+  QuickCommand(
+    id: 1,
+    name: 'AT',
+    content: 'AT',
+    format: PayloadFormat.ascii,
+  ),
+  QuickCommand(
+    id: 2,
+    name: 'Reset',
+    content: 'AT+RST',
+    format: PayloadFormat.ascii,
+  ),
+  QuickCommand(
+    id: 3,
+    name: 'Ping',
+    content: 'ping',
+    format: PayloadFormat.ascii,
+  ),
+];
 
 class SessionController extends ChangeNotifier {
   SessionController({
@@ -31,7 +53,11 @@ class SessionController extends ChangeNotifier {
     int maxCacheBytes = 16 * 1024 * 1024,
     this.serialAliasNumber = 1,
     this.language = AppLanguage.zh,
+    Future<List<QuickCommand>?> Function()? loadQuickCommands,
+    Future<void> Function(List<QuickCommand> commands)? saveQuickCommands,
   })  : registry = registry ?? const TransportRegistry(),
+        _loadQuickCommands = loadQuickCommands ?? readQuickCommands,
+        _saveQuickCommands = saveQuickCommands ?? writeQuickCommands,
         rawBuffer = ByteRingBuffer(maxCacheBytes),
         logBuffer =
             LogBuffer(maxFrames: maxDisplayFrames, maxBytes: maxCacheBytes) {
@@ -45,6 +71,8 @@ class SessionController extends ChangeNotifier {
   }
 
   final TransportRegistry registry;
+  final Future<List<QuickCommand>?> Function() _loadQuickCommands;
+  final Future<void> Function(List<QuickCommand> commands) _saveQuickCommands;
   final ByteRingBuffer rawBuffer;
   final LogBuffer logBuffer;
   final FrameFormatter formatter = const FrameFormatter();
@@ -97,26 +125,8 @@ class SessionController extends ChangeNotifier {
   double currentTxBytesPerSecond = 0;
   final Set<SessionStat> visibleStats =
       Set<SessionStat>.of(sessionStatDisplayOrder);
-  final List<QuickCommand> quickCommands = <QuickCommand>[
-    const QuickCommand(
-      id: 1,
-      name: 'AT',
-      content: 'AT',
-      format: PayloadFormat.ascii,
-    ),
-    const QuickCommand(
-      id: 2,
-      name: 'Reset',
-      content: 'AT+RST',
-      format: PayloadFormat.ascii,
-    ),
-    const QuickCommand(
-      id: 3,
-      name: 'Ping',
-      content: 'ping',
-      format: PayloadFormat.ascii,
-    ),
-  ];
+  final List<QuickCommand> quickCommands =
+      List<QuickCommand>.of(_defaultQuickCommands);
   final List<SendHistoryEntry> sendHistory = <SendHistoryEntry>[];
 
   AppStrings get strings => AppStrings.of(language);
@@ -216,6 +226,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    await _loadSavedQuickCommands();
     capabilities = await loadPlatformCapabilities();
     await refreshSerialPorts();
     notifyListeners();
@@ -432,6 +443,7 @@ class SessionController extends ChangeNotifier {
         format: format,
       ),
     );
+    _persistQuickCommands();
     notifyListeners();
   }
 
@@ -455,11 +467,17 @@ class SessionController extends ChangeNotifier {
       content: content,
       format: format,
     );
+    _persistQuickCommands();
     notifyListeners();
   }
 
   void removeQuickCommand(int id) {
+    final before = quickCommands.length;
     quickCommands.removeWhere((command) => command.id == id);
+    if (quickCommands.length == before) {
+      return;
+    }
+    _persistQuickCommands();
     notifyListeners();
   }
 
@@ -740,6 +758,38 @@ class SessionController extends ChangeNotifier {
   }
 
   int _nextSequence() => ++_sequence;
+
+  Future<void> _loadSavedQuickCommands() async {
+    final List<QuickCommand>? savedCommands;
+    try {
+      savedCommands = await _loadQuickCommands();
+    } on Object {
+      return;
+    }
+    if (savedCommands == null) {
+      return;
+    }
+    quickCommands
+      ..clear()
+      ..addAll(savedCommands);
+    _nextCommandId = _nextQuickCommandId();
+  }
+
+  int _nextQuickCommandId() {
+    var next = 1;
+    for (final command in quickCommands) {
+      if (command.id >= next) {
+        next = command.id + 1;
+      }
+    }
+    return next;
+  }
+
+  void _persistQuickCommands() {
+    unawaited(_saveQuickCommands(List<QuickCommand>.unmodifiable(
+      quickCommands,
+    )));
+  }
 
   void _rememberHistory(String text, PayloadFormat format) {
     if (text.trim().isEmpty) {
