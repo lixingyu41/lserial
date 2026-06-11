@@ -11,6 +11,7 @@ class ConsoleFormatOptions {
     required this.showDirection,
     this.showSource = false,
     this.showContent = true,
+    this.showLineEndingSymbols = true,
   });
 
   final ConsoleViewMode viewMode;
@@ -18,6 +19,7 @@ class ConsoleFormatOptions {
   final bool showDirection;
   final bool showSource;
   final bool showContent;
+  final bool showLineEndingSymbols;
 
   ConsoleFormatOptions copyWith({
     ConsoleViewMode? viewMode,
@@ -25,6 +27,7 @@ class ConsoleFormatOptions {
     bool? showDirection,
     bool? showSource,
     bool? showContent,
+    bool? showLineEndingSymbols,
   }) {
     return ConsoleFormatOptions(
       viewMode: viewMode ?? this.viewMode,
@@ -32,6 +35,8 @@ class ConsoleFormatOptions {
       showDirection: showDirection ?? this.showDirection,
       showSource: showSource ?? this.showSource,
       showContent: showContent ?? this.showContent,
+      showLineEndingSymbols:
+          showLineEndingSymbols ?? this.showLineEndingSymbols,
     );
   }
 
@@ -42,7 +47,8 @@ class ConsoleFormatOptions {
         other.showTimestamp == showTimestamp &&
         other.showDirection == showDirection &&
         other.showSource == showSource &&
-        other.showContent == showContent;
+        other.showContent == showContent &&
+        other.showLineEndingSymbols == showLineEndingSymbols;
   }
 
   @override
@@ -52,6 +58,7 @@ class ConsoleFormatOptions {
         showDirection,
         showSource,
         showContent,
+        showLineEndingSymbols,
       );
 }
 
@@ -71,8 +78,7 @@ class FrameFormatter {
     } else if (options.showSource && frame.direction == FrameDirection.system) {
       prefix.add('${sourceToken(frame)}:');
     }
-    final payload =
-        options.showContent ? formatPayload(frame, options.viewMode) : '';
+    final payload = options.showContent ? formatPayload(frame, options) : '';
     if (prefix.isEmpty) {
       return payload;
     }
@@ -98,19 +104,27 @@ class FrameFormatter {
     };
   }
 
-  String formatPayload(DataFrame frame, ConsoleViewMode viewMode) {
+  String formatPayload(DataFrame frame, ConsoleFormatOptions options) {
     if (frame.direction == FrameDirection.system) {
-      return _ascii(frame);
+      return _ascii(frame,
+          showLineEndingSymbols: options.showLineEndingSymbols);
     }
-    return switch (viewMode) {
-      ConsoleViewMode.ascii => _ascii(frame),
+    return switch (options.viewMode) {
+      ConsoleViewMode.ascii =>
+        _ascii(frame, showLineEndingSymbols: options.showLineEndingSymbols),
       ConsoleViewMode.hex => HexCodec.encode(frame.bytes),
     };
   }
 
-  String _ascii(DataFrame frame) {
+  String _ascii(
+    DataFrame frame, {
+    required bool showLineEndingSymbols,
+  }) {
     final text = utf8.decode(frame.bytes, allowMalformed: true);
-    return text.replaceAll('\r', r'\r').replaceAll('\n', r'\n');
+    if (showLineEndingSymbols) {
+      return text.replaceAll('\r', r'\r').replaceAll('\n', r'\n');
+    }
+    return text.replaceAll('\r', '').replaceAll('\n', '');
   }
 
   String formatTimestamp(DateTime value) {

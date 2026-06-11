@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'transport.dart';
 
 const defaultSerialPacketDelimiter = r'\r\n';
+const defaultSerialPacketIntervalMs = 20;
 
 enum SerialParity {
   none,
@@ -25,7 +26,7 @@ class SerialConfig {
     this.dataBits = 8,
     this.stopBits = 1,
     this.parity = SerialParity.none,
-    this.packetIntervalMs = 0,
+    this.packetIntervalMs = defaultSerialPacketIntervalMs,
     this.packetDelimiter = defaultSerialPacketDelimiter,
   });
 

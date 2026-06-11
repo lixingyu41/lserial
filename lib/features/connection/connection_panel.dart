@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../application/session_controller.dart';
@@ -234,7 +235,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
 
   Widget? _listActionFor(ConnectionConfig config) {
     return switch (config.type) {
-      TransportType.serial => OutlinedButton.icon(
+      TransportType.serial when !kIsWeb => OutlinedButton.icon(
           onPressed: controller.refreshSerialPorts,
           icon: const Icon(Icons.refresh),
           label: Text(controller.strings.refreshList),
@@ -282,6 +283,10 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   }
 
   Widget _serialFields(ConnectionConfig config) {
+    if (kIsWeb) {
+      return _webSerialFields(config);
+    }
+
     final occupiedPorts = widget.occupiedSerialPorts;
     final wheelPorts = controller.serialPorts
         .where((portName) =>
@@ -345,6 +350,211 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             menuMaxHeight: 260,
             decoration: InputDecoration(labelText: controller.strings.baudRate),
             items: baudOptions
+                .map(
+                  (value) => DropdownMenuItem<int>(
+                    value: value,
+                    child: Text('$value'),
+                  ),
+                )
+                .toList(),
+            onChanged: controller.isConnected
+                ? null
+                : (value) {
+                    if (value != null) {
+                      baudRate.text = '$value';
+                      controller.updateConfig(
+                        config.copyWith(
+                          serial: config.serial.copyWith(baudRate: value),
+                        ),
+                      );
+                    }
+                  },
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: packetInterval,
+          enabled: !controller.isConnected,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: controller.strings.packetIntervalMs,
+          ),
+          onChanged: (value) {
+            final intervalMs = int.tryParse(value.trim());
+            if (intervalMs == null) {
+              return;
+            }
+            final current = controller.config;
+            controller.updateConfig(
+              current.copyWith(
+                serial: current.serial.copyWith(
+                  packetIntervalMs: _nonNegative(intervalMs),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: packetDelimiter,
+          enabled: !controller.isConnected,
+          decoration: InputDecoration(
+            labelText: controller.strings.packetDelimiter,
+            suffixIcon: PopupMenuButton<String>(
+              tooltip: controller.strings.packetDelimiterPresets,
+              initialValue: _delimiterPresetValue(packetDelimiter.text),
+              enabled: !controller.isConnected,
+              icon: const Icon(Icons.arrow_drop_down),
+              onSelected: (value) {
+                packetDelimiter.text = value;
+                _setPacketDelimiter(value);
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: '',
+                  child: Text(controller.strings.packetDelimiterNone),
+                ),
+                for (final value in const <String>[
+                  r'\r',
+                  r'\n',
+                  r'\r\n',
+                  '/R/N',
+                  r'\x00',
+                ])
+                  PopupMenuItem(
+                    value: value,
+                    child: Text(value),
+                  ),
+              ],
+            ),
+          ),
+          onChanged: _setPacketDelimiter,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            SizedBox(
+              width: 78,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey(
+                  'data-bits-${identityHashCode(controller)}-${config.serial.dataBits}',
+                ),
+                initialValue: config.serial.dataBits,
+                isExpanded: true,
+                decoration:
+                    InputDecoration(labelText: controller.strings.dataBits),
+                items: const [5, 6, 7, 8]
+                    .map((bits) =>
+                        DropdownMenuItem(value: bits, child: Text('$bits')))
+                    .toList(),
+                onChanged: controller.isConnected
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          controller.updateConfig(
+                            config.copyWith(
+                                serial:
+                                    config.serial.copyWith(dataBits: value)),
+                          );
+                        }
+                      },
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 78,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey(
+                  'stop-bits-${identityHashCode(controller)}-${config.serial.stopBits}',
+                ),
+                initialValue: config.serial.stopBits,
+                isExpanded: true,
+                decoration:
+                    InputDecoration(labelText: controller.strings.stopBits),
+                items: const [1, 2]
+                    .map((bits) =>
+                        DropdownMenuItem(value: bits, child: Text('$bits')))
+                    .toList(),
+                onChanged: controller.isConnected
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          controller.updateConfig(
+                            config.copyWith(
+                                serial:
+                                    config.serial.copyWith(stopBits: value)),
+                          );
+                        }
+                      },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: DropdownButtonFormField<SerialParity>(
+                key: ValueKey(
+                  'parity-${identityHashCode(controller)}-${config.serial.parity}',
+                ),
+                initialValue: config.serial.parity,
+                isExpanded: true,
+                decoration:
+                    InputDecoration(labelText: controller.strings.parity),
+                items: SerialParity.values
+                    .map((parity) => DropdownMenuItem(
+                          value: parity,
+                          child: Text(controller.strings.serialParity(parity)),
+                        ))
+                    .toList(),
+                onChanged: controller.isConnected
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          controller.updateConfig(
+                            config.copyWith(
+                                serial: config.serial.copyWith(parity: value)),
+                          );
+                        }
+                      },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _webSerialFields(ConnectionConfig config) {
+    final selected = config.serial.portName == webSerialSelectedPortOption;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 44,
+          child: OutlinedButton.icon(
+            onPressed: controller.isConnected
+                ? null
+                : () => controller.selectSerialPort(webSerialPickPortOption),
+            icon: Icon(selected ? Icons.usb : Icons.usb_off),
+            label: Text(
+              selected
+                  ? controller.strings.webSerialSelectedPort
+                  : controller.strings.chooseWebSerialPort,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        WheelStepper(
+          enabled: !controller.isConnected && _baudRateOptions.length > 1,
+          onStep: _stepBaudRate,
+          child: DropdownButtonFormField<int>(
+            key: ValueKey(
+              'baud-${identityHashCode(controller)}-${config.serial.baudRate}',
+            ),
+            initialValue: config.serial.baudRate,
+            isExpanded: true,
+            menuMaxHeight: 260,
+            decoration: InputDecoration(labelText: controller.strings.baudRate),
+            items: _baudOptionsFor(config.serial.baudRate)
                 .map(
                   (value) => DropdownMenuItem<int>(
                     value: value,

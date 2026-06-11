@@ -64,6 +64,7 @@ class AppStrings {
   String get source => isZh ? '来源' : 'Source';
   String get direction => isZh ? '收发' : 'Direction';
   String get content => isZh ? '内容' : 'Content';
+  String get lineEndingSymbols => isZh ? '换行符号' : 'Line endings';
   String get leftConfigPanel => isZh ? '左侧配置' : 'Left config';
   String get languageSetting => isZh ? '语言' : 'Language';
 
@@ -77,9 +78,9 @@ class AppStrings {
   String get disabled => isZh ? '不支持' : 'unsupported';
   String get serialPort => isZh ? '串口' : 'Serial port';
   String get chooseWebSerialPort =>
-      isZh ? '选择 Web Serial 串口...' : 'Choose Web Serial port...';
+      isZh ? '选择 Web 串口' : 'Choose Web serial port';
   String get webSerialSelectedPort =>
-      isZh ? 'Web Serial 已选择串口' : 'Web Serial port selected';
+      isZh ? '已选择 Web 串口' : 'Web serial port selected';
   String get baudRate => isZh ? '波特率' : 'Baud';
   String get packetIntervalMs => isZh ? '分包间隔 ms' : 'Packet gap ms';
   String get packetDelimiter => isZh ? '分包分隔符' : 'Packet delimiter';
@@ -220,7 +221,7 @@ class AppStrings {
   String serialScanFailed(Object error) =>
       isZh ? '串口扫描失败：${errorMessage(error)}' : 'Serial scan failed: $error';
   String get webSerialPortSelected =>
-      isZh ? '已选择 Web Serial 串口' : 'Web Serial port selected.';
+      isZh ? '已选择 Web 串口' : 'Web serial port selected.';
   String serialPortSelectFailed(Object error) => isZh
       ? '选择串口失败：${errorMessage(error)}'
       : 'Serial port selection failed: $error';
@@ -333,8 +334,7 @@ class AppStrings {
     }
 
     final exact = switch (message) {
-      'Select a Web Serial port from the serial port list first.' =>
-        '请先在串口下拉列表中选择 Web Serial 串口。',
+      'Select a Web Serial port first.' => '请先选择 Web Serial 串口。',
       'Web Serial port is not open.' => 'Web Serial 串口未打开。',
       'Web Serial writable stream is not available.' => 'Web Serial 写入流不可用。',
       'No serial port selected.' => '未选择串口。',

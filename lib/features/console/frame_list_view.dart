@@ -2,7 +2,6 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
-import '../../core/encoding/data_format.dart';
 import '../../domain/data_frame.dart';
 import '../../protocol/frame_formatter.dart';
 import '../../storage/log_buffer.dart';
@@ -246,7 +245,7 @@ class _FrameListViewState extends State<FrameListView> {
     if (options.showContent) {
       spans.addAll(
         _highlightedTextSpans(
-          _payloadText(frame, formatter, options.viewMode),
+          _payloadText(frame, formatter, options),
           filter,
           null,
           highlightStyle,
@@ -336,11 +335,11 @@ class _FrameListViewState extends State<FrameListView> {
   String _payloadText(
     DataFrame frame,
     FrameFormatter formatter,
-    ConsoleViewMode viewMode,
+    ConsoleFormatOptions options,
   ) {
     return _payloadCache.putIfAbsent(
-      _PayloadKey(frame, viewMode),
-      () => formatter.formatPayload(frame, viewMode),
+      _PayloadKey(frame, options),
+      () => formatter.formatPayload(frame, options),
     );
   }
 
@@ -414,18 +413,18 @@ class _FrameFormatKey {
 }
 
 class _PayloadKey {
-  const _PayloadKey(this.frame, this.viewMode);
+  const _PayloadKey(this.frame, this.options);
 
   final DataFrame frame;
-  final ConsoleViewMode viewMode;
+  final ConsoleFormatOptions options;
 
   @override
   bool operator ==(Object other) {
     return other is _PayloadKey &&
         identical(other.frame, frame) &&
-        other.viewMode == viewMode;
+        other.options == options;
   }
 
   @override
-  int get hashCode => Object.hash(identityHashCode(frame), viewMode);
+  int get hashCode => Object.hash(identityHashCode(frame), options);
 }

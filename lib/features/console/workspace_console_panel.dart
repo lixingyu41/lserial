@@ -10,9 +10,14 @@ import '../../storage/log_buffer.dart';
 import 'frame_list_view.dart';
 
 class WorkspaceConsolePanel extends StatefulWidget {
-  const WorkspaceConsolePanel({super.key, required this.controller});
+  const WorkspaceConsolePanel({
+    super.key,
+    required this.controller,
+    this.panelsStackVertically = false,
+  });
 
   final WorkspaceController controller;
+  final bool panelsStackVertically;
 
   @override
   State<WorkspaceConsolePanel> createState() => _WorkspaceConsolePanelState();
@@ -56,6 +61,7 @@ class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
         const Divider(height: 1),
         _WorkspaceConsoleToolbar(
           controller: widget.controller,
+          panelsStackVertically: widget.panelsStackVertically,
           search: search,
           onSearchChanged: () => setState(() {}),
         ),
@@ -67,11 +73,13 @@ class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
 class _WorkspaceConsoleToolbar extends StatelessWidget {
   const _WorkspaceConsoleToolbar({
     required this.controller,
+    required this.panelsStackVertically,
     required this.search,
     required this.onSearchChanged,
   });
 
   final WorkspaceController controller;
+  final bool panelsStackVertically;
   final TextEditingController search;
   final VoidCallback onSearchChanged;
 
@@ -86,7 +94,10 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
             hintText: controller.strings.searchFilter,
             onChanged: onSearchChanged,
           );
-          final rightActions = _RightActions(controller: controller);
+          final rightActions = _RightActions(
+            controller: controller,
+            panelsStackVertically: panelsStackVertically,
+          );
 
           if (constraints.maxWidth < 520) {
             return Column(
@@ -117,26 +128,94 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
 }
 
 class _RightActions extends StatelessWidget {
-  const _RightActions({required this.controller});
+  const _RightActions({
+    required this.controller,
+    required this.panelsStackVertically,
+  });
 
   final WorkspaceController controller;
+  final bool panelsStackVertically;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: 34,
-          child: OutlinedButton.icon(
-            onPressed: controller.clearLog,
-            icon: const Icon(Icons.clear_all),
-            label: Text(controller.strings.clear),
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 34,
+              child: OutlinedButton.icon(
+                onPressed: controller.clearLog,
+                icon: const Icon(Icons.clear_all),
+                label: Text(controller.strings.clear),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _PanelToggleButton(
+              tooltip: controller.strings.leftConfigPanel,
+              selected: controller.showConnectionPanel,
+              icon: panelsStackVertically
+                  ? Icons.keyboard_arrow_up
+                  : Icons.keyboard_arrow_left,
+              onPressed: () => controller.setConnectionPanelVisible(
+                !controller.showConnectionPanel,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _PanelToggleButton(
+              tooltip: controller.strings.quickCommands,
+              selected: controller.showQuickCommandsPanel,
+              icon: panelsStackVertically
+                  ? Icons.keyboard_arrow_down
+                  : Icons.keyboard_arrow_right,
+              onPressed: () => controller.setQuickCommandsPanelVisible(
+                !controller.showQuickCommandsPanel,
+              ),
+            ),
+            const SizedBox(width: 8),
+            _LogSettingsButton(controller: controller),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PanelToggleButton extends StatelessWidget {
+  const _PanelToggleButton({
+    required this.tooltip,
+    required this.selected,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final bool selected;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox.square(
+      dimension: 34,
+      child: IconButton.outlined(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        icon: Icon(icon),
+        style: IconButton.styleFrom(
+          minimumSize: const Size.square(34),
+          fixedSize: const Size.square(34),
+          padding: EdgeInsets.zero,
+          backgroundColor: selected ? scheme.primaryContainer : null,
+          foregroundColor: selected ? scheme.onPrimaryContainer : null,
+          side: BorderSide(
+            color: selected ? scheme.primary : scheme.outline,
           ),
         ),
-        const SizedBox(width: 8),
-        _LogSettingsButton(controller: controller),
-      ],
+      ),
     );
   }
 }
@@ -353,18 +432,6 @@ class _LogSettingsPopup extends StatelessWidget {
                     title: Text(strings.autoScroll),
                     contentPadding: EdgeInsets.zero,
                   ),
-                  SwitchListTile(
-                    value: controller.showQuickCommandsPanel,
-                    onChanged: controller.setQuickCommandsPanelVisible,
-                    title: Text(strings.quickCommands),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    value: controller.showConnectionPanel,
-                    onChanged: controller.setConnectionPanelVisible,
-                    title: Text(strings.leftConfigPanel),
-                    contentPadding: EdgeInsets.zero,
-                  ),
                   const SizedBox(height: 6),
                   _SourceFilter(controller: controller),
                   const SizedBox(height: 10),
@@ -551,6 +618,11 @@ class _DisplayItems extends StatelessWidget {
               label: Text(controller.strings.content),
               selected: controller.showContent,
               onSelected: controller.setContentVisible,
+            ),
+            _SettingsFilterChip(
+              label: Text(controller.strings.lineEndingSymbols),
+              selected: controller.showLineEndingSymbols,
+              onSelected: controller.setLineEndingSymbolsVisible,
             ),
           ],
         ),

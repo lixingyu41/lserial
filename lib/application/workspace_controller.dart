@@ -33,6 +33,7 @@ class WorkspaceController extends ChangeNotifier {
   bool showDirection = true;
   bool showSource = true;
   bool showContent = true;
+  bool showLineEndingSymbols = true;
   bool autoScroll = true;
   bool showConnectionPanel = true;
   bool showQuickCommandsPanel = true;
@@ -100,6 +101,7 @@ class WorkspaceController extends ChangeNotifier {
         showDirection: showDirection,
         showSource: showSource,
         showContent: showContent,
+        showLineEndingSymbols: showLineEndingSymbols,
       );
 
   List<String> get sourceLabels {
@@ -268,6 +270,15 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     showContent = value;
+    _publishSnapshot(force: true);
+    notifyListeners();
+  }
+
+  void setLineEndingSymbolsVisible(bool value) {
+    if (showLineEndingSymbols == value) {
+      return;
+    }
+    showLineEndingSymbols = value;
     _publishSnapshot(force: true);
     notifyListeners();
   }

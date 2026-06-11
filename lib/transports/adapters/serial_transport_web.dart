@@ -63,8 +63,7 @@ class WebSerialTransportSession implements TransportSession {
   Future<void> connect() async {
     final port = _selectedPort;
     if (port == null) {
-      throw StateError(
-          'Select a Web Serial port from the serial port list first.');
+      throw StateError('Select a Web Serial port first.');
     }
 
     final options = <String, Object>{

@@ -336,6 +336,12 @@ class _LogSettingsPopup extends StatelessWidget {
                         contentPadding: EdgeInsets.zero,
                       ),
                       SwitchListTile(
+                        value: controller.showLineEndingSymbols,
+                        onChanged: controller.setLineEndingSymbolsVisible,
+                        title: Text(controller.strings.lineEndingSymbols),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      SwitchListTile(
                         value: controller.autoScroll,
                         onChanged: controller.setAutoScroll,
                         title: Text(controller.strings.autoScroll),

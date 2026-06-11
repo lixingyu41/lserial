@@ -81,6 +81,7 @@ class SessionController extends ChangeNotifier {
   LineEnding lineEnding = LineEnding.none;
   bool showTimestamp = true;
   bool showDirection = true;
+  bool showLineEndingSymbols = true;
   bool autoScroll = true;
   bool pauseDisplay = false;
   bool isScanningBluetooth = false;
@@ -193,6 +194,7 @@ class SessionController extends ChangeNotifier {
         viewMode: viewMode,
         showTimestamp: showTimestamp,
         showDirection: showDirection,
+        showLineEndingSymbols: showLineEndingSymbols,
       );
 
   void setLanguage(AppLanguage next) {
@@ -655,6 +657,12 @@ class SessionController extends ChangeNotifier {
 
   void setDirectionVisible(bool value) {
     showDirection = value;
+    _publishSnapshot();
+    notifyListeners();
+  }
+
+  void setLineEndingSymbolsVisible(bool value) {
+    showLineEndingSymbols = value;
     _publishSnapshot();
     notifyListeners();
   }

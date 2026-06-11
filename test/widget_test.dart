@@ -92,6 +92,66 @@ void main() {
     );
     expect(find.textContaining('alpha', findRichText: true), findsNothing);
   });
+
+  testWidgets('console can hide ASCII line ending symbols', (tester) async {
+    final snapshot = LogSnapshot(
+      revision: 1,
+      frames: <DataFrame>[
+        DataFrame(
+          sequence: 1,
+          timestamp: DateTime(2026),
+          direction: FrameDirection.rx,
+          bytes: <int>[0x6f, 0x6b, 0x0d, 0x0a],
+          source: 'COM1',
+        ),
+      ],
+      totalFrames: 1,
+      totalBytes: 4,
+      droppedFrames: 0,
+      droppedBytes: 0,
+      paused: false,
+    );
+
+    await tester.pumpWidget(
+      _ConsoleHarness(
+        snapshot: snapshot,
+        options: const ConsoleFormatOptions(
+          viewMode: ConsoleViewMode.ascii,
+          showTimestamp: false,
+          showDirection: true,
+          showSource: true,
+        ),
+        filter: '',
+        visibleSources: const <String>{'COM1'},
+      ),
+    );
+
+    expect(
+      find.textContaining(r'COM1 R: ok\r\n', findRichText: true),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _ConsoleHarness(
+        snapshot: snapshot,
+        options: const ConsoleFormatOptions(
+          viewMode: ConsoleViewMode.ascii,
+          showTimestamp: false,
+          showDirection: true,
+          showSource: true,
+          showLineEndingSymbols: false,
+        ),
+        filter: '',
+        visibleSources: const <String>{'COM1'},
+      ),
+    );
+
+    expect(
+      find.textContaining('COM1 R: ok', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining(r'\r\n', findRichText: true), findsNothing);
+  });
 }
 
 class _ConsoleHarness extends StatelessWidget {

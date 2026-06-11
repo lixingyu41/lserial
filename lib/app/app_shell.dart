@@ -63,7 +63,10 @@ class _AppShellState extends State<AppShell> {
                     Expanded(
                       flex: 4,
                       child: RepaintBoundary(
-                        child: WorkspaceConsolePanel(controller: controller),
+                        child: WorkspaceConsolePanel(
+                          controller: controller,
+                          panelsStackVertically: true,
+                        ),
                       ),
                     ),
                     const Divider(height: 1),
@@ -111,6 +114,7 @@ class _AppShellState extends State<AppShell> {
                           child: RepaintBoundary(
                             child: WorkspaceConsolePanel(
                               controller: controller,
+                              panelsStackVertically: false,
                             ),
                           ),
                         ),
@@ -190,7 +194,7 @@ class _AnimatedConnectionTopPanel extends StatelessWidget {
         );
         return ClipRect(
           child: SizeTransition(
-            axisAlignment: -1,
+            alignment: AlignmentDirectional.topStart,
             sizeFactor: curved,
             child: child,
           ),
@@ -241,7 +245,7 @@ class _AnimatedConnectionSidePanel extends StatelessWidget {
         return ClipRect(
           child: SizeTransition(
             axis: Axis.horizontal,
-            axisAlignment: -1,
+            alignment: AlignmentDirectional.topStart,
             sizeFactor: curved,
             child: SlideTransition(
               position: Tween<Offset>(
@@ -293,7 +297,7 @@ class _AnimatedQuickCommandsBottomPanel extends StatelessWidget {
         );
         return ClipRect(
           child: SizeTransition(
-            axisAlignment: 1,
+            alignment: AlignmentDirectional.bottomStart,
             sizeFactor: curved,
             child: child,
           ),
@@ -341,7 +345,7 @@ class _AnimatedQuickCommandsSidePanel extends StatelessWidget {
         return ClipRect(
           child: SizeTransition(
             axis: Axis.horizontal,
-            axisAlignment: 1,
+            alignment: AlignmentDirectional.topEnd,
             sizeFactor: curved,
             child: SlideTransition(
               position: Tween<Offset>(

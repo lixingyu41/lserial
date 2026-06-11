@@ -188,6 +188,39 @@ void main() {
     pipeline.dispose();
   });
 
+  test('ReceivePipeline flushes delimiter tail by idle packet interval',
+      () async {
+    final raw = ByteRingBuffer(1024);
+    final batches = <List<DataFrame>>[];
+    var sequence = 0;
+    final pipeline = ReceivePipeline(
+      rawBuffer: raw,
+      packetInterval: const Duration(milliseconds: 20),
+      packetDelimiter: const <int>[0x0d, 0x0a],
+      flushInterval: const Duration(seconds: 1),
+      nextSequence: () => ++sequence,
+      onBatch: batches.add,
+    );
+
+    pipeline.addBytes(<int>[0x41, 0x0d, 0x0a, 0x42], source: 'rx');
+
+    expect(batches, hasLength(1));
+    expect(
+      batches.single.single.bytes,
+      Uint8List.fromList(<int>[0x41, 0x0d, 0x0a]),
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    expect(batches, hasLength(2));
+    expect(
+      batches.last.single.bytes,
+      Uint8List.fromList(<int>[0x42]),
+    );
+
+    pipeline.dispose();
+  });
+
   test('SessionController receive path updates snapshots and stats only',
       () async {
     final transport = _FakeTransportSession();
@@ -223,7 +256,7 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 60));
 
     expect(controller.displaySnapshot.value.frames.last.bytes,
-        Uint8List.fromList(<int>[0x42]));
+        Uint8List.fromList(<int>[0x41, 0x42]));
     expect(snapshotNotifications, greaterThan(0));
     expect(statsNotifications, greaterThan(0));
     expect(controllerNotifications, 0);
