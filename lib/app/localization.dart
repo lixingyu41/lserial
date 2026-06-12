@@ -53,7 +53,10 @@ class AppStrings {
   String get terminalInput => isZh ? '终端输入' : 'Terminal input';
   String get searchFilter => isZh ? '搜索过滤' : 'Search filter';
   String get logSettings => isZh ? '日志设置' : 'Log settings';
+  String get settings => isZh ? '设置' : 'Settings';
   String get close => isZh ? '关闭' : 'Close';
+  String get expand => isZh ? '展开' : 'Expand';
+  String get collapse => isZh ? '折叠' : 'Collapse';
   String get viewFormat => isZh ? '视图格式' : 'View';
   String get logFontSize => isZh ? '日志文字大小' : 'Log font size';
   String get decreaseLogFontSize => isZh ? '减小日志字号' : 'Decrease log font size';
@@ -69,6 +72,7 @@ class AppStrings {
   String get lineEndingSymbols => isZh ? '换行符号' : 'Line endings';
   String get leftConfigPanel => isZh ? '左侧配置' : 'Left config';
   String get languageSetting => isZh ? '语言' : 'Language';
+  String get downloadClient => isZh ? '下载客户端' : 'Download client';
 
   String get connect => isZh ? '连接' : 'Connect';
   String get connecting => isZh ? '连接中' : 'Connecting';
@@ -190,6 +194,21 @@ class AppStrings {
         SendShortcutMode.enter => isZh ? '回车发送' : 'Enter sends',
         SendShortcutMode.ctrlEnter => isZh ? 'Ctrl+回车发送' : 'Ctrl+Enter sends',
       };
+
+  String shortcutModeShort(SendShortcutMode mode) => switch (mode) {
+        SendShortcutMode.enter => isZh ? '回车' : 'Enter',
+        SendShortcutMode.ctrlEnter => isZh ? 'Ctrl+回车' : 'Ctrl+Enter',
+      };
+
+  String onOff(bool value) {
+    if (isZh) {
+      return value ? '开启' : '关闭';
+    }
+    return value ? 'On' : 'Off';
+  }
+
+  String settingChanged(String label, String value) =>
+      isZh ? '$label：$value' : '$label: $value';
 
   String sessionStat(SessionStat stat) => switch (stat) {
         SessionStat.rxCount => rxCount,

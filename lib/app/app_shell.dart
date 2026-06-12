@@ -383,17 +383,14 @@ class _ConnectionPageArea extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-          child: _SessionPager(controller: workspace),
-        ),
-        const SizedBox(height: 8),
+        _SessionPager(controller: workspace),
         Expanded(
           child: RepaintBoundary(
             child: ConnectionPanel(
               key: ValueKey<SessionController>(controller),
+              workspaceController: workspace,
               controller: controller,
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              padding: EdgeInsets.zero,
               occupiedSerialPorts: workspace.occupiedSerialPortsExcept(
                 controller,
               ),
@@ -415,47 +412,87 @@ class _SessionPager extends StatelessWidget {
     final active = controller.activeSession;
     final strings = controller.strings;
     final pageIndicator = controller.pageIndicator;
-    return Row(
-      children: [
-        IconButton.outlined(
-          tooltip: strings.previousSessionPage,
-          onPressed:
-              controller.canGoPrevious ? controller.previousSession : null,
-          icon: const Icon(Icons.chevron_left),
-        ),
-        const SizedBox(width: 8),
-        IconButton.outlined(
-          tooltip: strings.nextSessionPage,
-          onPressed: controller.canGoNext ? controller.nextSession : null,
-          icon: const Icon(Icons.chevron_right),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: ScrollConfiguration(
-            behavior:
-                ScrollConfiguration.of(context).copyWith(scrollbars: false),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(),
-              child: Text(
-                active.sourceLabel,
-                maxLines: 1,
-                softWrap: false,
-                style: Theme.of(context).textTheme.titleSmall,
+    return SizedBox(
+      height: 40,
+      child: Row(
+        children: [
+          _SessionPagerButton(
+            tooltip: strings.previousSessionPage,
+            onPressed:
+                controller.canGoPrevious ? controller.previousSession : null,
+            icon: Icons.chevron_left,
+          ),
+          const _PanelSeparator(),
+          _SessionPagerButton(
+            tooltip: strings.nextSessionPage,
+            onPressed: controller.canGoNext ? controller.nextSession : null,
+            icon: Icons.chevron_right,
+          ),
+          const _PanelSeparator(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ScrollConfiguration(
+                behavior:
+                    ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const ClampingScrollPhysics(),
+                  child: Text(
+                    active.sourceLabel,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        if (pageIndicator.isNotEmpty) ...[
-          Text(
-            pageIndicator,
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-          const SizedBox(width: 8),
+          if (pageIndicator.isNotEmpty) ...[
+            const _PanelSeparator(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                pageIndicator,
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ),
+          ],
+          const _PanelSeparator(),
+          _SessionActionButton(controller: controller),
         ],
-        _SessionActionButton(controller: controller),
-      ],
+      ),
+    );
+  }
+}
+
+class _SessionPagerButton extends StatelessWidget {
+  const _SessionPagerButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+  });
+
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 40,
+      child: IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        icon: Icon(icon),
+        style: IconButton.styleFrom(
+          minimumSize: const Size.square(40),
+          fixedSize: const Size.square(40),
+          padding: EdgeInsets.zero,
+          shape: const RoundedRectangleBorder(),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      ),
     );
   }
 }
@@ -468,26 +505,41 @@ class _SessionActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (controller.canAddSession) {
-      return IconButton.outlined(
+      return _SessionPagerButton(
         tooltip: controller.strings.addSessionPage,
         onPressed: () {
           controller.addSession();
         },
-        icon: const Icon(Icons.add),
+        icon: Icons.add,
       );
     }
 
     if (!controller.activeSession.isConnected) {
-      return IconButton.outlined(
+      return _SessionPagerButton(
         tooltip: controller.strings.removeEmptySessionPage,
         onPressed: controller.canRemoveActiveSession
             ? controller.removeActiveSession
             : null,
-        icon: const Icon(Icons.remove),
+        icon: Icons.remove,
       );
     }
 
-    return const SizedBox.square(dimension: 32);
+    return const SizedBox.square(dimension: 40);
+  }
+}
+
+class _PanelSeparator extends StatelessWidget {
+  const _PanelSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 1,
+      height: 40,
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: Theme.of(context).dividerColor),
+      ),
+    );
   }
 }
 
@@ -504,10 +556,10 @@ class _VerticalDragDivider extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
         child: SizedBox(
-          width: 7,
-          child: Center(
-            child: Container(
-              width: 1,
+          width: 1,
+          height: double.infinity,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
               color: Theme.of(context).dividerColor,
             ),
           ),
@@ -530,10 +582,10 @@ class _HorizontalDragDivider extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) => onDrag(details.delta.dy),
         child: SizedBox(
-          height: 7,
-          child: Center(
-            child: Container(
-              height: 1,
+          width: double.infinity,
+          height: 1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
               color: Theme.of(context).dividerColor,
             ),
           ),

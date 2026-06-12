@@ -12,8 +12,11 @@ class WorkspaceSettings {
     this.autoScroll = true,
     this.showConnectionPanel = true,
     this.showSendPanel = true,
+    this.sendPanelVisibleBeforeTerminal = true,
     this.showQuickCommandsPanel = false,
     this.terminalMode = false,
+    this.statsPanelExpanded = false,
+    this.settingsPanelExpanded = false,
     this.logFontSize = 12,
     this.language = AppLanguage.zh,
     this.hiddenSources = const <String>{},
@@ -28,8 +31,11 @@ class WorkspaceSettings {
   final bool autoScroll;
   final bool showConnectionPanel;
   final bool showSendPanel;
+  final bool sendPanelVisibleBeforeTerminal;
   final bool showQuickCommandsPanel;
   final bool terminalMode;
+  final bool statsPanelExpanded;
+  final bool settingsPanelExpanded;
   final double logFontSize;
   final AppLanguage language;
   final Set<String> hiddenSources;
@@ -56,11 +62,23 @@ class WorkspaceSettings {
         defaults.showConnectionPanel,
       ),
       showSendPanel: _boolValue(json['showSendPanel'], defaults.showSendPanel),
+      sendPanelVisibleBeforeTerminal: _boolValue(
+        json['sendPanelVisibleBeforeTerminal'],
+        defaults.sendPanelVisibleBeforeTerminal,
+      ),
       showQuickCommandsPanel: _boolValue(
         json['showQuickCommandsPanel'],
         defaults.showQuickCommandsPanel,
       ),
       terminalMode: _boolValue(json['terminalMode'], defaults.terminalMode),
+      statsPanelExpanded: _boolValue(
+        json['statsPanelExpanded'],
+        defaults.statsPanelExpanded,
+      ),
+      settingsPanelExpanded: _boolValue(
+        json['settingsPanelExpanded'],
+        defaults.settingsPanelExpanded,
+      ),
       logFontSize: _fontSizeValue(json['logFontSize'], defaults.logFontSize),
       language: _enumByName(
         AppLanguage.values,
@@ -81,8 +99,11 @@ class WorkspaceSettings {
         'autoScroll': autoScroll,
         'showConnectionPanel': showConnectionPanel,
         'showSendPanel': showSendPanel,
+        'sendPanelVisibleBeforeTerminal': sendPanelVisibleBeforeTerminal,
         'showQuickCommandsPanel': showQuickCommandsPanel,
         'terminalMode': terminalMode,
+        'statsPanelExpanded': statsPanelExpanded,
+        'settingsPanelExpanded': settingsPanelExpanded,
         'logFontSize': logFontSize,
         'language': language.name,
         'hiddenSources': hiddenSources.toList()..sort(),

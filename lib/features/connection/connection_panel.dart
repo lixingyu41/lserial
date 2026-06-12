@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../application/workspace_controller.dart';
 import '../../application/session_controller.dart';
 import '../../domain/connection_config.dart';
 import '../../domain/transport.dart';
 import '../../transports/adapters/serial_port_options.dart';
 import '../../widgets/wheel_stepper.dart';
+import 'workspace_settings_info.dart';
 
 const _baudRateOptions = <int>[
   9600,
@@ -20,15 +22,79 @@ const _baudRateOptions = <int>[
   921600,
 ];
 
+ThemeData _framelessConnectionTheme(BuildContext context) {
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+  const squareShape = RoundedRectangleBorder();
+  return theme.copyWith(
+    inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      disabledBorder: InputBorder.none,
+      errorBorder: InputBorder.none,
+      focusedErrorBorder: InputBorder.none,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: squareShape,
+        side: BorderSide.none,
+        minimumSize: const Size(40, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        foregroundColor: scheme.onSurface,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: squareShape,
+        minimumSize: const Size(40, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        minimumSize: const Size.square(40),
+        fixedSize: const Size.square(40),
+        padding: EdgeInsets.zero,
+        shape: squareShape,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+  );
+}
+
+class _ConnectionSeparator extends StatelessWidget {
+  const _ConnectionSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 1,
+      height: 40,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+    );
+  }
+}
+
 class ConnectionPanel extends StatefulWidget {
   const ConnectionPanel({
     super.key,
+    required this.workspaceController,
     required this.controller,
     this.sessionHeader,
     this.occupiedSerialPorts = const <String>{},
-    this.padding = const EdgeInsets.all(14),
+    this.padding = EdgeInsets.zero,
   });
 
+  final WorkspaceController workspaceController;
   final SessionController controller;
   final Widget? sessionHeader;
   final Set<String> occupiedSerialPorts;
@@ -123,7 +189,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 child: Column(
                   children: [
                     widget.sessionHeader!,
-                    const SizedBox(height: 8),
+                    const Divider(height: 1),
                   ],
                 ),
               ),
@@ -131,51 +197,61 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               child: ScrollConfiguration(
                 behavior:
                     ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                child: ListView(
-                  padding: widget.padding,
-                  physics: const ClampingScrollPhysics(),
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  children: [
-                    _StatusLine(controller: controller),
-                    const SizedBox(height: 8),
-                    _connectionActions(config),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<TransportType>(
-                      key: ValueKey(
-                          'type-${identityHashCode(controller)}-${config.type}'),
-                      initialValue: config.type,
-                      decoration:
-                          InputDecoration(labelText: strings.connectionType),
-                      items: TransportType.values.map((type) {
-                        final supported = controller.isTypeSupported(type);
-                        final label = supported
-                            ? strings.transportType(type)
-                            : strings.unsupportedTransportOption(
-                                type,
-                                controller.unsupportedReason(type),
-                              );
-                        return DropdownMenuItem(
-                          value: type,
-                          enabled: supported,
-                          child: Text(
-                            label,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: controller.isConnected
-                          ? null
-                          : (type) {
-                              if (type != null) {
-                                controller.setTransportType(type);
-                              }
-                            },
-                    ),
-                    const SizedBox(height: 8),
-                    _fieldsFor(config),
-                    const SizedBox(height: 8),
-                    _StatsPanel(controller: controller),
-                  ],
+                child: Theme(
+                  data: _framelessConnectionTheme(context),
+                  child: ListView(
+                    padding: widget.padding,
+                    physics: const ClampingScrollPhysics(),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    children: [
+                      _StatusLine(controller: controller),
+                      const Divider(height: 1),
+                      _connectionActions(config),
+                      const Divider(height: 1),
+                      DropdownButtonFormField<TransportType>(
+                        key: ValueKey(
+                            'type-${identityHashCode(controller)}-${config.type}'),
+                        initialValue: config.type,
+                        decoration:
+                            InputDecoration(labelText: strings.connectionType),
+                        items: TransportType.values.map((type) {
+                          final supported = controller.isTypeSupported(type);
+                          final label = supported
+                              ? strings.transportType(type)
+                              : strings.unsupportedTransportOption(
+                                  type,
+                                  controller.unsupportedReason(type),
+                                );
+                          return DropdownMenuItem(
+                            value: type,
+                            enabled: supported,
+                            child: Text(
+                              label,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: controller.isConnected
+                            ? null
+                            : (type) {
+                                if (type != null) {
+                                  controller.setTransportType(type);
+                                }
+                              },
+                      ),
+                      const Divider(height: 1),
+                      _fieldsFor(config),
+                      const Divider(height: 1),
+                      _StatsPanel(
+                        controller: controller,
+                        workspace: widget.workspaceController,
+                      ),
+                      const Divider(height: 1),
+                      _WorkspaceSettingsPanel(
+                        controller: widget.workspaceController,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -222,14 +298,17 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           );
     final listAction = _listActionFor(config);
 
-    return Row(
-      children: [
-        Expanded(child: mainAction),
-        if (listAction != null) ...[
-          const SizedBox(width: 8),
-          SizedBox(width: 116, child: listAction),
+    return SizedBox(
+      height: 40,
+      child: Row(
+        children: [
+          Expanded(child: mainAction),
+          if (listAction != null) ...[
+            const _ConnectionSeparator(),
+            SizedBox(width: 116, child: listAction),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -337,7 +416,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                   },
           ),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         WheelStepper(
           enabled: !controller.isConnected && _baudRateOptions.length > 1,
           onStep: _stepBaudRate,
@@ -371,7 +450,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                   },
           ),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: packetInterval,
           enabled: !controller.isConnected,
@@ -394,7 +473,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             );
           },
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: packetDelimiter,
           enabled: !controller.isConnected,
@@ -430,7 +509,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           ),
           onChanged: _setPacketDelimiter,
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         Row(
           children: [
             SizedBox(
@@ -460,7 +539,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       },
               ),
             ),
-            const SizedBox(width: 8),
+            const _ConnectionSeparator(),
             SizedBox(
               width: 78,
               child: DropdownButtonFormField<int>(
@@ -488,7 +567,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       },
               ),
             ),
-            const SizedBox(width: 8),
+            const _ConnectionSeparator(),
             Expanded(
               child: DropdownButtonFormField<SerialParity>(
                 key: ValueKey(
@@ -542,7 +621,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         WheelStepper(
           enabled: !controller.isConnected && _baudRateOptions.length > 1,
           onStep: _stepBaudRate,
@@ -576,7 +655,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                   },
           ),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: packetInterval,
           enabled: !controller.isConnected,
@@ -599,7 +678,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             );
           },
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: packetDelimiter,
           enabled: !controller.isConnected,
@@ -635,7 +714,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           ),
           onChanged: _setPacketDelimiter,
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         Row(
           children: [
             SizedBox(
@@ -665,7 +744,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       },
               ),
             ),
-            const SizedBox(width: 8),
+            const _ConnectionSeparator(),
             SizedBox(
               width: 78,
               child: DropdownButtonFormField<int>(
@@ -693,7 +772,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       },
               ),
             ),
-            const SizedBox(width: 8),
+            const _ConnectionSeparator(),
             Expanded(
               child: DropdownButtonFormField<SerialParity>(
                 key: ValueKey(
@@ -733,7 +812,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         TextField(
             controller: host,
             decoration: InputDecoration(labelText: controller.strings.host)),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: port,
           keyboardType: TextInputType.number,
@@ -751,7 +830,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           decoration:
               InputDecoration(labelText: controller.strings.bindAddress),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: port,
           keyboardType: TextInputType.number,
@@ -769,18 +848,18 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           decoration:
               InputDecoration(labelText: controller.strings.bindAddress),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: localPort,
           keyboardType: TextInputType.number,
           decoration: InputDecoration(labelText: controller.strings.localPort),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: remoteHost,
           decoration: InputDecoration(labelText: controller.strings.remoteHost),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: remotePort,
           keyboardType: TextInputType.number,
@@ -805,7 +884,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         ),
         if (!controller.isConnected &&
             controller.bluetoothDevices.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const Divider(height: 1),
           _BluetoothDeviceList(
             controller: controller,
             selectedDeviceId: selectedDevice,
@@ -815,7 +894,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             },
           ),
         ],
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         TextField(
           controller: bluetoothDeviceId,
           enabled: !controller.isConnected,
@@ -832,7 +911,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             );
           },
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
           childrenPadding: EdgeInsets.zero,
@@ -854,7 +933,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 );
               },
             ),
-            const SizedBox(height: 8),
+            const Divider(height: 1),
             TextField(
               controller: bluetoothWriteCharacteristicUuid,
               enabled: !controller.isConnected,
@@ -871,7 +950,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 );
               },
             ),
-            const SizedBox(height: 8),
+            const Divider(height: 1),
             TextField(
               controller: bluetoothNotifyCharacteristicUuid,
               enabled: !controller.isConnected,
@@ -1117,8 +1196,6 @@ class _BluetoothDeviceList extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1212,8 +1289,6 @@ class _StatusLine extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: color.withAlpha(22),
-        border: Border.all(color: color.withAlpha(110)),
-        borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1251,16 +1326,161 @@ class _StatusLine extends StatelessWidget {
   }
 }
 
+class _CollapsiblePanel extends StatelessWidget {
+  const _CollapsiblePanel({
+    required this.title,
+    required this.icon,
+    required this.expanded,
+    required this.onChanged,
+    required this.expandTooltip,
+    required this.collapseTooltip,
+    required this.child,
+    this.actions = const <Widget>[],
+  });
+
+  final String title;
+  final IconData icon;
+  final bool expanded;
+  final ValueChanged<bool> onChanged;
+  final String expandTooltip;
+  final String collapseTooltip;
+  final Widget child;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 40,
+          child: Row(
+            children: [
+              Expanded(
+                child: Tooltip(
+                  message: expanded ? collapseTooltip : expandTooltip,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onChanged(!expanded),
+                      child: Row(
+                        children: [
+                          Icon(
+                            icon,
+                            size: 18,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            title,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (actions.isNotEmpty) ...[
+                _HeaderSeparator(color: scheme.outlineVariant),
+                for (var i = 0; i < actions.length; i++) ...[
+                  actions[i],
+                  if (i != actions.length - 1)
+                    _HeaderSeparator(color: scheme.outlineVariant),
+                ],
+              ],
+            ],
+          ),
+        ),
+        if (expanded) ...[
+          const Divider(height: 1),
+          child,
+        ],
+      ],
+    );
+  }
+}
+
+class _HeaderSeparator extends StatelessWidget {
+  const _HeaderSeparator({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      width: 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: color),
+      ),
+    );
+  }
+}
+
 class _StatsPanel extends StatelessWidget {
-  const _StatsPanel({required this.controller});
+  const _StatsPanel({
+    required this.controller,
+    required this.workspace,
+  });
 
   final SessionController controller;
+  final WorkspaceController workspace;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: controller.statsListenable,
-      builder: (context, _) => _buildStats(context),
+      animation: workspace,
+      builder: (context, _) {
+        if (!workspace.statsPanelExpanded) {
+          return _buildPanel(context, const SizedBox.shrink());
+        }
+        return AnimatedBuilder(
+          animation: controller.statsListenable,
+          builder: (context, _) => _buildPanel(context, _buildStats(context)),
+        );
+      },
+    );
+  }
+
+  Widget _buildPanel(BuildContext context, Widget child) {
+    final strings = controller.strings;
+    return _CollapsiblePanel(
+      title: strings.stats,
+      icon: Icons.query_stats,
+      expanded: workspace.statsPanelExpanded,
+      onChanged: workspace.setStatsPanelExpanded,
+      expandTooltip: strings.expand,
+      collapseTooltip: strings.collapse,
+      actions: workspace.statsPanelExpanded
+          ? [
+              SizedBox.square(
+                dimension: 40,
+                child: PopupMenuButton<SessionStat>(
+                  tooltip: strings.chooseStats,
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  icon: const Icon(Icons.tune),
+                  onSelected: (stat) => controller.setStatVisible(
+                    stat,
+                    !controller.isStatVisible(stat),
+                  ),
+                  itemBuilder: (context) => sessionStatDisplayOrder
+                      .map(
+                        (stat) => CheckedPopupMenuItem<SessionStat>(
+                          value: stat,
+                          checked: controller.isStatVisible(stat),
+                          child: Text(strings.sessionStat(stat)),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ]
+          : const <Widget>[],
+      child: child,
     );
   }
 
@@ -1324,55 +1544,20 @@ class _StatsPanel extends StatelessWidget {
         ),
     ];
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Text(strings.stats,
-                    style: Theme.of(context).textTheme.labelLarge),
-                const Spacer(),
-                PopupMenuButton<SessionStat>(
-                  tooltip: strings.chooseStats,
-                  icon: const Icon(Icons.tune, size: 18),
-                  onSelected: (stat) => controller.setStatVisible(
-                    stat,
-                    !controller.isStatVisible(stat),
-                  ),
-                  itemBuilder: (context) => sessionStatDisplayOrder
-                      .map(
-                        (stat) => CheckedPopupMenuItem<SessionStat>(
-                          value: stat,
-                          checked: controller.isStatVisible(stat),
-                          child: Text(strings.sessionStat(stat)),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            if (items.isEmpty)
-              Text(
-                strings.noStatsVisible,
-                style: Theme.of(context).textTheme.bodySmall,
-              )
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: items,
-              ),
-          ],
-        ),
-      ),
+    if (items.isEmpty) {
+      return Text(
+        strings.noStatsVisible,
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const Divider(height: 1),
+          items[i],
+        ],
+      ],
     );
   }
 
@@ -1399,6 +1584,31 @@ class _StatsPanel extends StatelessWidget {
   }
 }
 
+class _WorkspaceSettingsPanel extends StatelessWidget {
+  const _WorkspaceSettingsPanel({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final strings = controller.strings;
+        return _CollapsiblePanel(
+          title: strings.settings,
+          icon: Icons.settings,
+          expanded: controller.settingsPanelExpanded,
+          onChanged: controller.setSettingsPanelExpanded,
+          expandTooltip: strings.expand,
+          collapseTooltip: strings.collapse,
+          child: WorkspaceSettingsInfo(controller: controller),
+        );
+      },
+    );
+  }
+}
+
 class _StatRow extends StatelessWidget {
   const _StatRow({required this.label, required this.value});
 
@@ -1409,36 +1619,25 @@ class _StatRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final textStyle = Theme.of(context).textTheme.bodyMedium;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          border:
-              Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 44,
-                child: Text(
-                  label,
-                  style: textStyle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  value,
-                  textAlign: TextAlign.right,
-                  style: textStyle,
-                ),
-              ),
-            ],
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: Text(
+              label,
+              style: textStyle,
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: textStyle,
+            ),
+          ),
+        ],
       ),
     );
   }

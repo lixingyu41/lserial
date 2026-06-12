@@ -107,7 +107,7 @@ class SessionController extends ChangeNotifier {
   List<BluetoothDeviceInfo> bluetoothDevices = const <BluetoothDeviceInfo>[];
   ConsoleViewMode viewMode = ConsoleViewMode.ascii;
   PayloadFormat sendFormat = PayloadFormat.ascii;
-  LineEnding lineEnding = LineEnding.none;
+  LineEnding lineEnding = LineEnding.lf;
   bool showTimestamp = true;
   bool showDirection = true;
   bool showLineEndingSymbols = false;
@@ -570,6 +570,15 @@ class SessionController extends ChangeNotifier {
     );
   }
 
+  Future<void> sendAsciiText(String text) async {
+    await _sendPayload(
+      text: text,
+      format: PayloadFormat.ascii,
+      ending: lineEnding,
+      rememberHistory: true,
+    );
+  }
+
   Future<void> sendRawBytes(List<int> bytes) async {
     await _sendBytes(bytes, rememberHistory: false);
   }
@@ -687,6 +696,12 @@ class SessionController extends ChangeNotifier {
   void setLineEnding(LineEnding ending) {
     lineEnding = ending;
     notifyListeners();
+  }
+
+  void toggleLineEnding() {
+    const values = LineEnding.values;
+    final index = values.indexOf(lineEnding);
+    setLineEnding(values[(index + 1) % values.length]);
   }
 
   void setTimestampVisible(bool value) {

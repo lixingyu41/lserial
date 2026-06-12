@@ -15,8 +15,34 @@ InputDecoration _compactDecoration(String label) {
   );
 }
 
+InputDecoration _framelessDecoration(String label) {
+  return InputDecoration(
+    labelText: label,
+    floatingLabelBehavior: FloatingLabelBehavior.always,
+    isDense: true,
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+    constraints: const BoxConstraints.tightFor(height: 40),
+  );
+}
+
 InputDecoration _defaultDecoration(String label) {
   return InputDecoration(labelText: label);
+}
+
+ButtonStyle _framelessButtonStyle(BuildContext context) {
+  return OutlinedButton.styleFrom(
+    minimumSize: const Size(40, 40),
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    shape: const RoundedRectangleBorder(),
+    side: BorderSide.none,
+    backgroundColor: Colors.transparent,
+    foregroundColor: Theme.of(context).colorScheme.onSurface,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
 }
 
 class SendTargetField extends StatelessWidget {
@@ -25,11 +51,15 @@ class SendTargetField extends StatelessWidget {
     required this.controller,
     required this.width,
     this.compact = false,
+    this.frameless = false,
+    this.onChanged,
   });
 
   final WorkspaceController controller;
   final double width;
   final bool compact;
+  final bool frameless;
+  final ValueChanged<int>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -41,16 +71,21 @@ class SendTargetField extends StatelessWidget {
       width: width,
       child: WheelStepper(
         enabled: connectedIndexes.length > 1,
-        onStep: controller.stepSendTarget,
+        onStep: (step) {
+          controller.stepSendTarget(step);
+          onChanged?.call(controller.sendTargetIndex);
+        },
         child: DropdownButtonFormField<int>(
           key: ValueKey(
             'send-target-${controller.sendTargetIndex}-${connectedIndexes.join("|")}',
           ),
           initialValue: selectedValue,
           isExpanded: true,
-          decoration: compact
-              ? _compactDecoration(controller.strings.sendTo)
-              : _defaultDecoration(controller.strings.sendTo),
+          decoration: frameless
+              ? _framelessDecoration(controller.strings.sendTo)
+              : compact
+                  ? _compactDecoration(controller.strings.sendTo)
+                  : _defaultDecoration(controller.strings.sendTo),
           hint: Text(controller.strings.noConnectedTarget),
           items: [
             for (final i in connectedIndexes)
@@ -67,6 +102,7 @@ class SendTargetField extends StatelessWidget {
               : (index) {
                   if (index != null) {
                     controller.setSendTargetIndex(index);
+                    onChanged?.call(index);
                   }
                 },
         ),
@@ -123,10 +159,12 @@ class SendFormatToggleButton extends StatelessWidget {
     super.key,
     required this.controller,
     required this.width,
+    this.onChanged,
   });
 
   final SessionController controller;
   final double width;
+  final ValueChanged<PayloadFormat>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -134,15 +172,53 @@ class SendFormatToggleButton extends StatelessWidget {
       message: controller.strings.inputFormat,
       child: SizedBox(
         width: width,
-        height: 34,
+        height: 40,
         child: OutlinedButton.icon(
-          onPressed: () => controller.setSendFormat(
-            controller.sendFormat == PayloadFormat.ascii
+          style: _framelessButtonStyle(context),
+          onPressed: () {
+            final next = controller.sendFormat == PayloadFormat.ascii
                 ? PayloadFormat.hex
-                : PayloadFormat.ascii,
-          ),
+                : PayloadFormat.ascii;
+            controller.setSendFormat(next);
+            onChanged?.call(next);
+          },
           icon: const Icon(Icons.input),
           label: Text(controller.strings.payloadFormat(controller.sendFormat)),
+        ),
+      ),
+    );
+  }
+}
+
+class LineEndingToggleButton extends StatelessWidget {
+  const LineEndingToggleButton({
+    super.key,
+    required this.controller,
+    required this.width,
+    this.onChanged,
+  });
+
+  final SessionController controller;
+  final double width;
+  final ValueChanged<LineEnding>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: controller.strings.lineEnding,
+      child: SizedBox(
+        width: width,
+        height: 40,
+        child: OutlinedButton(
+          style: _framelessButtonStyle(context),
+          onPressed: () {
+            controller.toggleLineEnding();
+            onChanged?.call(controller.lineEnding);
+          },
+          child: Text(
+            controller.strings.lineEndingLabel(controller.lineEnding),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
@@ -230,6 +306,41 @@ class ShortcutModeField extends StatelessWidget {
             controller.setSendShortcutMode(mode);
           }
         },
+      ),
+    );
+  }
+}
+
+class ShortcutModeToggleButton extends StatelessWidget {
+  const ShortcutModeToggleButton({
+    super.key,
+    required this.controller,
+    required this.width,
+    this.onChanged,
+  });
+
+  final SessionController controller;
+  final double width;
+  final ValueChanged<SendShortcutMode>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: controller.strings.shortcutMode(controller.sendShortcutMode),
+      child: SizedBox(
+        width: width,
+        height: 40,
+        child: OutlinedButton(
+          style: _framelessButtonStyle(context),
+          onPressed: () {
+            controller.toggleSendShortcutMode();
+            onChanged?.call(controller.sendShortcutMode);
+          },
+          child: Text(
+            controller.strings.shortcutModeShort(controller.sendShortcutMode),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ),
     );
   }

@@ -166,6 +166,8 @@ void main() {
     expect(controller.showConnectionPanel, isFalse);
     expect(controller.showSendPanel, isFalse);
     expect(controller.showQuickCommandsPanel, isTrue);
+    expect(controller.statsPanelExpanded, isFalse);
+    expect(controller.settingsPanelExpanded, isFalse);
     expect(controller.logFontSize, 16);
     expect(controller.language, AppLanguage.en);
 
@@ -188,21 +190,29 @@ void main() {
     expect(controller.showConnectionPanel, isTrue);
     expect(controller.showSendPanel, isTrue);
     expect(controller.showQuickCommandsPanel, isFalse);
+    expect(controller.statsPanelExpanded, isFalse);
+    expect(controller.settingsPanelExpanded, isFalse);
 
     controller.setConnectionPanelVisible(false);
     controller.setSendPanelVisible(false);
     controller.setQuickCommandsPanelVisible(true);
+    controller.setStatsPanelExpanded(true);
+    controller.setSettingsPanelExpanded(true);
 
     expect(controller.showConnectionPanel, isFalse);
     expect(controller.showSendPanel, isFalse);
     expect(controller.showQuickCommandsPanel, isTrue);
-    expect(savedSettings, hasLength(3));
+    expect(controller.statsPanelExpanded, isTrue);
+    expect(controller.settingsPanelExpanded, isTrue);
+    expect(savedSettings, hasLength(5));
     expect(savedSettings.last.showConnectionPanel, isFalse);
     expect(savedSettings.last.showSendPanel, isFalse);
     expect(savedSettings.last.showQuickCommandsPanel, isTrue);
+    expect(savedSettings.last.statsPanelExpanded, isTrue);
+    expect(savedSettings.last.settingsPanelExpanded, isTrue);
   });
 
-  test('terminal mode is exclusive with the bottom send panel', () {
+  test('terminal mode restores previous bottom send panel state', () {
     final controller = WorkspaceController();
     addTearDown(controller.dispose);
 
@@ -218,6 +228,15 @@ void main() {
 
     expect(controller.terminalMode, isFalse);
     expect(controller.showSendPanel, isTrue);
+
+    controller.setSendPanelVisible(false);
+    controller.setTerminalMode(true);
+    expect(controller.terminalMode, isTrue);
+    expect(controller.showSendPanel, isFalse);
+
+    controller.setTerminalMode(false);
+    expect(controller.terminalMode, isFalse);
+    expect(controller.showSendPanel, isFalse);
   });
 
   test('stats filter defaults to all display stats', () {
@@ -226,6 +245,13 @@ void main() {
 
     expect(controller.visibleStats, containsAll(sessionStatDisplayOrder));
     expect(controller.visibleStats, hasLength(sessionStatDisplayOrder.length));
+  });
+
+  test('send line ending defaults to LF', () {
+    final controller = SessionController();
+    addTearDown(controller.dispose);
+
+    expect(controller.lineEnding, LineEnding.lf);
   });
 
   test('quick commands load from preferences during initialization', () async {

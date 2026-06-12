@@ -49,12 +49,15 @@ class WorkspaceController extends ChangeNotifier {
   bool showSendPanel = true;
   bool showQuickCommandsPanel = false;
   bool terminalMode = false;
+  bool statsPanelExpanded = false;
+  bool settingsPanelExpanded = false;
   bool pauseDisplay = false;
   double logFontSize = 12;
   AppLanguage language = AppLanguage.zh;
 
   final Set<String> _hiddenSources = <String>{};
   final Set<String> _sourceLabels = <String>{'SYS'};
+  bool _sendPanelVisibleBeforeTerminal = true;
   int _revision = 0;
   bool _settingsChanged = false;
 
@@ -330,21 +333,22 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void setSendPanelVisible(bool value) {
-    var changed = false;
-    if (value && terminalMode) {
+    if (terminalMode) {
+      if (!value) {
+        return;
+      }
       terminalMode = false;
-      changed = true;
+      showSendPanel = true;
+      _sendPanelVisibleBeforeTerminal = true;
+      _persistSettings();
+      notifyListeners();
+      return;
     }
     if (showSendPanel == value) {
-      if (value) {
-        if (changed) {
-          _persistSettings();
-        }
-        notifyListeners();
-      }
       return;
     }
     showSendPanel = value;
+    _sendPanelVisibleBeforeTerminal = value;
     _persistSettings();
     notifyListeners();
   }
@@ -355,8 +359,29 @@ class WorkspaceController extends ChangeNotifier {
     }
     terminalMode = value;
     if (value) {
+      _sendPanelVisibleBeforeTerminal = showSendPanel;
       showSendPanel = false;
+    } else {
+      showSendPanel = _sendPanelVisibleBeforeTerminal;
     }
+    _persistSettings();
+    notifyListeners();
+  }
+
+  void setStatsPanelExpanded(bool value) {
+    if (statsPanelExpanded == value) {
+      return;
+    }
+    statsPanelExpanded = value;
+    _persistSettings();
+    notifyListeners();
+  }
+
+  void setSettingsPanelExpanded(bool value) {
+    if (settingsPanelExpanded == value) {
+      return;
+    }
+    settingsPanelExpanded = value;
     _persistSettings();
     notifyListeners();
   }
@@ -587,8 +612,11 @@ class WorkspaceController extends ChangeNotifier {
         autoScroll: autoScroll,
         showConnectionPanel: showConnectionPanel,
         showSendPanel: showSendPanel,
+        sendPanelVisibleBeforeTerminal: _sendPanelVisibleBeforeTerminal,
         showQuickCommandsPanel: showQuickCommandsPanel,
         terminalMode: terminalMode,
+        statsPanelExpanded: statsPanelExpanded,
+        settingsPanelExpanded: settingsPanelExpanded,
         logFontSize: logFontSize,
         language: language,
         hiddenSources: Set<String>.unmodifiable(_hiddenSources),
@@ -604,8 +632,11 @@ class WorkspaceController extends ChangeNotifier {
     autoScroll = settings.autoScroll;
     showConnectionPanel = settings.showConnectionPanel;
     terminalMode = settings.terminalMode;
+    _sendPanelVisibleBeforeTerminal = settings.sendPanelVisibleBeforeTerminal;
     showSendPanel = settings.terminalMode ? false : settings.showSendPanel;
     showQuickCommandsPanel = settings.showQuickCommandsPanel;
+    statsPanelExpanded = settings.statsPanelExpanded;
+    settingsPanelExpanded = settings.settingsPanelExpanded;
     logFontSize = settings.logFontSize.clamp(10, 22).toDouble();
     language = settings.language;
     _hiddenSources

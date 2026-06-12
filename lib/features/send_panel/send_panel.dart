@@ -7,6 +7,58 @@ import '../../application/session_controller.dart';
 import '../../core/encoding/data_format.dart';
 import '../../core/encoding/hex_codec.dart';
 
+InputDecoration _framelessSendDecoration(String label) {
+  return InputDecoration(
+    labelText: label,
+    floatingLabelBehavior: FloatingLabelBehavior.always,
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    errorBorder: InputBorder.none,
+    focusedErrorBorder: InputBorder.none,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+  );
+}
+
+ButtonStyle _framelessSendButtonStyle(BuildContext context) {
+  return OutlinedButton.styleFrom(
+    minimumSize: const Size(40, 40),
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    shape: const RoundedRectangleBorder(),
+    side: BorderSide.none,
+    backgroundColor: Colors.transparent,
+    foregroundColor: Theme.of(context).colorScheme.onSurface,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+}
+
+ButtonStyle _squareFilledButtonStyle() {
+  return FilledButton.styleFrom(
+    minimumSize: const Size(40, 40),
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    shape: const RoundedRectangleBorder(),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+}
+
+class _SendPanelSeparator extends StatelessWidget {
+  const _SendPanelSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      width: 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+    );
+  }
+}
+
 class SendPanel extends StatefulWidget {
   const SendPanel({
     super.key,
@@ -72,43 +124,39 @@ class _SendPanelState extends State<SendPanel> {
       animation: widget.controller,
       builder: (context, _) {
         final controller = widget.controller;
-        return Padding(
-          padding: const EdgeInsets.all(14),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final inputHeight = _inputHeightFor(constraints);
-              return ListView(
-                children: [
-                  SizedBox(
-                    height: inputHeight,
-                    child: Focus(
-                      onKeyEvent: _handleSendKey,
-                      child: TextField(
-                        controller: input,
-                        expands: true,
-                        minLines: null,
-                        maxLines: null,
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: InputDecoration(
-                          labelText: controller.strings.sendData,
-                          alignLabelWithHint: true,
-                          floatingLabelBehavior: FloatingLabelBehavior.always,
-                        ),
-                        onEditingComplete: () {},
-                      ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final inputHeight = _inputHeightFor(constraints);
+            return ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                SizedBox(
+                  height: inputHeight,
+                  child: Focus(
+                    onKeyEvent: _handleSendKey,
+                    child: TextField(
+                      controller: input,
+                      expands: true,
+                      minLines: null,
+                      maxLines: null,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration:
+                          _framelessSendDecoration(controller.strings.sendData)
+                              .copyWith(alignLabelWithHint: true),
+                      onEditingComplete: () {},
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  _SendActionsRow(
-                    controller: controller,
-                    interval: interval,
-                    onSend: _sendNow,
-                    onStart: _startAutoSend,
-                  ),
-                ],
-              );
-            },
-          ),
+                ),
+                const Divider(height: 1),
+                _SendActionsRow(
+                  controller: controller,
+                  interval: interval,
+                  onSend: _sendNow,
+                  onStart: _startAutoSend,
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -118,8 +166,7 @@ class _SendPanelState extends State<SendPanel> {
     if (!constraints.maxHeight.isFinite) {
       return 92;
     }
-    final actionsWrap = constraints.maxWidth < 390;
-    final reservedHeight = actionsWrap ? 96.0 : 56.0;
+    const reservedHeight = 41.0;
     return math.max(52, constraints.maxHeight - reservedHeight);
   }
 
@@ -214,7 +261,6 @@ class _SendActionsRow extends StatelessWidget {
     required this.onStart,
   });
 
-  static const double _gap = 8;
   static const double _intervalWidth = 120;
   static const double _autoSendWidth = 150;
   static const double _sendMinWidth = 96;
@@ -228,63 +274,44 @@ class _SendActionsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const inlineMinWidth =
-            _intervalWidth + _autoSendWidth + _sendMinWidth + _gap * 2;
-        if (constraints.maxWidth >= inlineMinWidth) {
-          return Row(
-            children: [
-              _AutoSendIntervalField(
-                controller: controller,
-                interval: interval,
-                width: _intervalWidth,
-              ),
-              const SizedBox(width: _gap),
-              _AutoSendButton(
-                controller: controller,
-                width: _autoSendWidth,
-                onStart: onStart,
-              ),
-              const SizedBox(width: _gap),
-              Expanded(
-                child: _SendButton(
-                  label: controller.strings.send,
-                  onPressed: onSend,
-                ),
-              ),
-            ],
-          );
-        }
+        const minInlineWidth = _intervalWidth + _autoSendWidth + _sendMinWidth;
+        final sendWidth = math.max(
+          _sendMinWidth,
+          constraints.maxWidth - _intervalWidth - _autoSendWidth - 2,
+        );
+        final contentWidth = math.max(constraints.maxWidth, minInlineWidth + 2);
 
-        const autoControlsWidth = _intervalWidth + _autoSendWidth + _gap;
-        final sendFitsAfterAuto =
-            constraints.maxWidth >= autoControlsWidth + _gap + _sendMinWidth;
-        final sendWidth = sendFitsAfterAuto
-            ? constraints.maxWidth - autoControlsWidth - _gap
-            : constraints.maxWidth;
-
-        return Wrap(
-          spacing: _gap,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            _AutoSendIntervalField(
-              controller: controller,
-              interval: interval,
-              width: _intervalWidth,
-            ),
-            _AutoSendButton(
-              controller: controller,
-              width: _autoSendWidth,
-              onStart: onStart,
-            ),
-            SizedBox(
-              width: sendWidth,
-              child: _SendButton(
-                label: controller.strings.send,
-                onPressed: onSend,
+        return ClipRect(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            child: SizedBox(
+              width: contentWidth,
+              child: Row(
+                children: [
+                  _AutoSendIntervalField(
+                    controller: controller,
+                    interval: interval,
+                    width: _intervalWidth,
+                  ),
+                  const _SendPanelSeparator(),
+                  _AutoSendButton(
+                    controller: controller,
+                    width: _autoSendWidth,
+                    onStart: onStart,
+                  ),
+                  const _SendPanelSeparator(),
+                  SizedBox(
+                    width: sendWidth,
+                    child: _SendButton(
+                      label: controller.strings.send,
+                      onPressed: onSend,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         );
       },
     );
@@ -300,6 +327,7 @@ class _SendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FilledButton(
+      style: _squareFilledButtonStyle(),
       onPressed: onPressed,
       child: Text(label),
     );
@@ -321,10 +349,11 @@ class _AutoSendIntervalField extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
+      height: 40,
       child: TextField(
         controller: interval,
         keyboardType: TextInputType.number,
-        decoration: InputDecoration(labelText: controller.strings.autoSendMs),
+        decoration: _framelessSendDecoration(controller.strings.autoSendMs),
       ),
     );
   }
@@ -345,7 +374,9 @@ class _AutoSendButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
+      height: 40,
       child: OutlinedButton.icon(
+        style: _framelessSendButtonStyle(context),
         onPressed: controller.isAutoSending ? controller.stopAutoSend : onStart,
         icon: Icon(controller.isAutoSending ? Icons.stop : Icons.timer),
         label: Text(

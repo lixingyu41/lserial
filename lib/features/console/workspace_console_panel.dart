@@ -1,18 +1,60 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../app/localization.dart';
 import '../../application/session_controller.dart';
 import '../../application/workspace_controller.dart';
 import '../../core/encoding/data_format.dart';
-import '../../core/encoding/hex_codec.dart';
-import '../../platform/external_link.dart';
 import '../../storage/log_buffer.dart';
 import '../send_panel/send_controls.dart';
 import 'frame_list_view.dart';
+
+ButtonStyle _toolbarIconStyle(
+  ColorScheme scheme, {
+  bool selected = false,
+}) {
+  return IconButton.styleFrom(
+    minimumSize: const Size.square(40),
+    fixedSize: const Size.square(40),
+    padding: EdgeInsets.zero,
+    shape: const RoundedRectangleBorder(),
+    backgroundColor: selected ? scheme.primaryContainer : null,
+    foregroundColor: selected ? scheme.onPrimaryContainer : null,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+}
+
+ButtonStyle _toolbarTextButtonStyle(ColorScheme scheme) {
+  return OutlinedButton.styleFrom(
+    minimumSize: const Size(40, 40),
+    fixedSize: null,
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    shape: const RoundedRectangleBorder(),
+    side: BorderSide.none,
+    backgroundColor: Colors.transparent,
+    foregroundColor: scheme.onSurface,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+}
+
+class _ToolbarSeparator extends StatelessWidget {
+  const _ToolbarSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      width: 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+    );
+  }
+}
 
 class WorkspaceConsolePanel extends StatefulWidget {
   const WorkspaceConsolePanel({
@@ -112,10 +154,13 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 5, 14, 5),
+    return SizedBox(
+      height: 40,
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final searchWidth = constraints.maxWidth >= 760
+              ? 326.0
+              : math.max(198.0, math.min(260.0, constraints.maxWidth * 0.42));
           final searchAndView = _SearchAndViewMode(
             controller: controller,
             search: search,
@@ -126,27 +171,28 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
             panelsStackVertically: panelsStackVertically,
           );
 
-          if (constraints.maxWidth < 520) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                searchAndView,
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: rightActions,
+          return ClipRect(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(width: searchWidth, child: searchAndView),
+                        const _ToolbarSeparator(),
+                      ],
+                    ),
+                    rightActions,
+                  ],
                 ),
-              ],
-            );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(width: 326, child: searchAndView),
-              const SizedBox(width: 8),
-              Expanded(child: rightActions),
-            ],
+              ),
+            ),
           );
         },
       ),
@@ -160,11 +206,10 @@ class _RightActions extends StatelessWidget {
     required this.panelsStackVertically,
   });
 
-  static const double _gap = 8;
   static const double _targetWidth = 190;
-  static const double _formatWidth = 96;
-  static const double _lineEndingWidth = 96;
-  static const double _shortcutWidth = 136;
+  static const double _formatWidth = 86;
+  static const double _lineEndingWidth = 64;
+  static const double _shortcutWidth = 94;
 
   final WorkspaceController controller;
   final bool panelsStackVertically;
@@ -175,71 +220,156 @@ class _RightActions extends StatelessWidget {
       animation: controller,
       builder: (context, _) {
         final sendController = controller.sendTarget;
-        return Wrap(
-          alignment: WrapAlignment.end,
-          runAlignment: WrapAlignment.end,
-          spacing: _gap,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              height: 34,
-              child: OutlinedButton.icon(
-                onPressed: controller.clearLog,
-                icon: const Icon(Icons.clear_all),
-                label: Text(controller.strings.clear),
-              ),
+        final terminalMode = controller.terminalMode;
+        final connectedIndexes = controller.connectedSessionIndexes;
+        final children = <Widget>[const _ToolbarSeparator()];
+
+        void add(Widget child) {
+          if (children.length > 1) {
+            children.add(const _ToolbarSeparator());
+          }
+          children.add(child);
+        }
+
+        add(
+          SizedBox.square(
+            dimension: 40,
+            child: IconButton(
+              tooltip: controller.strings.clear,
+              onPressed: () {
+                controller.clearLog();
+                _TopStatusBubble.show(context, controller.strings.clear);
+              },
+              icon: const Icon(Icons.close),
+              style: _toolbarIconStyle(Theme.of(context).colorScheme),
             ),
-            _TerminalModeButton(controller: controller),
+          ),
+        );
+        add(_TerminalModeButton(controller: controller));
+        if (connectedIndexes.length > 1) {
+          add(
             SendTargetField(
               controller: controller,
               width: _targetWidth,
               compact: true,
+              frameless: true,
+              onChanged: (index) => _TopStatusBubble.show(
+                context,
+                controller.strings.settingChanged(
+                  controller.strings.sendTo,
+                  controller.sessionLabel(index),
+                ),
+              ),
             ),
+          );
+        }
+        if (!terminalMode) {
+          add(
             SendFormatToggleButton(
               controller: sendController,
               width: _formatWidth,
-            ),
-            LineEndingField(
-              controller: sendController,
-              width: _lineEndingWidth,
-              compact: true,
-            ),
-            ShortcutModeField(
-              controller: sendController,
-              width: _shortcutWidth,
-              compact: true,
-            ),
-            _PanelToggleButton(
-              tooltip: controller.strings.leftConfigPanel,
-              selected: controller.showConnectionPanel,
-              icon: panelsStackVertically
-                  ? Icons.keyboard_arrow_up
-                  : Icons.keyboard_arrow_left,
-              onPressed: () => controller.setConnectionPanelVisible(
-                !controller.showConnectionPanel,
+              onChanged: (format) => _TopStatusBubble.show(
+                context,
+                controller.strings.settingChanged(
+                  controller.strings.inputFormat,
+                  controller.strings.payloadFormat(format),
+                ),
               ),
             ),
+          );
+          add(
+            LineEndingToggleButton(
+              controller: sendController,
+              width: _lineEndingWidth,
+              onChanged: (ending) => _TopStatusBubble.show(
+                context,
+                controller.strings.settingChanged(
+                  controller.strings.lineEnding,
+                  controller.strings.lineEndingLabel(ending),
+                ),
+              ),
+            ),
+          );
+          add(
+            ShortcutModeToggleButton(
+              controller: sendController,
+              width: _shortcutWidth,
+              onChanged: (mode) => _TopStatusBubble.show(
+                context,
+                controller.strings.settingChanged(
+                  controller.strings.sendShortcut,
+                  controller.strings.shortcutMode(mode),
+                ),
+              ),
+            ),
+          );
+        }
+        add(
+          _PanelToggleButton(
+            tooltip: controller.strings.leftConfigPanel,
+            selected: controller.showConnectionPanel,
+            icon: panelsStackVertically
+                ? Icons.keyboard_arrow_up
+                : Icons.keyboard_arrow_left,
+            onPressed: () {
+              final next = !controller.showConnectionPanel;
+              controller.setConnectionPanelVisible(next);
+              _TopStatusBubble.show(
+                context,
+                controller.strings.settingChanged(
+                  controller.strings.leftConfigPanel,
+                  controller.strings.onOff(next),
+                ),
+              );
+            },
+          ),
+        );
+        if (!terminalMode) {
+          add(
             _PanelToggleButton(
               tooltip: controller.strings.sendData,
               selected: controller.showSendPanel,
               icon: Icons.keyboard,
-              onPressed: () => controller.setSendPanelVisible(
-                !controller.showSendPanel,
-              ),
+              onPressed: () {
+                final next = !controller.showSendPanel;
+                controller.setSendPanelVisible(next);
+                _TopStatusBubble.show(
+                  context,
+                  controller.strings.settingChanged(
+                    controller.strings.sendData,
+                    controller.strings.onOff(next),
+                  ),
+                );
+              },
             ),
-            _PanelToggleButton(
-              tooltip: controller.strings.quickCommands,
-              selected: controller.showQuickCommandsPanel,
-              icon: panelsStackVertically
-                  ? Icons.keyboard_arrow_down
-                  : Icons.keyboard_arrow_right,
-              onPressed: () => controller.setQuickCommandsPanelVisible(
-                !controller.showQuickCommandsPanel,
-              ),
-            ),
-            _LogSettingsButton(controller: controller),
-          ],
+          );
+        }
+        add(
+          _PanelToggleButton(
+            tooltip: controller.strings.quickCommands,
+            selected: controller.showQuickCommandsPanel,
+            icon: panelsStackVertically
+                ? Icons.keyboard_arrow_down
+                : Icons.keyboard_arrow_right,
+            onPressed: () {
+              final next = !controller.showQuickCommandsPanel;
+              controller.setQuickCommandsPanelVisible(next);
+              _TopStatusBubble.show(
+                context,
+                controller.strings.settingChanged(
+                  controller.strings.quickCommands,
+                  controller.strings.onOff(next),
+                ),
+              );
+            },
+          ),
+        );
+        add(_LogSettingsButton(controller: controller));
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: children,
         );
       },
     );
@@ -255,19 +385,23 @@ class _TerminalModeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final selected = controller.terminalMode;
-    return SizedBox(
-      height: 34,
-      child: OutlinedButton.icon(
-        onPressed: () => controller.setTerminalMode(!selected),
+    return SizedBox.square(
+      dimension: 40,
+      child: IconButton(
+        tooltip: controller.strings.terminalMode,
+        onPressed: () {
+          final next = !selected;
+          controller.setTerminalMode(next);
+          _TopStatusBubble.show(
+            context,
+            controller.strings.settingChanged(
+              controller.strings.terminalMode,
+              controller.strings.onOff(next),
+            ),
+          );
+        },
         icon: const Icon(Icons.terminal),
-        label: Text(controller.strings.terminalMode),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: selected ? scheme.primaryContainer : null,
-          foregroundColor: selected ? scheme.onPrimaryContainer : null,
-          side: BorderSide(
-            color: selected ? scheme.primary : scheme.outline,
-          ),
-        ),
+        style: _toolbarIconStyle(scheme, selected: selected),
       ),
     );
   }
@@ -290,21 +424,12 @@ class _PanelToggleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return SizedBox.square(
-      dimension: 34,
-      child: IconButton.outlined(
+      dimension: 40,
+      child: IconButton(
         tooltip: tooltip,
         onPressed: onPressed,
         icon: Icon(icon),
-        style: IconButton.styleFrom(
-          minimumSize: const Size.square(34),
-          fixedSize: const Size.square(34),
-          padding: EdgeInsets.zero,
-          backgroundColor: selected ? scheme.primaryContainer : null,
-          foregroundColor: selected ? scheme.onPrimaryContainer : null,
-          side: BorderSide(
-            color: selected ? scheme.primary : scheme.outline,
-          ),
-        ),
+        style: _toolbarIconStyle(scheme, selected: selected),
       ),
     );
   }
@@ -332,7 +457,7 @@ class _SearchAndViewMode extends StatelessWidget {
             onChanged: onChanged,
           ),
         ),
-        const SizedBox(width: 8),
+        const _ToolbarSeparator(),
         _ViewModeToggleButton(controller: controller),
       ],
     );
@@ -353,13 +478,22 @@ class _ViewModeToggleButton extends StatelessWidget {
           message: controller.strings.viewFormat,
           child: SizedBox(
             width: 98,
-            height: 34,
+            height: 40,
             child: OutlinedButton.icon(
-              onPressed: () => controller.setViewMode(
-                controller.viewMode == ConsoleViewMode.ascii
+              style: _toolbarTextButtonStyle(Theme.of(context).colorScheme),
+              onPressed: () {
+                final next = controller.viewMode == ConsoleViewMode.ascii
                     ? ConsoleViewMode.hex
-                    : ConsoleViewMode.ascii,
-              ),
+                    : ConsoleViewMode.ascii;
+                controller.setViewMode(next);
+                _TopStatusBubble.show(
+                  context,
+                  controller.strings.settingChanged(
+                    controller.strings.viewFormat,
+                    controller.strings.consoleViewMode(next),
+                  ),
+                );
+              },
               icon: const Icon(Icons.visibility),
               label:
                   Text(controller.strings.consoleViewMode(controller.viewMode)),
@@ -385,17 +519,20 @@ class _SearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 34,
+      height: 40,
       child: TextField(
         controller: search,
         textAlignVertical: TextAlignVertical.center,
         decoration: InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
           prefixIcon: const Icon(Icons.search, size: 18),
           prefixIconConstraints:
-              const BoxConstraints(minWidth: 34, minHeight: 34),
+              const BoxConstraints.tightFor(width: 40, height: 40),
           hintText: hintText,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+          contentPadding: EdgeInsets.zero,
         ),
         onChanged: (_) => onChanged(),
       ),
@@ -532,43 +669,116 @@ class _TerminalInputLineState extends State<_TerminalInputLine> {
   }
 
   void _sendLine() {
-    if (!_validateHexInput()) {
-      return;
-    }
     final text = input.text;
     final shouldClear = widget.controller.isConnected;
-    widget.controller.sendText(text);
+    widget.controller.sendAsciiText(text);
     if (shouldClear) {
       input.clear();
     }
   }
+}
 
-  bool _validateHexInput() {
-    if (widget.controller.sendFormat != PayloadFormat.hex) {
-      return true;
-    }
-    try {
-      HexCodec.decode(input.text);
-      return true;
-    } on FormatException catch (error) {
-      final message = switch (error.message) {
-        'HEX input must contain an even number of digits.' =>
-          widget.controller.strings.hexNeedsEvenDigits,
-        _ => widget.controller.strings.hexInvalidChars,
-      };
-      _showFloatingTip(message);
-      return false;
-    }
+class _TopStatusBubble {
+  static OverlayEntry? _entry;
+
+  static void show(BuildContext context, String message) {
+    final overlay = Overlay.of(context, rootOverlay: true);
+    _entry?.remove();
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (context) => _TopStatusBubbleView(
+        message: message,
+        onDismissed: () {
+          if (_entry == entry) {
+            _entry = null;
+          }
+          entry.remove();
+        },
+      ),
+    );
+    _entry = entry;
+    overlay.insert(entry);
+  }
+}
+
+class _TopStatusBubbleView extends StatefulWidget {
+  const _TopStatusBubbleView({
+    required this.message,
+    required this.onDismissed,
+  });
+
+  final String message;
+  final VoidCallback onDismissed;
+
+  @override
+  State<_TopStatusBubbleView> createState() => _TopStatusBubbleViewState();
+}
+
+class _TopStatusBubbleViewState extends State<_TopStatusBubbleView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      reverseDuration: const Duration(milliseconds: 180),
+    )..forward();
+    _timer = Timer(const Duration(milliseconds: 1500), () {
+      _controller.reverse().whenComplete(widget.onDismissed);
+    });
   }
 
-  void _showFloatingTip(String message) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned(
+      top: MediaQuery.paddingOf(context).top + 10,
+      left: 16,
+      right: 16,
+      child: IgnorePointer(
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, -1.4),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(
+              parent: _controller,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            ),
+          ),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Material(
+              color: scheme.inverseSurface,
+              elevation: 10,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Text(
+                  widget.message,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: scheme.onInverseSurface,
+                      ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -600,16 +810,12 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
       link: _layerLink,
       child: SizedBox.square(
         key: _buttonKey,
-        dimension: 34,
-        child: IconButton.outlined(
+        dimension: 40,
+        child: IconButton(
           tooltip: widget.controller.strings.logSettings,
           onPressed: _toggleEntry,
           icon: const Icon(Icons.settings),
-          style: IconButton.styleFrom(
-            minimumSize: const Size.square(34),
-            fixedSize: const Size.square(34),
-            padding: EdgeInsets.zero,
-          ),
+          style: _toolbarIconStyle(Theme.of(context).colorScheme),
         ),
       ),
     );
@@ -618,6 +824,13 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
   void _toggleEntry() {
     if (_entry != null) {
       _removeEntry();
+      _TopStatusBubble.show(
+        context,
+        widget.controller.strings.settingChanged(
+          widget.controller.strings.logSettings,
+          widget.controller.strings.onOff(false),
+        ),
+      );
       return;
     }
 
@@ -651,6 +864,13 @@ class _LogSettingsButtonState extends State<_LogSettingsButton> {
       },
     );
     overlay.insert(_entry!);
+    _TopStatusBubble.show(
+      context,
+      widget.controller.strings.settingChanged(
+        widget.controller.strings.logSettings,
+        widget.controller.strings.onOff(true),
+      ),
+    );
   }
 
   double _popupMaxHeight(Size viewportSize) {
@@ -714,21 +934,28 @@ class _LogSettingsPopup extends StatelessWidget {
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                       const Spacer(),
-                      IconButton(
-                        tooltip: strings.close,
-                        onPressed: onClose,
-                        icon: const Icon(Icons.close),
+                      Semantics(
+                        label: strings.close,
+                        button: true,
+                        child: IconButton(
+                          onPressed: onClose,
+                          icon: const Icon(Icons.close),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const Divider(height: 1),
                   Row(
                     children: [
                       Expanded(child: Text(strings.logFontSize)),
-                      IconButton.outlined(
-                        tooltip: strings.decreaseLogFontSize,
-                        onPressed: controller.decreaseLogFontSize,
-                        icon: const Icon(Icons.remove),
+                      Semantics(
+                        label: strings.decreaseLogFontSize,
+                        button: true,
+                        child: IconButton(
+                          onPressed: controller.decreaseLogFontSize,
+                          icon: const Icon(Icons.remove),
+                          style: _toolbarIconStyle(scheme),
+                        ),
                       ),
                       SizedBox(
                         width: 44,
@@ -737,10 +964,14 @@ class _LogSettingsPopup extends StatelessWidget {
                           textAlign: TextAlign.center,
                         ),
                       ),
-                      IconButton.outlined(
-                        tooltip: strings.increaseLogFontSize,
-                        onPressed: controller.increaseLogFontSize,
-                        icon: const Icon(Icons.add),
+                      Semantics(
+                        label: strings.increaseLogFontSize,
+                        button: true,
+                        child: IconButton(
+                          onPressed: controller.increaseLogFontSize,
+                          icon: const Icon(Icons.add),
+                          style: _toolbarIconStyle(scheme),
+                        ),
                       ),
                     ],
                   ),
@@ -763,55 +994,12 @@ class _LogSettingsPopup extends StatelessWidget {
                       label: Text(strings.exportTxt),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  _LanguageSelector(controller: controller),
-                  const SizedBox(height: 12),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                  const _AppVersionText(),
-                  const SizedBox(height: 4),
-                  const _SettingsFooterLinks(),
                 ],
               ),
             ),
           ),
         );
       },
-    );
-  }
-}
-
-class _LanguageSelector extends StatelessWidget {
-  const _LanguageSelector({required this.controller});
-
-  final WorkspaceController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = controller.strings;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(strings.languageSetting,
-            style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final language in AppLanguage.values)
-              _SettingsFilterChip(
-                label: Text(language.nativeLabel),
-                selected: controller.language == language,
-                onSelected: (selected) {
-                  if (selected) {
-                    controller.setLanguage(language);
-                  }
-                },
-              ),
-          ],
-        ),
-      ],
     );
   }
 }
@@ -926,169 +1114,5 @@ class _SettingsFilterChip extends StatelessWidget {
       selected: selected,
       onSelected: onSelected,
     );
-  }
-}
-
-class _AppVersionText extends StatelessWidget {
-  const _AppVersionText();
-
-  static final Future<String?> _label = _loadVersionLabel();
-
-  static Future<String?> _loadVersionLabel() async {
-    try {
-      final info = await PackageInfo.fromPlatform();
-      final version = info.version.trim();
-      final buildNumber = info.buildNumber.trim();
-      if (version.isEmpty) {
-        return null;
-      }
-      return buildNumber.isEmpty ? 'v$version' : 'v$version+$buildNumber';
-    } on Object {
-      return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: _label,
-      builder: (context, snapshot) {
-        final label = snapshot.data;
-        if (label == null || label.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return Text(
-          label,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        );
-      },
-    );
-  }
-}
-
-class _SettingsFooterLinks extends StatelessWidget {
-  const _SettingsFooterLinks();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        _PlatformDownloadLinks(),
-        Spacer(),
-        _CopyrightLink(),
-      ],
-    );
-  }
-}
-
-class _PlatformDownloadLinks extends StatelessWidget {
-  const _PlatformDownloadLinks();
-
-  static final Uri _macUrl = Uri.parse(
-    'https://github.com/lixingyu41/lserial/releases/download/v1.0.3/LSerial-v1.0.3-macOS.dmg',
-  );
-  static final Uri _linuxUrl = Uri.parse(
-    'https://github.com/lixingyu41/lserial/releases/download/v1.0.3/LSerial-v1.0.3-Linux-x64.tar.gz',
-  );
-  static final Uri _windowsUrl = Uri.parse(
-    'https://github.com/lixingyu41/lserial/releases/download/v1.0.3/LSerial-v1.0.3-Windows-x64-Setup.exe',
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 2,
-      children: [
-        _DownloadIconButton(
-          tooltip: 'macOS',
-          icon: Icons.laptop_mac,
-          url: _macUrl,
-        ),
-        _DownloadIconButton(
-          tooltip: 'Linux',
-          icon: Icons.terminal,
-          url: _linuxUrl,
-        ),
-        _DownloadIconButton(
-          tooltip: 'Windows',
-          icon: Icons.desktop_windows,
-          url: _windowsUrl,
-        ),
-      ],
-    );
-  }
-}
-
-class _DownloadIconButton extends StatelessWidget {
-  const _DownloadIconButton({
-    required this.tooltip,
-    required this.icon,
-    required this.url,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final Uri url;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: () => _openFooterLink(context, url),
-      icon: Icon(icon),
-      style: IconButton.styleFrom(
-        minimumSize: const Size.square(28),
-        fixedSize: const Size.square(28),
-        iconSize: 16,
-        padding: EdgeInsets.zero,
-      ),
-    );
-  }
-}
-
-class _CopyrightLink extends StatelessWidget {
-  const _CopyrightLink();
-
-  static final Uri _url = Uri.parse('https://lixingyu.top');
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: () => _openFooterLink(context, _url),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Text(
-          'Copyright LIXINGYU',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: scheme.primary,
-                decoration: TextDecoration.underline,
-                decorationColor: scheme.primary,
-              ),
-        ),
-      ),
-    );
-  }
-}
-
-Future<void> _openFooterLink(BuildContext context, Uri url) async {
-  try {
-    await openExternalLink(url);
-  } on Object catch (error) {
-    if (!context.mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(error.toString()),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
   }
 }
