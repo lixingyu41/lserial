@@ -88,6 +88,7 @@ class SessionController extends ChangeNotifier {
   TransportSession? _session;
   Timer? _autoSendTimer;
   Timer? _statsTimer;
+  bool _autoSendInFlight = false;
   int _sequence = 0;
   int _nextCommandId = 4;
   bool _manualDisconnect = false;
@@ -652,9 +653,18 @@ class SessionController extends ChangeNotifier {
     final safeInterval = interval < const Duration(milliseconds: 20)
         ? const Duration(milliseconds: 20)
         : interval;
-    _autoSendTimer =
-        Timer.periodic(safeInterval, (_) => unawaited(sendText(text)));
+    _autoSendTimer = Timer.periodic(safeInterval, (_) => _sendAutoText(text));
     _setStatusMessage(strings.autoSendEvery(safeInterval.inMilliseconds));
+  }
+
+  void _sendAutoText(String text) {
+    if (_autoSendInFlight) {
+      return;
+    }
+    _autoSendInFlight = true;
+    unawaited(sendText(text).whenComplete(() {
+      _autoSendInFlight = false;
+    }));
   }
 
   void stopAutoSend() {

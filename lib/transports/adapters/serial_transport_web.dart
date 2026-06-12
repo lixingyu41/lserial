@@ -44,6 +44,7 @@ class WebSerialTransportSession implements TransportSession {
   JSObject? _port;
   JSObject? _reader;
   Future<void>? _readTask;
+  Future<void> _writeTail = Future<void>.value();
   bool _connected = false;
   bool _closing = false;
 
@@ -132,6 +133,13 @@ class WebSerialTransportSession implements TransportSession {
 
   @override
   Future<void> send(List<int> bytes) async {
+    final payload = Uint8List.fromList(bytes);
+    final write = _writeTail.then((_) => _write(payload));
+    _writeTail = write.catchError((Object _) {});
+    await write;
+  }
+
+  Future<void> _write(Uint8List bytes) async {
     final port = _port;
     if (port == null || !_connected) {
       throw StateError('Web Serial port is not open.');
@@ -149,7 +157,11 @@ class WebSerialTransportSession implements TransportSession {
           )
           .toDart;
     } finally {
-      writer.callMethod<JSAny?>('releaseLock'.toJS);
+      try {
+        writer.callMethod<JSAny?>('releaseLock'.toJS);
+      } on Object {
+        // Continue the write queue even if the browser already released it.
+      }
     }
   }
 

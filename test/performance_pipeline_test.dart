@@ -293,6 +293,38 @@ void main() {
     expect(controller.displaySnapshot.value.frames.last.bytes,
         Uint8List.fromList(<int>[0x03]));
   });
+
+  test('SessionController auto send does not overlap slow sends', () async {
+    final transport = _FakeTransportSession(
+      sendDelay: const Duration(milliseconds: 60),
+    );
+    final controller = SessionController(
+      registry: _FakeTransportRegistry(transport),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        type: TransportType.serial,
+        serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+      ),
+    );
+
+    await controller.connect();
+    controller.startAutoSend('A', const Duration(milliseconds: 1));
+    await Future<void>.delayed(const Duration(milliseconds: 130));
+    controller.stopAutoSend();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    expect(transport.sentBytes, isNotEmpty);
+    expect(transport.maxConcurrentSends, 1);
+  });
 }
 
 class _FakeTransportRegistry extends TransportRegistry {
@@ -308,9 +340,14 @@ class _FakeTransportRegistry extends TransportRegistry {
 }
 
 class _FakeTransportSession implements TransportSession {
+  _FakeTransportSession({this.sendDelay = Duration.zero});
+
+  final Duration sendDelay;
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
   final List<List<int>> sentBytes = <List<int>>[];
+  int maxConcurrentSends = 0;
+  int _activeSends = 0;
   var _connected = false;
 
   @override
@@ -338,7 +375,18 @@ class _FakeTransportSession implements TransportSession {
 
   @override
   Future<void> send(List<int> bytes) async {
-    sentBytes.add(List<int>.of(bytes));
+    _activeSends++;
+    if (_activeSends > maxConcurrentSends) {
+      maxConcurrentSends = _activeSends;
+    }
+    try {
+      if (sendDelay != Duration.zero) {
+        await Future<void>.delayed(sendDelay);
+      }
+      sentBytes.add(List<int>.of(bytes));
+    } finally {
+      _activeSends--;
+    }
   }
 
   void addIncoming(List<int> bytes) {
