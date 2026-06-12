@@ -988,13 +988,13 @@ class _PlatformDownloadLinks extends StatelessWidget {
   const _PlatformDownloadLinks();
 
   static final Uri _macUrl = Uri.parse(
-    'https://github.com/lixingyu41/lserial/releases/download/v1.0.2/LSerial-v1.0.2-macOS.dmg',
+    'https://github.com/lixingyu41/lserial/releases/download/v1.0.3/LSerial-v1.0.3-macOS.dmg',
   );
   static final Uri _linuxUrl = Uri.parse(
-    'https://github.com/lixingyu41/lserial/releases/download/v1.0.2/LSerial-v1.0.2-Linux-x64.tar.gz',
+    'https://github.com/lixingyu41/lserial/releases/download/v1.0.3/LSerial-v1.0.3-Linux-x64.tar.gz',
   );
   static final Uri _windowsUrl = Uri.parse(
-    'https://github.com/lixingyu41/lserial/releases/download/v1.0.2/LSerial-v1.0.2-Windows-x64-Setup.exe',
+    'https://github.com/lixingyu41/lserial/releases/download/v1.0.3/LSerial-v1.0.3-Windows-x64-Setup.exe',
   );
 
   @override
