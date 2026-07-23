@@ -112,6 +112,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   late final TextEditingController remoteHost;
   late final TextEditingController remotePort;
   late final TextEditingController baudRate;
+  late final TextEditingController forwardBaudRate;
   late final TextEditingController packetInterval;
   late final TextEditingController packetDelimiter;
   late final TextEditingController bluetoothDeviceId;
@@ -132,6 +133,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     remoteHost = TextEditingController(text: config.udp.remoteHost);
     remotePort = TextEditingController(text: config.udp.remotePort.toString());
     baudRate = TextEditingController(text: config.serial.baudRate.toString());
+    forwardBaudRate =
+        TextEditingController(text: config.serial.forwardBaudRate.toString());
     packetInterval =
         TextEditingController(text: config.serial.packetIntervalMs.toString());
     packetDelimiter =
@@ -164,6 +167,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     remoteHost.dispose();
     remotePort.dispose();
     baudRate.dispose();
+    forwardBaudRate.dispose();
     packetInterval.dispose();
     packetDelimiter.dispose();
     bluetoothDeviceId.dispose();
@@ -351,6 +355,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     remoteHost.text = config.udp.remoteHost;
     remotePort.text = config.udp.remotePort.toString();
     baudRate.text = config.serial.baudRate.toString();
+    forwardBaudRate.text = config.serial.forwardBaudRate.toString();
     packetInterval.text = config.serial.packetIntervalMs.toString();
     packetDelimiter.text = config.serial.packetDelimiter;
     bluetoothDeviceId.text = config.bluetooth.deviceId;
@@ -367,19 +372,67 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     }
 
     final occupiedPorts = widget.occupiedSerialPorts;
+    final blockedPrimaryPorts = <String>{
+      ...occupiedPorts,
+      if (config.serial.forwardingEnabled &&
+          config.serial.forwardPortName.isNotEmpty)
+        config.serial.forwardPortName,
+    };
     final wheelPorts = controller.serialPorts
         .where((portName) =>
-            !occupiedPorts.contains(portName) &&
+            !blockedPrimaryPorts.contains(portName) &&
             !isSerialPickerOption(portName))
         .toList(growable: false);
     final baudOptions = _baudOptionsFor(config.serial.baudRate);
     final selectedPort =
         controller.serialPorts.contains(config.serial.portName) &&
-                !occupiedPorts.contains(config.serial.portName)
+                !blockedPrimaryPorts.contains(config.serial.portName)
             ? config.serial.portName
+            : null;
+    final forwardPorts = controller.serialPorts
+        .where((portName) =>
+            !occupiedPorts.contains(portName) &&
+            portName != config.serial.portName &&
+            !isSerialPickerOption(portName))
+        .toList(growable: false);
+    final selectedForwardPort =
+        forwardPorts.contains(config.serial.forwardPortName)
+            ? config.serial.forwardPortName
             : null;
     return Column(
       children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: Text(controller.strings.serialForwarding),
+          subtitle: Text(controller.strings.serialForwardingDescription),
+          value: config.serial.forwardingEnabled,
+          onChanged: controller.isConnected
+              ? null
+              : (enabled) {
+                  final current = controller.config;
+                  final availablePeers = controller.serialPorts
+                      .where((portName) =>
+                          !occupiedPorts.contains(portName) &&
+                          portName != current.serial.portName &&
+                          !isSerialPickerOption(portName))
+                      .toList(growable: false);
+                  final availablePeer =
+                      availablePeers.isEmpty ? null : availablePeers.first;
+                  controller.updateConfig(
+                    current.copyWith(
+                      serial: current.serial.copyWith(
+                        forwardingEnabled: enabled,
+                        forwardPortName:
+                            current.serial.forwardPortName.isNotEmpty
+                                ? current.serial.forwardPortName
+                                : availablePeer ?? '',
+                      ),
+                    ),
+                  );
+                },
+        ),
+        const Divider(height: 1),
         WheelStepper(
           enabled: !controller.isConnected && wheelPorts.length > 1,
           onStep: (step) => _stepSerialPort(wheelPorts, step),
@@ -387,20 +440,23 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             key: ValueKey(
                 'serial-${controller.serialPorts.join("|")}-$selectedPort'),
             initialValue: selectedPort,
-            decoration:
-                InputDecoration(labelText: controller.strings.serialPort),
+            decoration: InputDecoration(
+              labelText: config.serial.forwardingEnabled
+                  ? controller.strings.serialPortA
+                  : controller.strings.serialPort,
+            ),
             items: controller.serialPorts
                 .map(
                   (portName) => DropdownMenuItem(
                     value: portName,
-                    enabled: !occupiedPorts.contains(portName),
+                    enabled: !blockedPrimaryPorts.contains(portName),
                     child: Text(
                       serialPortOptionLabel(
                         portName,
                         pickLabel: controller.strings.chooseWebSerialPort,
                         selectedLabel: controller.strings.webSerialSelectedPort,
                       ),
-                      style: occupiedPorts.contains(portName)
+                      style: blockedPrimaryPorts.contains(portName)
                           ? TextStyle(color: Theme.of(context).disabledColor)
                           : null,
                     ),
@@ -427,7 +483,11 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             initialValue: config.serial.baudRate,
             isExpanded: true,
             menuMaxHeight: 260,
-            decoration: InputDecoration(labelText: controller.strings.baudRate),
+            decoration: InputDecoration(
+              labelText: config.serial.forwardingEnabled
+                  ? controller.strings.baudRateA
+                  : controller.strings.baudRate,
+            ),
             items: baudOptions
                 .map(
                   (value) => DropdownMenuItem<int>(
@@ -450,6 +510,84 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                   },
           ),
         ),
+        if (config.serial.forwardingEnabled) ...[
+          const Divider(height: 1),
+          DropdownButtonFormField<String>(
+            key: ValueKey(
+              'serial-forward-${controller.serialPorts.join("|")}-$selectedForwardPort',
+            ),
+            initialValue: selectedForwardPort,
+            decoration:
+                InputDecoration(labelText: controller.strings.serialPortB),
+            items: controller.serialPorts.map(
+              (portName) {
+                final blocked = occupiedPorts.contains(portName) ||
+                    portName == config.serial.portName ||
+                    isSerialPickerOption(portName);
+                return DropdownMenuItem(
+                  value: portName,
+                  enabled: !blocked,
+                  child: Text(
+                    serialPortOptionLabel(
+                      portName,
+                      pickLabel: controller.strings.chooseWebSerialPort,
+                      selectedLabel: controller.strings.webSerialSelectedPort,
+                    ),
+                    style: blocked
+                        ? TextStyle(color: Theme.of(context).disabledColor)
+                        : null,
+                  ),
+                );
+              },
+            ).toList(),
+            onChanged: controller.isConnected
+                ? null
+                : (value) {
+                    if (value != null) {
+                      final current = controller.config;
+                      controller.updateConfig(
+                        current.copyWith(
+                          serial:
+                              current.serial.copyWith(forwardPortName: value),
+                        ),
+                      );
+                    }
+                  },
+          ),
+          const Divider(height: 1),
+          DropdownButtonFormField<int>(
+            key: ValueKey(
+              'forward-baud-${identityHashCode(controller)}-${config.serial.forwardBaudRate}',
+            ),
+            initialValue: config.serial.forwardBaudRate,
+            isExpanded: true,
+            menuMaxHeight: 260,
+            decoration:
+                InputDecoration(labelText: controller.strings.baudRateB),
+            items: _baudOptionsFor(config.serial.forwardBaudRate)
+                .map(
+                  (value) => DropdownMenuItem<int>(
+                    value: value,
+                    child: Text('$value'),
+                  ),
+                )
+                .toList(),
+            onChanged: controller.isConnected
+                ? null
+                : (value) {
+                    if (value != null) {
+                      forwardBaudRate.text = '$value';
+                      final current = controller.config;
+                      controller.updateConfig(
+                        current.copyWith(
+                          serial:
+                              current.serial.copyWith(forwardBaudRate: value),
+                        ),
+                      );
+                    }
+                  },
+          ),
+        ],
         const Divider(height: 1),
         TextField(
           controller: packetInterval,
@@ -1005,6 +1143,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   Future<void> _connect() async {
     final current = controller.config;
     final serialBaud = int.tryParse(baudRate.text) ?? current.serial.baudRate;
+    final serialForwardBaud =
+        int.tryParse(forwardBaudRate.text) ?? current.serial.forwardBaudRate;
     final serialPacketInterval = _parseNonNegativeInt(
       packetInterval.text,
       current.serial.packetIntervalMs,
@@ -1017,6 +1157,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       current.copyWith(
         serial: current.serial.copyWith(
           baudRate: serialBaud,
+          forwardBaudRate: serialForwardBaud,
           packetIntervalMs: serialPacketInterval,
           packetDelimiter: packetDelimiter.text,
         ),

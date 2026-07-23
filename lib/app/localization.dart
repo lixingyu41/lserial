@@ -83,11 +83,18 @@ class AppStrings {
   String get connectionType => isZh ? '连接方式' : 'Transport';
   String get disabled => isZh ? '不支持' : 'unsupported';
   String get serialPort => isZh ? '串口' : 'Serial port';
+  String get serialPortA => isZh ? '串口 A' : 'Serial port A';
+  String get serialPortB => isZh ? '串口 B' : 'Serial port B';
+  String get serialForwarding => isZh ? '双向串口转发' : 'Bidirectional forwarding';
+  String get serialForwardingDescription =>
+      isZh ? '原始字节在 A 与 B 之间双向转发' : 'Forward raw bytes between A and B';
   String get chooseWebSerialPort =>
       isZh ? '选择 Web 串口' : 'Choose Web serial port';
   String get webSerialSelectedPort =>
       isZh ? '已选择 Web 串口' : 'Web serial port selected';
   String get baudRate => isZh ? '波特率' : 'Baud';
+  String get baudRateA => isZh ? 'A 波特率' : 'Baud A';
+  String get baudRateB => isZh ? 'B 波特率' : 'Baud B';
   String get packetIntervalMs => isZh ? '分包间隔 ms' : 'Packet gap ms';
   String get packetDelimiter => isZh ? '分包分隔符' : 'Packet delimiter';
   String get packetDelimiterPresets =>
@@ -359,6 +366,8 @@ class AppStrings {
       'Web Serial port is not open.' => 'Web Serial 串口未打开。',
       'Web Serial writable stream is not available.' => 'Web Serial 写入流不可用。',
       'No serial port selected.' => '未选择串口。',
+      'No forwarding serial port selected.' => '未选择转发串口。',
+      'Forwarding serial ports must be different.' => '转发使用的两个串口不能相同。',
       'Serial port is not open.' => '串口未打开。',
       'TCP client is not connected.' => 'TCP 客户端未连接。',
       'TCP server has no connected clients.' => 'TCP 服务端没有已连接的客户端。',

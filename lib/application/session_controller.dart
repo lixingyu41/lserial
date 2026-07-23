@@ -84,8 +84,12 @@ class SessionController extends ChangeNotifier {
 
   late final ReceivePipeline _pipeline;
   StreamSubscription<List<int>>? _incomingSubscription;
+  StreamSubscription<List<int>>? _forwardIncomingSubscription;
   StreamSubscription<List<BluetoothDeviceInfo>>? _bluetoothScanSubscription;
   TransportSession? _session;
+  TransportSession? _forwardSession;
+  Future<void> _primaryWriteTail = Future<void>.value();
+  Future<void> _forwardWriteTail = Future<void>.value();
   Timer? _autoSendTimer;
   Timer? _statsTimer;
   bool _autoSendInFlight = false;
@@ -139,7 +143,9 @@ class SessionController extends ChangeNotifier {
   Listenable get statsListenable => _statsNotifier;
 
   String get sourceLabel => switch (config.type) {
-        TransportType.serial => serialDisplayName,
+        TransportType.serial => config.serial.forwardingEnabled
+            ? '${serialDisplayName}_${_titleValue(config.serial.forwardPortName, 'Serial')}'
+            : serialDisplayName,
         TransportType.bluetooth => _titleValue(
             config.bluetooth.deviceName.isEmpty
                 ? config.bluetooth.deviceId
@@ -163,8 +169,9 @@ class SessionController extends ChangeNotifier {
   }
 
   String get windowTitle => switch (config.type) {
-        TransportType.serial =>
-          'LSerial-$serialDisplayName-${config.serial.baudRate}',
+        TransportType.serial => config.serial.forwardingEnabled
+            ? 'LSerial-$serialDisplayName-${_titleValue(config.serial.forwardPortName, 'Serial')}-Bridge'
+            : 'LSerial-$serialDisplayName-${config.serial.baudRate}',
         TransportType.bluetooth =>
           'LSerial-BLE-${_titleValue(config.bluetooth.deviceName.isEmpty ? config.bluetooth.deviceId : config.bluetooth.deviceName, 'Device')}',
         TransportType.tcpClient =>
@@ -503,26 +510,45 @@ class SessionController extends ChangeNotifier {
 
     try {
       _syncReceivePacketOptions();
+      _validateSerialForwarding();
       final session = await registry.create(config);
       await session.connect();
+      TransportSession? forwardSession;
+      if (config.type == TransportType.serial &&
+          config.serial.forwardingEnabled) {
+        try {
+          forwardSession = await registry.create(
+            config.copyWith(serial: config.serial.forwardEndpoint),
+          );
+          await forwardSession.connect();
+        } on Object {
+          await session.disconnect();
+          rethrow;
+        }
+      }
       _session = session;
+      _forwardSession = forwardSession;
       _manualDisconnect = false;
       _incomingSubscription = session.incoming.listen(
-        (bytes) => _pipeline.addBytes(bytes, source: sourceLabel),
+        forwardSession == null
+            ? (bytes) => _pipeline.addBytes(bytes, source: sourceLabel)
+            : _forwardFromPrimary,
         onError: (Object error, StackTrace stackTrace) {
           _appendSystem(strings.receiveError(_formatError(error)));
         },
-        onDone: () {
-          if (!_manualDisconnect) {
-            status = TransportStatus.error;
-            statusMessage = strings.unexpectedDisconnect;
-            _stopStatsTicker();
-            _appendSystem(strings.unexpectedDisconnect);
-            notifyListeners();
-          }
-        },
+        onDone: _handleUnexpectedDisconnect,
         cancelOnError: false,
       );
+      if (forwardSession != null) {
+        _forwardIncomingSubscription = forwardSession.incoming.listen(
+          _forwardFromPeer,
+          onError: (Object error, StackTrace stackTrace) {
+            _appendSystem(strings.receiveError(_formatError(error)));
+          },
+          onDone: _handleUnexpectedDisconnect,
+          cancelOnError: false,
+        );
+      }
       status = TransportStatus.connected;
       statusMessage = strings.connectedTo(sourceLabel);
       _sessionStartedAt = DateTime.now();
@@ -550,8 +576,14 @@ class SessionController extends ChangeNotifier {
 
     await _incomingSubscription?.cancel();
     _incomingSubscription = null;
+    await _forwardIncomingSubscription?.cancel();
+    _forwardIncomingSubscription = null;
+    await _forwardSession?.disconnect();
+    _forwardSession = null;
     await _session?.disconnect();
     _session = null;
+    _primaryWriteTail = Future<void>.value();
+    _forwardWriteTail = Future<void>.value();
     _pipeline.flush();
 
     status = TransportStatus.disconnected;
@@ -639,7 +671,7 @@ class SessionController extends ChangeNotifier {
     }
 
     try {
-      await session.send(bytes);
+      await _queueWrite(session, bytes, primary: true);
       _commitFrames(<DataFrame>[
         DataFrame(
           sequence: _nextSequence(),
@@ -952,6 +984,107 @@ class SessionController extends ChangeNotifier {
     );
   }
 
+  void _validateSerialForwarding() {
+    if (config.type != TransportType.serial ||
+        !config.serial.forwardingEnabled) {
+      return;
+    }
+    final primary = config.serial.portName.trim();
+    final peer = config.serial.forwardPortName.trim();
+    if (primary.isEmpty) {
+      throw StateError('No serial port selected.');
+    }
+    if (peer.isEmpty) {
+      throw StateError('No forwarding serial port selected.');
+    }
+    if (primary.toLowerCase() == peer.toLowerCase()) {
+      throw StateError('Forwarding serial ports must be different.');
+    }
+  }
+
+  void _forwardFromPrimary(List<int> bytes) {
+    _pipeline.addBytes(
+      bytes,
+      source: '${config.serial.portName} → ${config.serial.forwardPortName}',
+      direction: FrameDirection.tx,
+    );
+    final target = _forwardSession;
+    if (target != null) {
+      unawaited(_queueForwardedWrite(target, bytes, primary: false));
+    }
+  }
+
+  void _forwardFromPeer(List<int> bytes) {
+    _pipeline.addBytes(
+      bytes,
+      source: '${config.serial.forwardPortName} → ${config.serial.portName}',
+      direction: FrameDirection.rx,
+    );
+    final target = _session;
+    if (target != null) {
+      unawaited(_queueForwardedWrite(target, bytes, primary: true));
+    }
+  }
+
+  Future<void> _queueForwardedWrite(
+    TransportSession target,
+    List<int> bytes, {
+    required bool primary,
+  }) async {
+    try {
+      await _queueWrite(target, bytes, primary: primary);
+    } on Object catch (error) {
+      _appendSystem(strings.sendFailed(_formatError(error)));
+    }
+  }
+
+  Future<void> _queueWrite(
+    TransportSession target,
+    List<int> bytes, {
+    required bool primary,
+  }) {
+    final previous = primary ? _primaryWriteTail : _forwardWriteTail;
+    final next = previous
+        .then<void>((_) {}, onError: (Object _, StackTrace __) {})
+        .then((_) => target.send(List<int>.of(bytes)));
+    if (primary) {
+      _primaryWriteTail = next;
+    } else {
+      _forwardWriteTail = next;
+    }
+    return next;
+  }
+
+  void _handleUnexpectedDisconnect() {
+    if (_manualDisconnect || status == TransportStatus.error) {
+      return;
+    }
+    _manualDisconnect = true;
+    status = TransportStatus.error;
+    statusMessage = strings.unexpectedDisconnect;
+    _stopStatsTicker();
+    _appendSystem(strings.unexpectedDisconnect);
+    notifyListeners();
+    unawaited(_closeTransportSessions());
+  }
+
+  Future<void> _closeTransportSessions() async {
+    final primarySubscription = _incomingSubscription;
+    final forwardSubscription = _forwardIncomingSubscription;
+    final primarySession = _session;
+    final forwardSession = _forwardSession;
+    _incomingSubscription = null;
+    _forwardIncomingSubscription = null;
+    _session = null;
+    _forwardSession = null;
+    await primarySubscription?.cancel();
+    await forwardSubscription?.cancel();
+    await forwardSession?.disconnect();
+    await primarySession?.disconnect();
+    _primaryWriteTail = Future<void>.value();
+    _forwardWriteTail = Future<void>.value();
+  }
+
   String _formatError(Object error) {
     if (error is SocketException) {
       return _formatSocketException(error);
@@ -995,11 +1128,14 @@ class SessionController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _manualDisconnect = true;
     _autoSendTimer?.cancel();
     _statsTimer?.cancel();
     _incomingSubscription?.cancel();
+    _forwardIncomingSubscription?.cancel();
     _bluetoothScanSubscription?.cancel();
     _session?.disconnect();
+    _forwardSession?.disconnect();
     _pipeline.dispose();
     displaySnapshot.dispose();
     _statsNotifier.dispose();

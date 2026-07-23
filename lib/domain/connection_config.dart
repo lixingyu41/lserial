@@ -28,6 +28,9 @@ class SerialConfig {
     this.parity = SerialParity.none,
     this.packetIntervalMs = defaultSerialPacketIntervalMs,
     this.packetDelimiter = defaultSerialPacketDelimiter,
+    this.forwardingEnabled = false,
+    this.forwardPortName = '',
+    this.forwardBaudRate = 115200,
   });
 
   final String portName;
@@ -37,6 +40,9 @@ class SerialConfig {
   final SerialParity parity;
   final int packetIntervalMs;
   final String packetDelimiter;
+  final bool forwardingEnabled;
+  final String forwardPortName;
+  final int forwardBaudRate;
 
   Duration get packetInterval {
     final milliseconds = packetIntervalMs < 0 ? 0 : packetIntervalMs;
@@ -54,6 +60,9 @@ class SerialConfig {
     SerialParity? parity,
     int? packetIntervalMs,
     String? packetDelimiter,
+    bool? forwardingEnabled,
+    String? forwardPortName,
+    int? forwardBaudRate,
   }) {
     return SerialConfig(
       portName: portName ?? this.portName,
@@ -63,8 +72,18 @@ class SerialConfig {
       parity: parity ?? this.parity,
       packetIntervalMs: packetIntervalMs ?? this.packetIntervalMs,
       packetDelimiter: packetDelimiter ?? this.packetDelimiter,
+      forwardingEnabled: forwardingEnabled ?? this.forwardingEnabled,
+      forwardPortName: forwardPortName ?? this.forwardPortName,
+      forwardBaudRate: forwardBaudRate ?? this.forwardBaudRate,
     );
   }
+
+  SerialConfig get forwardEndpoint => copyWith(
+        portName: forwardPortName,
+        baudRate: forwardBaudRate,
+        forwardingEnabled: false,
+        forwardPortName: '',
+      );
 }
 
 List<int> parseSerialPacketDelimiter(String value) {

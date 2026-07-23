@@ -244,14 +244,23 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   Set<String> occupiedSerialPortsExcept(SessionController current) {
-    return sessions
-        .where((session) =>
-            session != current &&
-            session.isConnected &&
-            session.config.type == TransportType.serial)
-        .map((session) => session.config.serial.portName)
-        .where((port) => !isGenericSerialPortName(port))
-        .toSet();
+    final ports = <String>{};
+    for (final session in sessions) {
+      if (session == current ||
+          !session.isConnected ||
+          session.config.type != TransportType.serial) {
+        continue;
+      }
+      final serial = session.config.serial;
+      if (!isGenericSerialPortName(serial.portName)) {
+        ports.add(serial.portName);
+      }
+      if (serial.forwardingEnabled &&
+          !isGenericSerialPortName(serial.forwardPortName)) {
+        ports.add(serial.forwardPortName);
+      }
+    }
+    return ports;
   }
 
   void setViewMode(ConsoleViewMode mode) {

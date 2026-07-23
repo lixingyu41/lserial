@@ -30,6 +30,7 @@ class ReceivePipeline {
   Timer? _packetTimer;
   DateTime? _packetTimestamp;
   String? _packetSource;
+  FrameDirection? _packetDirection;
   Duration _packetInterval;
   Uint8List _packetDelimiter;
   bool _disposed = false;
@@ -72,7 +73,11 @@ class ReceivePipeline {
   }
 
   /// Hot path: copy incoming bytes once, retain raw bytes, and defer UI work.
-  void addBytes(List<int> bytes, {required String source}) {
+  void addBytes(
+    List<int> bytes, {
+    required String source,
+    FrameDirection direction = FrameDirection.rx,
+  }) {
     if (_disposed || bytes.isEmpty) {
       return;
     }
@@ -85,7 +90,7 @@ class ReceivePipeline {
         DataFrame(
           sequence: nextSequence(),
           timestamp: now,
-          direction: FrameDirection.rx,
+          direction: direction,
           bytes: copy,
           source: source,
         ),
@@ -93,11 +98,13 @@ class ReceivePipeline {
       return;
     }
 
-    if (_packetBytes.isNotEmpty && _packetSource != source) {
+    if (_packetBytes.isNotEmpty &&
+        (_packetSource != source || _packetDirection != direction)) {
       _flushPacket();
     }
     _packetTimestamp ??= now;
     _packetSource ??= source;
+    _packetDirection ??= direction;
     _packetBytes.addAll(copy);
     final flushedDelimiterPackets = _flushDelimitedPackets();
 
@@ -135,7 +142,7 @@ class ReceivePipeline {
         DataFrame(
           sequence: nextSequence(),
           timestamp: _packetTimestamp ?? DateTime.now(),
-          direction: FrameDirection.rx,
+          direction: _packetDirection ?? FrameDirection.rx,
           bytes: bytes,
           source: _packetSource ?? '',
         ),
@@ -150,6 +157,7 @@ class ReceivePipeline {
       if (_packetBytes.isEmpty) {
         _packetTimestamp = null;
         _packetSource = null;
+        _packetDirection = null;
       }
     }
     return flushed;
@@ -229,14 +237,16 @@ class ReceivePipeline {
     final bytes = Uint8List.fromList(_packetBytes);
     final timestamp = _packetTimestamp ?? DateTime.now();
     final source = _packetSource ?? '';
+    final direction = _packetDirection ?? FrameDirection.rx;
     _packetBytes.clear();
     _packetTimestamp = null;
     _packetSource = null;
+    _packetDirection = null;
     _addPending(
       DataFrame(
         sequence: nextSequence(),
         timestamp: timestamp,
-        direction: FrameDirection.rx,
+        direction: direction,
         bytes: bytes,
         source: source,
       ),

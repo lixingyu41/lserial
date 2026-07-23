@@ -325,6 +325,175 @@ void main() {
     expect(transport.sentBytes, isNotEmpty);
     expect(transport.maxConcurrentSends, 1);
   });
+
+  test('SessionController forwards serial bytes in both directions', () async {
+    final primary = _FakeTransportSession(label: 'COM1');
+    final peer = _FakeTransportSession(label: 'COM2');
+    final controller = SessionController(
+      registry: _ForwardingTransportRegistry(<String, TransportSession>{
+        'COM1': primary,
+        'COM2': peer,
+      }),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        type: TransportType.serial,
+        serial: SerialConfig(
+          portName: 'COM1',
+          packetIntervalMs: 0,
+          packetDelimiter: '',
+          forwardingEnabled: true,
+          forwardPortName: 'COM2',
+        ),
+      ),
+    );
+
+    await controller.connect();
+    primary.addIncoming(<int>[0x41, 0x42]);
+    peer.addIncoming(<int>[0x43]);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    expect(peer.sentBytes, <List<int>>[
+      <int>[0x41, 0x42],
+    ]);
+    expect(primary.sentBytes, <List<int>>[
+      <int>[0x43],
+    ]);
+    final traffic = controller.displaySnapshot.value.frames
+        .where((frame) => frame.direction != FrameDirection.system)
+        .toList();
+    expect(
+      traffic.map((frame) => frame.source),
+      <String>['COM1 → COM2', 'COM2 → COM1'],
+    );
+    expect(
+      traffic.map((frame) => frame.direction),
+      <FrameDirection>[FrameDirection.tx, FrameDirection.rx],
+    );
+  });
+
+  test('SessionController rejects forwarding to the same serial port',
+      () async {
+    final primary = _FakeTransportSession(label: 'COM1');
+    final controller = SessionController(
+      registry: _ForwardingTransportRegistry(<String, TransportSession>{
+        'COM1': primary,
+      }),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        serial: SerialConfig(
+          portName: 'COM1',
+          forwardingEnabled: true,
+          forwardPortName: 'com1',
+        ),
+      ),
+    );
+
+    await controller.connect();
+
+    expect(controller.status, TransportStatus.error);
+    expect(primary.isConnected, isFalse);
+  });
+
+  test('Serial forwarding serializes writes to a slow destination', () async {
+    final primary = _FakeTransportSession(label: 'COM1');
+    final peer = _FakeTransportSession(
+      label: 'COM2',
+      sendDelay: const Duration(milliseconds: 30),
+    );
+    final controller = SessionController(
+      registry: _ForwardingTransportRegistry(<String, TransportSession>{
+        'COM1': primary,
+        'COM2': peer,
+      }),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        serial: SerialConfig(
+          portName: 'COM1',
+          packetIntervalMs: 0,
+          packetDelimiter: '',
+          forwardingEnabled: true,
+          forwardPortName: 'COM2',
+        ),
+      ),
+    );
+
+    await controller.connect();
+    primary.addIncoming(<int>[1]);
+    primary.addIncoming(<int>[2]);
+    primary.addIncoming(<int>[3]);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+
+    expect(peer.sentBytes, <List<int>>[
+      <int>[1],
+      <int>[2],
+      <int>[3],
+    ]);
+    expect(peer.maxConcurrentSends, 1);
+  });
+
+  test('Serial forwarding closes the other port after one side disconnects',
+      () async {
+    final primary = _FakeTransportSession(label: 'COM1');
+    final peer = _FakeTransportSession(label: 'COM2');
+    final controller = SessionController(
+      registry: _ForwardingTransportRegistry(<String, TransportSession>{
+        'COM1': primary,
+        'COM2': peer,
+      }),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        serial: SerialConfig(
+          portName: 'COM1',
+          forwardingEnabled: true,
+          forwardPortName: 'COM2',
+        ),
+      ),
+    );
+
+    await controller.connect();
+    await peer.closeIncoming();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(controller.status, TransportStatus.error);
+    expect(primary.isConnected, isFalse);
+    expect(peer.isConnected, isFalse);
+  });
 }
 
 class _FakeTransportRegistry extends TransportRegistry {
@@ -339,9 +508,32 @@ class _FakeTransportRegistry extends TransportRegistry {
   Future<List<String>> serialPorts() async => const <String>['COM1'];
 }
 
-class _FakeTransportSession implements TransportSession {
-  _FakeTransportSession({this.sendDelay = Duration.zero});
+class _ForwardingTransportRegistry extends TransportRegistry {
+  const _ForwardingTransportRegistry(this.sessions);
 
+  final Map<String, TransportSession> sessions;
+
+  @override
+  Future<TransportSession> create(ConnectionConfig config) async {
+    final session = sessions[config.serial.portName];
+    if (session == null) {
+      throw StateError('Missing fake serial ${config.serial.portName}.');
+    }
+    return session;
+  }
+
+  @override
+  Future<List<String>> serialPorts() async => sessions.keys.toList();
+}
+
+class _FakeTransportSession implements TransportSession {
+  _FakeTransportSession({
+    this.label = 'COM1',
+    this.sendDelay = Duration.zero,
+  });
+
+  @override
+  final String label;
   final Duration sendDelay;
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
@@ -352,9 +544,6 @@ class _FakeTransportSession implements TransportSession {
 
   @override
   TransportType get type => TransportType.serial;
-
-  @override
-  String get label => 'COM1';
 
   @override
   bool get isConnected => _connected;
@@ -370,7 +559,9 @@ class _FakeTransportSession implements TransportSession {
   @override
   Future<void> disconnect() async {
     _connected = false;
-    await _incoming.close();
+    if (!_incoming.isClosed) {
+      await _incoming.close();
+    }
   }
 
   @override
@@ -392,4 +583,6 @@ class _FakeTransportSession implements TransportSession {
   void addIncoming(List<int> bytes) {
     _incoming.add(bytes);
   }
+
+  Future<void> closeIncoming() => _incoming.close();
 }
