@@ -91,7 +91,10 @@ class _CommToolAppState extends State<CommToolApp> {
     final baseTextTheme = ThemeData(
       useMaterial3: true,
       brightness: brightness,
-    ).textTheme;
+    ).textTheme.apply(
+      fontFamily: 'Roboto',
+      fontFamilyFallback: const <String>['Noto Sans SC'],
+    );
     final textTheme = baseTextTheme.copyWith(
       titleLarge: baseTextTheme.titleLarge?.copyWith(
         fontSize: 17,

@@ -108,7 +108,7 @@ build/windows/x64/runner/Release/lserial.exe
 Web 静态产物：
 
 ```bash
-flutter build web --release
+flutter build web --release --no-web-resources-cdn
 ```
 
 产物：
@@ -144,7 +144,7 @@ flutter build windows
 本地生成流程：
 
 ```powershell
-flutter build web --release
+flutter build web --release --no-web-resources-cdn
 pwsh ./scripts/build_fnos_package.ps1
 ```
 
@@ -169,7 +169,7 @@ dist/fnos/LSerial-FNOS-Docker-<version>-arm.zip
 ```bash
 flutter analyze
 flutter test
-flutter build web
+flutter build web --no-web-resources-cdn
 flutter build windows
 ```
 
@@ -185,7 +185,7 @@ flutter build windows
 Cloudflare Pages 推荐配置：
 
 ```text
-Build command: flutter build web --release
+Build command: flutter build web --release --no-web-resources-cdn
 Build output directory: build/web
 ```
 

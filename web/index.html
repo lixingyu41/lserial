@@ -22,6 +22,7 @@
   <meta name="author" content="lixingyu">
 
   <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="LSerial">
@@ -123,6 +124,7 @@
   <script>
     (function () {
       const loader = document.getElementById('web-startup-loader');
+      const startupStatus = loader.querySelector('.startup-status');
       const shownAt = performance.now();
       const isFlutterMounted = () =>
         document.querySelector('flutter-view, flt-glass-pane') !== null;
@@ -153,6 +155,13 @@
 
       window.addEventListener('flutter-first-frame', hideStartupLoader, {
         once: true,
+      });
+
+      window.addEventListener('unhandledrejection', function () {
+        if (loader.isConnected && !isFlutterMounted()) {
+          startupStatus.textContent = '启动失败，请刷新重试';
+          loader.setAttribute('aria-busy', 'false');
+        }
       });
 
       const timer = window.setInterval(function () {
