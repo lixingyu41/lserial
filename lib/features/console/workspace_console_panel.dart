@@ -139,7 +139,7 @@ class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
   }
 }
 
-class _WorkspaceConsoleToolbar extends StatelessWidget {
+class _WorkspaceConsoleToolbar extends StatefulWidget {
   const _WorkspaceConsoleToolbar({
     required this.controller,
     required this.panelsStackVertically,
@@ -153,22 +153,76 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
   final VoidCallback onSearchChanged;
 
   @override
+  State<_WorkspaceConsoleToolbar> createState() =>
+      _WorkspaceConsoleToolbarState();
+}
+
+class _WorkspaceConsoleToolbarState extends State<_WorkspaceConsoleToolbar> {
+  late final FocusNode _searchFocusNode;
+  late bool _searchExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchExpanded = widget.search.text.isNotEmpty;
+    _searchFocusNode = FocusNode()..addListener(_handleSearchFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchFocusNode
+      ..removeListener(_handleSearchFocusChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleSearchFocusChanged() {
+    if (!_searchFocusNode.hasFocus &&
+        widget.search.text.isEmpty &&
+        _searchExpanded) {
+      setState(() => _searchExpanded = false);
+    }
+  }
+
+  void _expandSearch() {
+    if (!_searchExpanded) {
+      setState(() => _searchExpanded = true);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _handleSearchChanged() {
+    if (widget.search.text.isNotEmpty && !_searchExpanded) {
+      setState(() => _searchExpanded = true);
+    }
+    widget.onSearchChanged();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 40,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final searchWidth = constraints.maxWidth >= 760
+          final searchAndViewWidth = constraints.maxWidth >= 760
               ? 326.0
               : math.max(198.0, math.min(260.0, constraints.maxWidth * 0.42));
           final searchAndView = _SearchAndViewMode(
-            controller: controller,
-            search: search,
-            onChanged: onSearchChanged,
+            controller: widget.controller,
+            search: widget.search,
+            focusNode: _searchFocusNode,
+            expanded: _searchExpanded,
+            expandedSearchWidth: searchAndViewWidth - 99,
+            onExpand: _expandSearch,
+            onChanged: _handleSearchChanged,
           );
           final rightActions = _RightActions(
-            controller: controller,
-            panelsStackVertically: panelsStackVertically,
+            controller: widget.controller,
+            panelsStackVertically: widget.panelsStackVertically,
           );
 
           return ClipRect(
@@ -184,7 +238,7 @@ class _WorkspaceConsoleToolbar extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: searchWidth, child: searchAndView),
+                        searchAndView,
                         const _ToolbarSeparator(),
                       ],
                     ),
@@ -439,21 +493,37 @@ class _SearchAndViewMode extends StatelessWidget {
   const _SearchAndViewMode({
     required this.controller,
     required this.search,
+    required this.focusNode,
+    required this.expanded,
+    required this.expandedSearchWidth,
+    required this.onExpand,
     required this.onChanged,
   });
 
   final WorkspaceController controller;
   final TextEditingController search;
+  final FocusNode focusNode;
+  final bool expanded;
+  final double expandedSearchWidth;
+  final VoidCallback onExpand;
   final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          width: expanded ? expandedSearchWidth : 40,
+          height: 40,
           child: _SearchField(
             search: search,
+            focusNode: focusNode,
             hintText: controller.strings.searchFilter,
+            expanded: expanded,
+            onExpand: onExpand,
             onChanged: onChanged,
           ),
         ),
@@ -508,20 +578,41 @@ class _ViewModeToggleButton extends StatelessWidget {
 class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.search,
+    required this.focusNode,
     required this.hintText,
+    required this.expanded,
+    required this.onExpand,
     required this.onChanged,
   });
 
   final TextEditingController search;
+  final FocusNode focusNode;
   final String hintText;
+  final bool expanded;
+  final VoidCallback onExpand;
   final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
+    if (!expanded) {
+      return SizedBox.square(
+        dimension: 40,
+        child: IconButton(
+          key: const ValueKey<String>('console-search-toggle'),
+          tooltip: hintText,
+          onPressed: onExpand,
+          icon: const Icon(Icons.search, size: 18),
+          style: _toolbarIconStyle(Theme.of(context).colorScheme),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 40,
       child: TextField(
+        key: const ValueKey<String>('console-search-field'),
         controller: search,
+        focusNode: focusNode,
         textAlignVertical: TextAlignVertical.center,
         decoration: InputDecoration(
           isDense: true,
@@ -535,6 +626,7 @@ class _SearchField extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
         ),
         onChanged: (_) => onChanged(),
+        onTapOutside: (_) => focusNode.unfocus(),
       ),
     );
   }

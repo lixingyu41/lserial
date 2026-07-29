@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/app/app.dart';
 import 'package:lserial/app/localization.dart';
+import 'package:lserial/application/workspace_controller.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/features/console/frame_list_view.dart';
+import 'package:lserial/features/console/workspace_console_panel.dart';
 import 'package:lserial/protocol/frame_formatter.dart';
 import 'package:lserial/storage/log_buffer.dart';
 
@@ -23,6 +25,53 @@ void main() {
 
     expect(find.text(AppStrings.zh.connectionType), findsOneWidget);
     expect(find.text(AppStrings.zh.sendData), findsOneWidget);
+  });
+
+  testWidgets('empty console search expands on click and collapses on blur',
+      (tester) async {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 1000,
+            height: 400,
+            child: WorkspaceConsolePanel(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final toggle = find.byKey(const ValueKey<String>('console-search-toggle'));
+    expect(toggle, findsOneWidget);
+    expect(tester.getSize(toggle), const Size.square(40));
+    expect(
+      find.byKey(const ValueKey<String>('console-search-field')),
+      findsNothing,
+    );
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    final field = find.byKey(
+      const ValueKey<String>('console-search-field'),
+    );
+    expect(field, findsOneWidget);
+
+    await tester.enterText(field, 'COM1');
+    await tester.tapAt(const Offset(300, 100));
+    await tester.pumpAndSettle();
+    expect(field, findsOneWidget);
+
+    await tester.tap(field);
+    await tester.enterText(field, '');
+    await tester.tapAt(const Offset(300, 100));
+    await tester.pumpAndSettle();
+    expect(toggle, findsOneWidget);
+    expect(field, findsNothing);
   });
 
   testWidgets('console filtering preserves source and format behavior',
