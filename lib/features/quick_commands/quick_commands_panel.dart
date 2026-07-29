@@ -6,6 +6,14 @@ import '../../application/session_controller.dart';
 import '../../core/encoding/data_format.dart';
 import '../../domain/quick_command.dart';
 import '../../domain/send_history_entry.dart';
+import '../../storage/quick_command_text_codec.dart';
+import '../../storage/text_file_transfer.dart';
+
+enum _QuickCommandFileAction {
+  importReplace,
+  importAppend,
+  export,
+}
 
 class QuickCommandsPanel extends StatefulWidget {
   const QuickCommandsPanel({super.key, required this.controller});
@@ -37,6 +45,45 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                 children: [
                   Text(strings.quickCommands,
                       style: Theme.of(context).textTheme.titleSmall),
+                  const Spacer(),
+                  PopupMenuButton<_QuickCommandFileAction>(
+                    tooltip: strings.quickCommandImportExport,
+                    icon: const Icon(Icons.import_export, size: 20),
+                    onSelected: _handleFileAction,
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: _QuickCommandFileAction.importReplace,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.file_download_outlined),
+                            const SizedBox(width: 10),
+                            Text(strings.importReplaceCurrent),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _QuickCommandFileAction.importAppend,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.playlist_add),
+                            const SizedBox(width: 10),
+                            Text(strings.importInsertCurrent),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: _QuickCommandFileAction.export,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.file_upload_outlined),
+                            const SizedBox(width: 10),
+                            Text(strings.exportQuickCommands),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -115,6 +162,74 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
       _quickRatio =
           (_quickRatio + delta / availableHeight).clamp(0.25, 0.82).toDouble();
     });
+  }
+
+  Future<void> _handleFileAction(_QuickCommandFileAction action) async {
+    switch (action) {
+      case _QuickCommandFileAction.importReplace:
+        await _importQuickCommands(QuickCommandImportMode.replace);
+        return;
+      case _QuickCommandFileAction.importAppend:
+        await _importQuickCommands(QuickCommandImportMode.append);
+        return;
+      case _QuickCommandFileAction.export:
+        await _exportQuickCommands();
+        return;
+    }
+  }
+
+  Future<void> _importQuickCommands(QuickCommandImportMode mode) async {
+    try {
+      final text = await pickTextFile();
+      if (text == null) {
+        return;
+      }
+      final commands = decodeQuickCommandsText(text);
+      controller.importQuickCommands(commands, mode: mode);
+      if (mounted) {
+        _showMessage(controller.strings.quickCommandsImported(commands.length));
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        _showMessage(controller.strings.quickCommandImportFailed(error));
+      }
+    }
+  }
+
+  Future<void> _exportQuickCommands() async {
+    try {
+      final result = await saveTextFile(
+        content: encodeQuickCommandsText(controller.quickCommands),
+        suggestedName: _quickCommandFileName(),
+      );
+      if (mounted && result != null) {
+        _showMessage(controller.strings.exportResult(result));
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        _showMessage(controller.strings.quickCommandExportFailed(error));
+      }
+    }
+  }
+
+  String _quickCommandFileName() {
+    final now = DateTime.now();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return 'lserial_quick_commands_${now.year}${two(now.month)}'
+        '${two(now.day)}_${two(now.hour)}${two(now.minute)}'
+        '${two(now.second)}.txt';
+  }
+
+  void _showMessage(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   Future<void> _openEditor(BuildContext context, QuickCommand? command) async {

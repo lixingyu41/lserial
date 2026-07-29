@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/app/app.dart';
 import 'package:lserial/app/localization.dart';
+import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/application/workspace_controller.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/features/console/frame_list_view.dart';
 import 'package:lserial/features/console/workspace_console_panel.dart';
+import 'package:lserial/features/quick_commands/quick_commands_panel.dart';
 import 'package:lserial/protocol/frame_formatter.dart';
 import 'package:lserial/storage/log_buffer.dart';
 
@@ -72,6 +74,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(toggle, findsOneWidget);
     expect(field, findsNothing);
+  });
+
+  testWidgets('quick command title exposes TXT import and export actions',
+      (tester) async {
+    final controller = SessionController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            height: 500,
+            child: QuickCommandsPanel(controller: controller),
+          ),
+        ),
+      ),
+    );
+
+    final menu = find.byTooltip(AppStrings.zh.quickCommandImportExport);
+    expect(menu, findsOneWidget);
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.zh.importReplaceCurrent), findsOneWidget);
+    expect(find.text(AppStrings.zh.importInsertCurrent), findsOneWidget);
+    expect(find.text(AppStrings.zh.exportQuickCommands), findsOneWidget);
   });
 
   testWidgets('console filtering preserves source and format behavior',

@@ -489,6 +489,21 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void importQuickCommands(
+    Iterable<QuickCommand> commands, {
+    required QuickCommandImportMode mode,
+  }) {
+    if (mode == QuickCommandImportMode.replace) {
+      quickCommands.clear();
+      _nextCommandId = 1;
+    }
+    for (final command in commands) {
+      quickCommands.add(command.copyWith(id: _nextCommandId++));
+    }
+    _persistQuickCommands();
+    notifyListeners();
+  }
+
   Future<void> connect() async {
     if (isConnected || status == TransportStatus.connecting) {
       return;

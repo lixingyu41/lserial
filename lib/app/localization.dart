@@ -155,6 +155,20 @@ class AppStrings {
       isZh ? 'HEX 内容包含非法字符' : 'HEX input contains invalid characters';
 
   String get quickCommands => isZh ? '快捷指令' : 'Quick commands';
+  String get quickCommandImportExport =>
+      isZh ? '快捷指令导入导出' : 'Import or export quick commands';
+  String get importReplaceCurrent =>
+      isZh ? '导入：覆盖当前' : 'Import: replace current';
+  String get importInsertCurrent =>
+      isZh ? '导入：插入当前' : 'Import: insert into current';
+  String get exportQuickCommands =>
+      isZh ? '导出快捷指令 TXT' : 'Export quick commands TXT';
+  String quickCommandsImported(int count) =>
+      isZh ? '已导入 $count 条快捷指令' : 'Imported $count quick commands';
+  String quickCommandImportFailed(Object error) =>
+      isZh ? '快捷指令导入失败：$error' : 'Quick command import failed: $error';
+  String quickCommandExportFailed(Object error) =>
+      isZh ? '快捷指令导出失败：$error' : 'Quick command export failed: $error';
   String get sendHistory => isZh ? '历史发送记录' : 'Send history';
   String get noQuickCommands => isZh ? '暂无快捷指令' : 'No quick commands';
   String get addCommand => isZh ? '添加指令' : 'Add command';

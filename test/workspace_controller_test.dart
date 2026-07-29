@@ -306,6 +306,51 @@ void main() {
     expect(
         savedCommands.map((command) => command.id), isNot(contains(added.id)));
   });
+
+  test('quick command import supports replace and append modes', () {
+    var savedCommands = const <QuickCommand>[];
+    final controller = SessionController(
+      saveQuickCommands: (commands) {
+        savedCommands = List<QuickCommand>.of(commands);
+        return Future<void>.value();
+      },
+    );
+    addTearDown(controller.dispose);
+
+    controller.importQuickCommands(
+      const <QuickCommand>[
+        QuickCommand(
+          id: 99,
+          name: 'Imported',
+          content: 'AA 55',
+          format: PayloadFormat.hex,
+        ),
+      ],
+      mode: QuickCommandImportMode.replace,
+    );
+    expect(controller.quickCommands.map((command) => command.name), [
+      'Imported',
+    ]);
+    expect(controller.quickCommands.single.id, 1);
+
+    controller.importQuickCommands(
+      const <QuickCommand>[
+        QuickCommand(
+          id: 1,
+          name: 'Appended',
+          content: 'AT',
+          format: PayloadFormat.ascii,
+        ),
+      ],
+      mode: QuickCommandImportMode.append,
+    );
+    expect(
+      controller.quickCommands.map((command) => command.name),
+      ['Imported', 'Appended'],
+    );
+    expect(controller.quickCommands.last.id, 2);
+    expect(savedCommands, hasLength(2));
+  });
 }
 
 class _NoPortsRegistry extends TransportRegistry {
