@@ -257,6 +257,7 @@ class SessionController extends ChangeNotifier {
           serial: config.serial.copyWith(portName: selectablePorts.first),
         );
       }
+      notifyListeners();
     } on Object catch (error) {
       serialPorts = const <String>[];
       _setStatusMessage(strings.serialScanFailed(error));
@@ -569,7 +570,7 @@ class SessionController extends ChangeNotifier {
             ? (bytes) => _pipeline.addBytes(bytes, source: sourceLabel)
             : _forwardFromPrimary,
         onError: (Object error, StackTrace stackTrace) {
-          _appendSystem(strings.receiveError(_formatError(error)));
+          _handleReceiveError(error);
         },
         onDone: _handleUnexpectedDisconnect,
         cancelOnError: false,
@@ -578,7 +579,7 @@ class SessionController extends ChangeNotifier {
         _forwardIncomingSubscription = forwardSession.incoming.listen(
           _forwardFromPeer,
           onError: (Object error, StackTrace stackTrace) {
-            _appendSystem(strings.receiveError(_formatError(error)));
+            _handleReceiveError(error);
           },
           onDone: _handleUnexpectedDisconnect,
           cancelOnError: false,
@@ -1131,7 +1132,14 @@ class SessionController extends ChangeNotifier {
     _stopStatsTicker();
     _appendSystem(strings.unexpectedDisconnect);
     notifyListeners();
-    unawaited(_closeTransportSessions());
+    unawaited(
+      _closeTransportSessions().catchError((Object _, StackTrace __) {}),
+    );
+  }
+
+  void _handleReceiveError(Object error) {
+    _appendSystem(strings.receiveError(_formatError(error)));
+    _handleUnexpectedDisconnect();
   }
 
   Future<void> _closeTransportSessions() async {

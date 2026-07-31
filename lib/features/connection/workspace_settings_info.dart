@@ -188,21 +188,21 @@ class _DownloadClientButton extends StatelessWidget {
       label: 'macOS',
       icon: Icons.laptop_mac,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.11/LSerial-v1.0.11-macOS.dmg',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.12/LSerial-v1.0.12-macOS.dmg',
       ),
     ),
     _DownloadTarget(
       label: 'Linux',
       icon: Icons.terminal,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.11/LSerial-v1.0.11-Linux-x64.tar.gz',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.12/LSerial-v1.0.12-Linux-x64.tar.gz',
       ),
     ),
     _DownloadTarget(
       label: 'Windows',
       icon: Icons.desktop_windows,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.11/LSerial-v1.0.11-Windows-x64-Setup.exe',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.12/LSerial-v1.0.12-Windows-x64-Setup.exe',
       ),
     ),
   ];

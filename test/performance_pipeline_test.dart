@@ -477,6 +477,55 @@ void main() {
     expect(controller.status, TransportStatus.connected);
   });
 
+  test(
+    'SessionController notifies when refreshed serial ports change',
+    () async {
+      final transport = _FakeTransportSession();
+      final registry = _MutableSerialPortRegistry(transport);
+      final controller = SessionController(registry: registry);
+      addTearDown(controller.dispose);
+      var notifications = 0;
+      controller.addListener(() => notifications++);
+
+      await controller.refreshSerialPorts();
+      final notificationsBeforeInsert = notifications;
+      registry.ports.add('COM9');
+      await controller.refreshSerialPorts();
+
+      expect(controller.serialPorts, <String>['COM9']);
+      expect(controller.config.serial.portName, 'COM9');
+      expect(notifications, greaterThan(notificationsBeforeInsert));
+    },
+  );
+
+  test('SessionController disconnects after a receive error', () async {
+    final transport = _FakeTransportSession();
+    final controller = SessionController(
+      registry: _FakeTransportRegistry(transport),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        type: TransportType.serial,
+        serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+      ),
+    );
+
+    await controller.connect();
+    transport.addIncomingError(StateError('device removed'));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(controller.status, TransportStatus.error);
+    expect(transport.isConnected, isFalse);
+  });
+
   test('SessionController auto send does not overlap slow sends', () async {
     final transport = _FakeTransportSession(
       sendDelay: const Duration(milliseconds: 60),
@@ -713,6 +762,19 @@ class _ForwardingTransportRegistry extends TransportRegistry {
   Future<List<String>> serialPorts() async => sessions.keys.toList();
 }
 
+class _MutableSerialPortRegistry extends TransportRegistry {
+  _MutableSerialPortRegistry(this.session);
+
+  final _FakeTransportSession session;
+  final List<String> ports = <String>[];
+
+  @override
+  Future<TransportSession> create(ConnectionConfig config) async => session;
+
+  @override
+  Future<List<String>> serialPorts() async => List<String>.of(ports);
+}
+
 class _FakeTransportSession implements TransportSession {
   _FakeTransportSession({
     this.label = 'COM1',
@@ -776,6 +838,10 @@ class _FakeTransportSession implements TransportSession {
 
   void addIncoming(List<int> bytes) {
     _incoming.add(bytes);
+  }
+
+  void addIncomingError(Object error) {
+    _incoming.addError(error);
   }
 
   Future<void> closeIncoming() => _incoming.close();

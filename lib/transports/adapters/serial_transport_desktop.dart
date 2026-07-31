@@ -258,9 +258,13 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
   final commands = ReceivePort();
   final portName = '${settings['portName']}';
   SerialPort? port;
-  SerialPortReader? reader;
-  StreamSubscription<Uint8List>? subscription;
+  Timer? readTimer;
+  StreamSubscription<dynamic>? commandSubscription;
+  final done = Completer<void>();
   var closing = false;
+  var connected = false;
+  var portOpened = false;
+  var unexpectedDisconnect = false;
   int? disconnectRequestId;
 
   mainPort.send(<String, Object?>{
@@ -275,6 +279,7 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
       mainPort.send(_connectErrorEvent(portName, 'open', error));
       return;
     }
+    portOpened = true;
 
     try {
       final portConfig = SerialPortConfig()
@@ -286,87 +291,124 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
           'even' => SerialPortParity.even,
           _ => SerialPortParity.none,
         };
-      try {
-        portConfig.setFlowControl(SerialPortFlowControl.none);
-        port.config = portConfig;
-      } finally {
-        portConfig.dispose();
-      }
+      portConfig.setFlowControl(SerialPortFlowControl.none);
+      // SerialPort owns an assigned config and releases it with the port.
+      port.config = portConfig;
     } on Object {
       final error = SerialPort.lastError;
       mainPort.send(_connectErrorEvent(portName, 'configure', error));
       return;
     }
 
-    reader = SerialPortReader(port);
-    subscription = reader.stream.listen(
-      (bytes) =>
-          mainPort.send(<String, Object?>{'type': 'data', 'bytes': bytes}),
-      onError: (Object error) {
+    final activePort = port;
+
+    void finishUnexpectedly(Object error) {
+      if (closing) {
+        return;
+      }
+      closing = true;
+      unexpectedDisconnect = true;
+      mainPort.send(<String, Object?>{
+        'type': 'streamError',
+        'message': error.toString(),
+      });
+      if (!done.isCompleted) {
+        done.complete();
+      }
+    }
+
+    commandSubscription = commands.listen(
+      (dynamic rawCommand) {
+        if (rawCommand is! Map<Object?, Object?> || closing) {
+          return;
+        }
+        final type = rawCommand['type'];
+        final id = rawCommand['id'] as int?;
+        if (id == null) {
+          return;
+        }
+        try {
+          if (type == 'write') {
+            final bytes = rawCommand['bytes'] as Uint8List;
+            final written = activePort.write(bytes);
+            if (written != bytes.length) {
+              throw StateError(
+                'Serial write incomplete: $written of ${bytes.length} bytes.',
+              );
+            }
+            mainPort.send(_responseEvent(id, true));
+          } else if (type == 'disconnect') {
+            closing = true;
+            disconnectRequestId = id;
+            if (!done.isCompleted) {
+              done.complete();
+            }
+          }
+        } on Object catch (error) {
+          mainPort.send(_responseEvent(id, false, error.toString()));
+          finishUnexpectedly(error);
+        }
+      },
+      onError: finishUnexpectedly,
+      onDone: () {
+        if (!done.isCompleted) {
+          done.complete();
+        }
+      },
+    );
+
+    readTimer = Timer.periodic(const Duration(milliseconds: 1), (_) {
+      if (closing) {
+        return;
+      }
+      try {
+        final available = activePort.bytesAvailable;
+        if (available < 0) {
+          finishUnexpectedly(
+            SerialPort.lastError ?? StateError('Serial device disconnected.'),
+          );
+          return;
+        }
+        if (available == 0) {
+          return;
+        }
+        final bytes = activePort.read(available);
+        if (bytes.isNotEmpty) {
+          mainPort.send(<String, Object?>{'type': 'data', 'bytes': bytes});
+        }
+      } on Object catch (error) {
+        finishUnexpectedly(error);
+      }
+    });
+    connected = true;
+    mainPort.send(const <String, Object?>{'type': 'connected'});
+    await done.future;
+  } on Object catch (error) {
+    if (connected) {
+      unexpectedDisconnect = true;
+      if (!closing) {
         mainPort.send(<String, Object?>{
           'type': 'streamError',
           'message': error.toString(),
         });
-      },
-      onDone: () {
-        if (!closing) {
-          mainPort.send(const <String, Object?>{'type': 'streamDone'});
-        }
-      },
-      cancelOnError: false,
-    );
-    mainPort.send(const <String, Object?>{'type': 'connected'});
-
-    await for (final dynamic rawCommand in commands) {
-      if (rawCommand is! Map<Object?, Object?>) {
-        continue;
       }
-      final type = rawCommand['type'];
-      final id = rawCommand['id'] as int?;
-      if (id == null) {
-        continue;
-      }
-      try {
-        if (type == 'write') {
-          final bytes = rawCommand['bytes'] as Uint8List;
-          final written = port.write(bytes);
-          if (written != bytes.length) {
-            throw StateError(
-              'Serial write incomplete: $written of ${bytes.length} bytes.',
-            );
-          }
-          mainPort.send(_responseEvent(id, true));
-        } else if (type == 'disconnect') {
-          closing = true;
-          disconnectRequestId = id;
-          break;
-        }
-      } on Object catch (error) {
-        mainPort.send(_responseEvent(id, false, error.toString()));
-      }
+    } else {
+      mainPort.send(<String, Object?>{
+        'type': 'connectError',
+        'portName': portName,
+        'stage': 'open',
+        'nativeMessage': error.toString(),
+      });
     }
-  } on Object catch (error) {
-    mainPort.send(<String, Object?>{
-      'type': 'connectError',
-      'portName': portName,
-      'stage': 'open',
-      'nativeMessage': error.toString(),
-    });
   } finally {
     closing = true;
+    readTimer?.cancel();
+    await commandSubscription?.cancel();
+    commands.close();
     try {
-      await subscription?.cancel();
-    } on Object {
-      // Continue releasing the native port after a reader cancellation error.
-    }
-    try {
-      reader?.close();
-    } on Object {
-      // Continue releasing the native port after a reader close error.
-    }
-    try {
-      if (port?.isOpen ?? false) {
-        port!.close();
+      if (portOpened) {
+        port?.close();
+        portOpened = false;
       }
     } on Object {
       // The worker is exiting; dispose the native port even if close fails.
@@ -376,10 +418,13 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
     } on Object {
       // No further native operations are attempted after disposal fails.
     }
-    if (disconnectRequestId != null) {
-      mainPort.send(_responseEvent(disconnectRequestId, true));
+    final completedDisconnectRequestId = disconnectRequestId;
+    if (completedDisconnectRequestId != null) {
+      mainPort.send(_responseEvent(completedDisconnectRequestId, true));
     }
-    commands.close();
+    if (unexpectedDisconnect) {
+      mainPort.send(const <String, Object?>{'type': 'streamDone'});
+    }
   }
 }
 
