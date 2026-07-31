@@ -521,7 +521,7 @@ class WorkspaceController extends ChangeNotifier {
     var droppedBytes = 0;
 
     for (final session in sessions) {
-      final snapshot = session.logBuffer.snapshot(paused: false);
+      final snapshot = session.snapshotForDisplay(paused: false);
       frames.addAll(snapshot.frames);
       totalFrames += snapshot.totalFrames;
       totalBytes += snapshot.totalBytes;

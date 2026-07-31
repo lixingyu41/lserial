@@ -9,7 +9,9 @@ class ReceivePipeline {
     required this.rawBuffer,
     required this.onBatch,
     required this.nextSequence,
+    this.onPacketPreview,
     this.flushInterval = const Duration(milliseconds: 33),
+    this.previewInterval = const Duration(milliseconds: 33),
     this.maxBatchFrames = 256,
     Duration packetInterval = Duration.zero,
     List<int> packetDelimiter = const <int>[],
@@ -20,7 +22,9 @@ class ReceivePipeline {
   final ByteRingBuffer rawBuffer;
   final void Function(List<DataFrame> frames) onBatch;
   final int Function() nextSequence;
+  final void Function(DataFrame frame)? onPacketPreview;
   final Duration flushInterval;
+  final Duration previewInterval;
   final int maxBatchFrames;
   final int maxPacketBytes;
 
@@ -28,9 +32,11 @@ class ReceivePipeline {
   final List<int> _packetBytes = <int>[];
   Timer? _timer;
   Timer? _packetTimer;
+  Timer? _previewTimer;
   DateTime? _packetTimestamp;
   String? _packetSource;
   FrameDirection? _packetDirection;
+  int? _packetSequence;
   Duration _packetInterval;
   Uint8List _packetDelimiter;
   bool _disposed = false;
@@ -101,10 +107,12 @@ class ReceivePipeline {
     if (_packetBytes.isNotEmpty &&
         (_packetSource != source || _packetDirection != direction)) {
       _flushPacket();
+      _flushPending();
     }
     _packetTimestamp ??= now;
     _packetSource ??= source;
     _packetDirection ??= direction;
+    _packetSequence ??= nextSequence();
     _packetBytes.addAll(copy);
     final flushedDelimiterPackets = _flushDelimitedPackets();
 
@@ -115,6 +123,7 @@ class ReceivePipeline {
     }
 
     _startPacketTimer();
+    _schedulePacketPreview();
     if (flushedDelimiterPackets) {
       _flushPending();
     }
@@ -140,25 +149,27 @@ class ReceivePipeline {
       _packetBytes.removeRange(0, packetEnd);
       _addPending(
         DataFrame(
-          sequence: nextSequence(),
+          sequence: _packetSequence ?? nextSequence(),
           timestamp: _packetTimestamp ?? DateTime.now(),
           direction: _packetDirection ?? FrameDirection.rx,
           bytes: bytes,
           source: _packetSource ?? '',
         ),
       );
-      _packetTimestamp = _packetBytes.isEmpty ? null : DateTime.now();
+      if (_packetBytes.isEmpty) {
+        _resetPacketMetadata();
+      } else {
+        _packetTimestamp = DateTime.now();
+        _packetSequence = nextSequence();
+      }
       flushed = true;
     }
 
     if (flushed) {
       _packetTimer?.cancel();
       _packetTimer = null;
-      if (_packetBytes.isEmpty) {
-        _packetTimestamp = null;
-        _packetSource = null;
-        _packetDirection = null;
-      }
+      _previewTimer?.cancel();
+      _previewTimer = null;
     }
     return flushed;
   }
@@ -206,6 +217,29 @@ class ReceivePipeline {
     });
   }
 
+  void _schedulePacketPreview() {
+    if (onPacketPreview == null || _packetBytes.isEmpty) {
+      return;
+    }
+    _previewTimer ??= Timer(previewInterval, _publishPacketPreview);
+  }
+
+  void _publishPacketPreview() {
+    _previewTimer = null;
+    if (_disposed || _packetBytes.isEmpty) {
+      return;
+    }
+    onPacketPreview!(
+      DataFrame(
+        sequence: _packetSequence ??= nextSequence(),
+        timestamp: _packetTimestamp ?? DateTime.now(),
+        direction: _packetDirection ?? FrameDirection.rx,
+        bytes: _packetBytes,
+        source: _packetSource ?? '',
+      ),
+    );
+  }
+
   void addFrame(DataFrame frame) {
     if (_disposed) {
       return;
@@ -231,6 +265,8 @@ class ReceivePipeline {
   void _flushPacket() {
     _packetTimer?.cancel();
     _packetTimer = null;
+    _previewTimer?.cancel();
+    _previewTimer = null;
     if (_packetBytes.isEmpty) {
       return;
     }
@@ -238,13 +274,12 @@ class ReceivePipeline {
     final timestamp = _packetTimestamp ?? DateTime.now();
     final source = _packetSource ?? '';
     final direction = _packetDirection ?? FrameDirection.rx;
+    final sequence = _packetSequence ?? nextSequence();
     _packetBytes.clear();
-    _packetTimestamp = null;
-    _packetSource = null;
-    _packetDirection = null;
+    _resetPacketMetadata();
     _addPending(
       DataFrame(
-        sequence: nextSequence(),
+        sequence: sequence,
         timestamp: timestamp,
         direction: direction,
         bytes: bytes,
@@ -268,12 +303,34 @@ class ReceivePipeline {
     rawBuffer.clear();
   }
 
+  void clear() {
+    _timer?.cancel();
+    _timer = null;
+    _packetTimer?.cancel();
+    _packetTimer = null;
+    _previewTimer?.cancel();
+    _previewTimer = null;
+    _pending.clear();
+    _packetBytes.clear();
+    _resetPacketMetadata();
+    rawBuffer.clear();
+  }
+
+  void _resetPacketMetadata() {
+    _packetTimestamp = null;
+    _packetSource = null;
+    _packetDirection = null;
+    _packetSequence = null;
+  }
+
   void dispose() {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
     _packetTimer?.cancel();
     _packetTimer = null;
+    _previewTimer?.cancel();
+    _previewTimer = null;
     _pending.clear();
     _packetBytes.clear();
   }

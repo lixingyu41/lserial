@@ -66,8 +66,9 @@ class SessionController extends ChangeNotifier {
       rawBuffer: rawBuffer,
       onBatch: _commitFrames,
       nextSequence: _nextSequence,
+      onPacketPreview: _updatePacketPreview,
     );
-    displaySnapshot.value = logBuffer.snapshot(paused: false);
+    _publishSnapshot();
   }
 
   final TransportRegistry registry;
@@ -94,6 +95,8 @@ class SessionController extends ChangeNotifier {
   Timer? _statsTimer;
   bool _autoSendInFlight = false;
   int _sequence = 0;
+  int _displayRevision = 0;
+  DataFrame? _packetPreview;
   int _nextCommandId = 4;
   bool _manualDisconnect = false;
   DateTime? _rxStartedAt;
@@ -779,14 +782,15 @@ class SessionController extends ChangeNotifier {
     if (!pauseDisplay) {
       _publishSnapshot();
     } else {
-      displaySnapshot.value = logBuffer.snapshot(paused: true);
+      displaySnapshot.value = _displaySnapshot(paused: true);
     }
     notifyListeners();
   }
 
   void clearLog() {
     logBuffer.clear();
-    rawBuffer.clear();
+    _pipeline.clear();
+    _packetPreview = null;
     _resetStats();
     _publishSnapshot();
     _statsNotifier.notifyListeners();
@@ -808,6 +812,11 @@ class SessionController extends ChangeNotifier {
   }
 
   void _commitFrames(List<DataFrame> frames) {
+    final preview = _packetPreview;
+    if (preview != null &&
+        frames.any((frame) => frame.sequence == preview.sequence)) {
+      _packetPreview = null;
+    }
     var trafficChanged = false;
     for (final frame in frames) {
       switch (frame.direction) {
@@ -847,7 +856,38 @@ class SessionController extends ChangeNotifier {
   }
 
   void _publishSnapshot() {
-    displaySnapshot.value = logBuffer.snapshot(paused: pauseDisplay);
+    _displayRevision++;
+    displaySnapshot.value = _displaySnapshot(paused: pauseDisplay);
+  }
+
+  LogSnapshot snapshotForDisplay({required bool paused}) =>
+      _displaySnapshot(paused: paused);
+
+  LogSnapshot _displaySnapshot({required bool paused}) {
+    final committed = logBuffer.snapshot(paused: paused);
+    final preview = _packetPreview;
+    final frames = preview == null
+        ? committed.frames
+        : List<DataFrame>.unmodifiable(<DataFrame>[
+            ...committed.frames,
+            preview,
+          ]);
+    return LogSnapshot(
+      revision: _displayRevision,
+      frames: frames,
+      totalFrames: committed.totalFrames,
+      totalBytes: committed.totalBytes,
+      droppedFrames: committed.droppedFrames,
+      droppedBytes: committed.droppedBytes,
+      paused: paused,
+    );
+  }
+
+  void _updatePacketPreview(DataFrame frame) {
+    _packetPreview = frame;
+    if (!pauseDisplay) {
+      _publishSnapshot();
+    }
   }
 
   int _nextSequence() => ++_sequence;
@@ -1098,6 +1138,7 @@ class SessionController extends ChangeNotifier {
     await primarySession?.disconnect();
     _primaryWriteTail = Future<void>.value();
     _forwardWriteTail = Future<void>.value();
+    _pipeline.flush();
   }
 
   String _formatError(Object error) {
