@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../app/localization.dart';
-import '../../application/session_options.dart';
 import '../../application/workspace_controller.dart';
-import '../../application/workspace_settings.dart';
-import '../../core/encoding/data_format.dart';
 import '../../platform/external_link.dart';
 
 const _settingsRowHeight = 40.0;
@@ -21,8 +18,6 @@ class WorkspaceSettingsInfo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ToolbarSettings(controller: controller),
-        const Divider(height: 1),
         _LanguageSelector(controller: controller),
         const Divider(height: 1),
         const _AppVersionText(),
@@ -31,246 +26,6 @@ class WorkspaceSettingsInfo extends StatelessWidget {
         const Divider(height: 1),
         const _CopyrightLink(),
       ],
-    );
-  }
-}
-
-class _ToolbarSettings extends StatelessWidget {
-  const _ToolbarSettings({required this.controller});
-
-  final WorkspaceController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = controller.strings;
-    final sendController = controller.sendTarget;
-    final rows = <Widget>[
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.clearLog,
-        label: strings.clear,
-        controller: controller,
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.terminalMode,
-        label: strings.terminalMode,
-        controller: controller,
-        control: _SettingsSwitch(
-          value: controller.terminalMode,
-          onChanged: controller.setTerminalMode,
-        ),
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.sendFormat,
-        label: strings.sendFormatSetting,
-        controller: controller,
-        control: _SettingsDropdown<PayloadFormat>(
-          value: sendController.sendFormat,
-          values: PayloadFormat.values,
-          labelBuilder: strings.payloadFormat,
-          onChanged: sendController.setSendFormat,
-        ),
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.lineEnding,
-        label: strings.lineEnding,
-        controller: controller,
-        control: _SettingsDropdown<LineEnding>(
-          value: sendController.lineEnding,
-          values: LineEnding.values,
-          labelBuilder: strings.lineEndingLabel,
-          onChanged: sendController.setLineEnding,
-        ),
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.sendShortcut,
-        label: strings.sendShortcut,
-        controller: controller,
-        control: _SettingsDropdown<SendShortcutMode>(
-          value: sendController.sendShortcutMode,
-          values: SendShortcutMode.values,
-          labelBuilder: strings.shortcutModeShort,
-          onChanged: sendController.setSendShortcutMode,
-        ),
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.connectionPanel,
-        label: strings.leftConfigPanel,
-        controller: controller,
-        control: _SettingsSwitch(
-          value: controller.showConnectionPanel,
-          onChanged: controller.setConnectionPanelVisible,
-        ),
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.quickCommandsPanel,
-        label: strings.quickCommands,
-        controller: controller,
-        control: _SettingsSwitch(
-          value: controller.showQuickCommandsPanel,
-          onChanged: controller.setQuickCommandsPanelVisible,
-        ),
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.sendPanel,
-        label: strings.sendData,
-        controller: controller,
-        control: _SettingsSwitch(
-          value: controller.showSendPanel,
-          onChanged: controller.setSendPanelVisible,
-        ),
-      ),
-      _ToolbarSettingRow(
-        action: WorkspaceToolbarAction.autoScroll,
-        label: strings.autoScroll,
-        controller: controller,
-        control: _SettingsSwitch(
-          value: controller.autoScroll,
-          onChanged: controller.setAutoScroll,
-        ),
-      ),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SettingsTextRow(strings.logToolbarButtons),
-        const Divider(height: 1),
-        for (var index = 0; index < rows.length; index++) ...[
-          if (index > 0) const Divider(height: 1),
-          rows[index],
-        ],
-      ],
-    );
-  }
-}
-
-class _ToolbarSettingRow extends StatelessWidget {
-  const _ToolbarSettingRow({
-    required this.action,
-    required this.label,
-    required this.controller,
-    this.control,
-  });
-
-  final WorkspaceToolbarAction action;
-  final String label;
-  final WorkspaceController controller;
-  final Widget? control;
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = controller.isToolbarActionVisible(action);
-    final strings = controller.strings;
-    return SizedBox(
-      key: ValueKey<String>('toolbar-setting-${action.name}'),
-      height: _settingsRowHeight,
-      child: Row(
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 16, right: 8),
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-            ),
-          ),
-          if (control != null)
-            SizedBox(
-              width: 104,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: control,
-              ),
-            ),
-          SizedBox.square(
-            dimension: _settingsRowHeight,
-            child: IconButton(
-              key: ValueKey<String>('toolbar-visibility-${action.name}'),
-              tooltip: visible
-                  ? strings.hideFromLogToolbar
-                  : strings.showInLogToolbar,
-              onPressed: () =>
-                  controller.setToolbarActionVisible(action, !visible),
-              icon: Icon(
-                visible ? Icons.visibility : Icons.visibility_off,
-                size: 18,
-              ),
-              style: _settingsIconButtonStyle(context, selected: visible),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsSwitch extends StatelessWidget {
-  const _SettingsSwitch({
-    required this.value,
-    required this.onChanged,
-  });
-
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 52,
-      height: _settingsRowHeight,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Switch(
-          value: value,
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsDropdown<T> extends StatelessWidget {
-  const _SettingsDropdown({
-    required this.value,
-    required this.values,
-    required this.labelBuilder,
-    required this.onChanged,
-  });
-
-  final T value;
-  final List<T> values;
-  final String Function(T value) labelBuilder;
-  final ValueChanged<T> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<T>(
-        value: value,
-        isExpanded: true,
-        alignment: Alignment.centerRight,
-        borderRadius: BorderRadius.circular(6),
-        items: [
-          for (final item in values)
-            DropdownMenuItem<T>(
-              value: item,
-              alignment: Alignment.centerRight,
-              child: Text(
-                labelBuilder(item),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-        ],
-        onChanged: (next) {
-          if (next != null) {
-            onChanged(next);
-          }
-        },
-      ),
     );
   }
 }
@@ -390,22 +145,6 @@ ButtonStyle _settingsButtonStyle(
   );
 }
 
-ButtonStyle _settingsIconButtonStyle(
-  BuildContext context, {
-  bool selected = false,
-}) {
-  final scheme = Theme.of(context).colorScheme;
-  return IconButton.styleFrom(
-    minimumSize: const Size.square(_settingsRowHeight),
-    fixedSize: const Size.square(_settingsRowHeight),
-    padding: EdgeInsets.zero,
-    shape: const RoundedRectangleBorder(),
-    backgroundColor: selected ? scheme.primaryContainer : Colors.transparent,
-    foregroundColor: selected ? scheme.onPrimaryContainer : scheme.onSurface,
-    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-  );
-}
-
 class _SettingsTextRow extends StatelessWidget {
   const _SettingsTextRow(this.label);
 
@@ -455,21 +194,21 @@ class _DownloadClientButton extends StatelessWidget {
       label: 'macOS',
       icon: Icons.laptop_mac,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.8/LSerial-v1.0.8-macOS.dmg',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.9/LSerial-v1.0.9-macOS.dmg',
       ),
     ),
     _DownloadTarget(
       label: 'Linux',
       icon: Icons.terminal,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.8/LSerial-v1.0.8-Linux-x64.tar.gz',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.9/LSerial-v1.0.9-Linux-x64.tar.gz',
       ),
     ),
     _DownloadTarget(
       label: 'Windows',
       icon: Icons.desktop_windows,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.8/LSerial-v1.0.8-Windows-x64-Setup.exe',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.9/LSerial-v1.0.9-Windows-x64-Setup.exe',
       ),
     ),
   ];

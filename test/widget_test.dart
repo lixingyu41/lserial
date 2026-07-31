@@ -7,7 +7,6 @@ import 'package:lserial/application/workspace_controller.dart';
 import 'package:lserial/application/workspace_settings.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/data_frame.dart';
-import 'package:lserial/features/connection/workspace_settings_info.dart';
 import 'package:lserial/features/console/frame_list_view.dart';
 import 'package:lserial/features/console/workspace_console_panel.dart';
 import 'package:lserial/features/quick_commands/quick_commands_panel.dart';
@@ -105,7 +104,7 @@ void main() {
     expect(find.text(AppStrings.zh.exportQuickCommands), findsOneWidget);
   });
 
-  testWidgets('settings expose values and visibility for toolbar actions',
+  testWidgets('log settings expose values and visibility for toolbar actions',
       (tester) async {
     final controller = WorkspaceController();
     addTearDown(controller.dispose);
@@ -114,13 +113,10 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 360,
-            child: SingleChildScrollView(
-              child: AnimatedBuilder(
-                animation: controller,
-                builder: (context, _) =>
-                    WorkspaceSettingsInfo(controller: controller),
-              ),
+            width: 1000,
+            height: 700,
+            child: WorkspaceConsolePanel(
+              controller: controller,
             ),
           ),
         ),
@@ -128,16 +124,28 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final logSettings = find.byTooltip(AppStrings.zh.logSettings);
+    expect(logSettings, findsOneWidget);
+    await tester.tap(logSettings);
+    await tester.pumpAndSettle();
+
     for (final action in WorkspaceToolbarAction.values) {
-      expect(
-        find.byKey(ValueKey<String>('toolbar-setting-${action.name}')),
-        findsOneWidget,
-      );
       expect(
         find.byKey(ValueKey<String>('toolbar-visibility-${action.name}')),
         findsOneWidget,
       );
     }
+    for (final action in WorkspaceToolbarAction.values
+        .where((action) => action != WorkspaceToolbarAction.clearLog)) {
+      expect(
+        find.byKey(ValueKey<String>('toolbar-setting-${action.name}')),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byKey(const ValueKey<String>('toolbar-setting-clearLog')),
+      findsNothing,
+    );
     expect(find.text(AppStrings.zh.searchFilter), findsNothing);
     expect(find.text(AppStrings.zh.viewFormat), findsNothing);
 
@@ -147,10 +155,11 @@ void main() {
     expect(
       find.descendant(
         of: autoScrollVisibility,
-        matching: find.byIcon(Icons.visibility_off),
+        matching: find.byIcon(Icons.close),
       ),
       findsOneWidget,
     );
+    await tester.ensureVisible(autoScrollVisibility);
     await tester.tap(autoScrollVisibility);
     await tester.pumpAndSettle();
     expect(

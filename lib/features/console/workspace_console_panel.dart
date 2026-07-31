@@ -1124,13 +1124,8 @@ class _LogSettingsPopup extends StatelessWidget {
                   ),
                   _DisplayItems(controller: controller),
                   const SizedBox(height: 10),
-                  SwitchListTile(
-                    value: controller.autoScroll,
-                    onChanged: controller.setAutoScroll,
-                    title: Text(strings.autoScroll),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  const SizedBox(height: 6),
+                  _ToolbarSettings(controller: controller),
+                  const SizedBox(height: 10),
                   _SourceFilter(controller: controller),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -1147,6 +1142,173 @@ class _LogSettingsPopup extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _ToolbarSettings extends StatelessWidget {
+  const _ToolbarSettings({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = controller.strings;
+    final sendController = controller.sendTarget;
+    final visibilityItems = <(WorkspaceToolbarAction, String)>[
+      (WorkspaceToolbarAction.clearLog, strings.clear),
+      (WorkspaceToolbarAction.terminalMode, strings.terminalMode),
+      (WorkspaceToolbarAction.sendFormat, strings.sendFormatSetting),
+      (WorkspaceToolbarAction.lineEnding, strings.lineEnding),
+      (WorkspaceToolbarAction.sendShortcut, strings.sendShortcut),
+      (WorkspaceToolbarAction.connectionPanel, strings.leftConfigPanel),
+      (WorkspaceToolbarAction.quickCommandsPanel, strings.quickCommands),
+      (WorkspaceToolbarAction.sendPanel, strings.sendData),
+      (WorkspaceToolbarAction.autoScroll, strings.autoScroll),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          strings.logToolbarButtons,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final item in visibilityItems)
+              _SettingsFilterChip(
+                key: ValueKey<String>(
+                  'toolbar-visibility-${item.$1.name}',
+                ),
+                label: Text(item.$2),
+                selected: controller.isToolbarActionVisible(item.$1),
+                onSelected: (selected) =>
+                    controller.setToolbarActionVisible(item.$1, selected),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: const ValueKey<String>('toolbar-setting-terminalMode'),
+          value: controller.terminalMode,
+          onChanged: controller.setTerminalMode,
+          title: Text(strings.terminalMode),
+          contentPadding: EdgeInsets.zero,
+        ),
+        _ToolbarDropdown<PayloadFormat>(
+          key: const ValueKey<String>('toolbar-setting-sendFormat'),
+          label: strings.sendFormatSetting,
+          value: sendController.sendFormat,
+          values: PayloadFormat.values,
+          labelBuilder: strings.payloadFormat,
+          onChanged: sendController.setSendFormat,
+        ),
+        _ToolbarDropdown<LineEnding>(
+          key: const ValueKey<String>('toolbar-setting-lineEnding'),
+          label: strings.lineEnding,
+          value: sendController.lineEnding,
+          values: LineEnding.values,
+          labelBuilder: strings.lineEndingLabel,
+          onChanged: sendController.setLineEnding,
+        ),
+        _ToolbarDropdown<SendShortcutMode>(
+          key: const ValueKey<String>('toolbar-setting-sendShortcut'),
+          label: strings.sendShortcut,
+          value: sendController.sendShortcutMode,
+          values: SendShortcutMode.values,
+          labelBuilder: strings.shortcutModeShort,
+          onChanged: sendController.setSendShortcutMode,
+        ),
+        SwitchListTile(
+          key: const ValueKey<String>('toolbar-setting-connectionPanel'),
+          value: controller.showConnectionPanel,
+          onChanged: controller.setConnectionPanelVisible,
+          title: Text(strings.leftConfigPanel),
+          contentPadding: EdgeInsets.zero,
+        ),
+        SwitchListTile(
+          key: const ValueKey<String>('toolbar-setting-quickCommandsPanel'),
+          value: controller.showQuickCommandsPanel,
+          onChanged: controller.setQuickCommandsPanelVisible,
+          title: Text(strings.quickCommands),
+          contentPadding: EdgeInsets.zero,
+        ),
+        SwitchListTile(
+          key: const ValueKey<String>('toolbar-setting-sendPanel'),
+          value: controller.showSendPanel,
+          onChanged: controller.setSendPanelVisible,
+          title: Text(strings.sendData),
+          contentPadding: EdgeInsets.zero,
+        ),
+        SwitchListTile(
+          key: const ValueKey<String>('toolbar-setting-autoScroll'),
+          value: controller.autoScroll,
+          onChanged: controller.setAutoScroll,
+          title: Text(strings.autoScroll),
+          contentPadding: EdgeInsets.zero,
+        ),
+      ],
+    );
+  }
+}
+
+class _ToolbarDropdown<T> extends StatelessWidget {
+  const _ToolbarDropdown({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.values,
+    required this.labelBuilder,
+    required this.onChanged,
+  });
+
+  final String label;
+  final T value;
+  final List<T> values;
+  final String Function(T value) labelBuilder;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          SizedBox(
+            width: 132,
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<T>(
+                value: value,
+                isExpanded: true,
+                alignment: Alignment.centerRight,
+                borderRadius: BorderRadius.circular(6),
+                items: [
+                  for (final item in values)
+                    DropdownMenuItem<T>(
+                      value: item,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        labelBuilder(item),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (next) {
+                  if (next != null) {
+                    onChanged(next);
+                  }
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1235,6 +1397,7 @@ class _DisplayItems extends StatelessWidget {
 
 class _SettingsFilterChip extends StatelessWidget {
   const _SettingsFilterChip({
+    super.key,
     required this.label,
     required this.selected,
     required this.onSelected,
