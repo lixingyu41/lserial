@@ -44,63 +44,70 @@ void main() {
     expect(snapshot.droppedFrames, 2);
   });
 
-  test('LogBuffer keeps retained source labels in sync with trimmed frames',
-      () {
-    final buffer = LogBuffer(maxFrames: 2, maxBytes: 1024);
+  test(
+    'LogBuffer keeps retained source labels in sync with trimmed frames',
+    () {
+      final buffer = LogBuffer(maxFrames: 2, maxBytes: 1024);
 
-    buffer.addAll(<DataFrame>[
-      DataFrame(
-        sequence: 1,
-        timestamp: DateTime(2026),
-        direction: FrameDirection.rx,
-        bytes: <int>[0x41],
-        source: 'COM1',
-      ),
-      DataFrame(
-        sequence: 2,
-        timestamp: DateTime(2026),
-        direction: FrameDirection.rx,
-        bytes: <int>[0x42],
-        source: 'COM2',
-      ),
-      DataFrame(
-        sequence: 3,
-        timestamp: DateTime(2026),
-        direction: FrameDirection.rx,
-        bytes: <int>[0x43],
-        source: 'COM3',
-      ),
-    ]);
+      buffer.addAll(<DataFrame>[
+        DataFrame(
+          sequence: 1,
+          timestamp: DateTime(2026),
+          direction: FrameDirection.rx,
+          bytes: <int>[0x41],
+          source: 'COM1',
+        ),
+        DataFrame(
+          sequence: 2,
+          timestamp: DateTime(2026),
+          direction: FrameDirection.rx,
+          bytes: <int>[0x42],
+          source: 'COM2',
+        ),
+        DataFrame(
+          sequence: 3,
+          timestamp: DateTime(2026),
+          direction: FrameDirection.rx,
+          bytes: <int>[0x43],
+          source: 'COM3',
+        ),
+      ]);
 
-    expect(buffer.retainedSourceLabels, isNot(contains('COM1')));
-    expect(buffer.retainedSourceLabels, containsAll(<String>['COM2', 'COM3']));
-  });
+      expect(buffer.retainedSourceLabels, isNot(contains('COM1')));
+      expect(
+        buffer.retainedSourceLabels,
+        containsAll(<String>['COM2', 'COM3']),
+      );
+    },
+  );
 
-  test('ReceivePipeline batches high-frequency chunks before UI commit',
-      () async {
-    final raw = ByteRingBuffer(1024);
-    final batches = <List<DataFrame>>[];
-    var sequence = 0;
-    final pipeline = ReceivePipeline(
-      rawBuffer: raw,
-      flushInterval: const Duration(milliseconds: 20),
-      nextSequence: () => ++sequence,
-      onBatch: batches.add,
-    );
+  test(
+    'ReceivePipeline batches high-frequency chunks before UI commit',
+    () async {
+      final raw = ByteRingBuffer(1024);
+      final batches = <List<DataFrame>>[];
+      var sequence = 0;
+      final pipeline = ReceivePipeline(
+        rawBuffer: raw,
+        flushInterval: const Duration(milliseconds: 20),
+        nextSequence: () => ++sequence,
+        onBatch: batches.add,
+      );
 
-    for (var i = 0; i < 10; i++) {
-      pipeline.addBytes(<int>[i], source: 'rx');
-    }
+      for (var i = 0; i < 10; i++) {
+        pipeline.addBytes(<int>[i], source: 'rx');
+      }
 
-    expect(batches, isEmpty);
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(batches, isEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
 
-    expect(batches, hasLength(1));
-    expect(batches.single, hasLength(10));
-    expect(raw.length, 10);
+      expect(batches, hasLength(1));
+      expect(batches.single, hasLength(10));
+      expect(raw.length, 10);
 
-    pipeline.dispose();
-  });
+      pipeline.dispose();
+    },
+  );
 
   test('ReceivePipeline groups chunks by packet interval', () async {
     final raw = ByteRingBuffer(1024);
@@ -151,8 +158,10 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 40));
 
     expect(batches, hasLength(1));
-    expect(batches.single.single.bytes,
-        Uint8List.fromList(List<int>.generate(8, (index) => index)));
+    expect(
+      batches.single.single.bytes,
+      Uint8List.fromList(List<int>.generate(8, (index) => index)),
+    );
     expect(raw.length, 8);
 
     pipeline.dispose();
@@ -187,8 +196,7 @@ void main() {
     expect(batches, hasLength(1));
     expect(batches.single, hasLength(1));
     expect(batches.single.single.sequence, packetSequence);
-    expect(batches.single.single.bytes,
-        Uint8List.fromList(<int>[0x41, 0x42]));
+    expect(batches.single.single.bytes, Uint8List.fromList(<int>[0x41, 0x42]));
 
     pipeline.dispose();
   });
@@ -212,156 +220,163 @@ void main() {
 
     expect(batches, hasLength(1));
     expect(batches.single, hasLength(2));
-    expect(
-      batches.single.map((frame) => frame.bytes).toList(),
-      <Uint8List>[
-        Uint8List.fromList(<int>[0x41, 0x0d, 0x0a]),
-        Uint8List.fromList(<int>[0x42, 0x0d, 0x0a]),
-      ],
-    );
+    expect(batches.single.map((frame) => frame.bytes).toList(), <Uint8List>[
+      Uint8List.fromList(<int>[0x41, 0x0d, 0x0a]),
+      Uint8List.fromList(<int>[0x42, 0x0d, 0x0a]),
+    ]);
     expect(raw.length, 6);
 
     pipeline.dispose();
   });
 
-  test('ReceivePipeline flushes delimiter tail by idle packet interval',
-      () async {
-    final raw = ByteRingBuffer(1024);
-    final batches = <List<DataFrame>>[];
-    var sequence = 0;
-    final pipeline = ReceivePipeline(
-      rawBuffer: raw,
-      packetInterval: const Duration(milliseconds: 20),
-      packetDelimiter: const <int>[0x0d, 0x0a],
-      flushInterval: const Duration(seconds: 1),
-      nextSequence: () => ++sequence,
-      onBatch: batches.add,
-    );
+  test(
+    'ReceivePipeline flushes delimiter tail by idle packet interval',
+    () async {
+      final raw = ByteRingBuffer(1024);
+      final batches = <List<DataFrame>>[];
+      var sequence = 0;
+      final pipeline = ReceivePipeline(
+        rawBuffer: raw,
+        packetInterval: const Duration(milliseconds: 20),
+        packetDelimiter: const <int>[0x0d, 0x0a],
+        flushInterval: const Duration(seconds: 1),
+        nextSequence: () => ++sequence,
+        onBatch: batches.add,
+      );
 
-    pipeline.addBytes(<int>[0x41, 0x0d, 0x0a, 0x42], source: 'rx');
+      pipeline.addBytes(<int>[0x41, 0x0d, 0x0a, 0x42], source: 'rx');
 
-    expect(batches, hasLength(1));
-    expect(
-      batches.single.single.bytes,
-      Uint8List.fromList(<int>[0x41, 0x0d, 0x0a]),
-    );
+      expect(batches, hasLength(1));
+      expect(
+        batches.single.single.bytes,
+        Uint8List.fromList(<int>[0x41, 0x0d, 0x0a]),
+      );
 
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+      await Future<void>.delayed(const Duration(milliseconds: 40));
 
-    expect(batches, hasLength(2));
-    expect(
-      batches.last.single.bytes,
-      Uint8List.fromList(<int>[0x42]),
-    );
+      expect(batches, hasLength(2));
+      expect(batches.last.single.bytes, Uint8List.fromList(<int>[0x42]));
 
-    pipeline.dispose();
-  });
+      pipeline.dispose();
+    },
+  );
 
-  test('SessionController receive path updates snapshots and stats only',
-      () async {
-    final transport = _FakeTransportSession();
-    final controller = SessionController(
-      registry: _FakeTransportRegistry(transport),
-    );
-    addTearDown(controller.dispose);
-    controller.capabilities = const <TransportCapability>[
-      TransportCapability(
-        type: TransportType.serial,
-        supported: true,
-        reason: '',
-      ),
-    ];
-    controller.updateConfig(
-      const ConnectionConfig(
-        type: TransportType.serial,
-        serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
-      ),
-    );
-
-    await controller.connect();
-
-    var controllerNotifications = 0;
-    var snapshotNotifications = 0;
-    var statsNotifications = 0;
-    controller.addListener(() => controllerNotifications++);
-    controller.displaySnapshot.addListener(() => snapshotNotifications++);
-    controller.statsListenable.addListener(() => statsNotifications++);
-
-    transport.addIncoming(<int>[0x41]);
-    transport.addIncoming(<int>[0x42]);
-    await Future<void>.delayed(const Duration(milliseconds: 60));
-
-    expect(controller.displaySnapshot.value.frames.last.bytes,
-        Uint8List.fromList(<int>[0x41, 0x42]));
-    expect(snapshotNotifications, greaterThan(0));
-    expect(statsNotifications, greaterThan(0));
-    expect(controllerNotifications, 0);
-  });
-
-  test('SessionController replaces a live packet preview when it commits',
-      () async {
-    final transport = _FakeTransportSession();
-    final controller = SessionController(
-      registry: _FakeTransportRegistry(transport),
-    );
-    addTearDown(controller.dispose);
-    controller.capabilities = const <TransportCapability>[
-      TransportCapability(
-        type: TransportType.serial,
-        supported: true,
-        reason: '',
-      ),
-    ];
-    controller.updateConfig(
-      const ConnectionConfig(
-        type: TransportType.serial,
-        serial: SerialConfig(
-          portName: 'COM1',
-          packetIntervalMs: 120,
-          packetDelimiter: '',
+  test(
+    'SessionController receive path updates snapshots and stats only',
+    () async {
+      final transport = _FakeTransportSession();
+      final controller = SessionController(
+        registry: _FakeTransportRegistry(transport),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
         ),
-      ),
-    );
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+        ),
+      );
 
-    await controller.connect();
-    transport.addIncoming(<int>[0x41]);
-    await Future<void>.delayed(const Duration(milliseconds: 60));
+      await controller.connect();
 
-    var displayedTraffic = controller.displaySnapshot.value.frames
-        .where((frame) => frame.direction != FrameDirection.system)
-        .toList();
-    expect(displayedTraffic, hasLength(1));
-    expect(displayedTraffic.single.bytes, Uint8List.fromList(<int>[0x41]));
-    expect(
-      controller.logBuffer
+      var controllerNotifications = 0;
+      var snapshotNotifications = 0;
+      var statsNotifications = 0;
+      controller.addListener(() => controllerNotifications++);
+      controller.displaySnapshot.addListener(() => snapshotNotifications++);
+      controller.statsListenable.addListener(() => statsNotifications++);
+
+      transport.addIncoming(<int>[0x41]);
+      transport.addIncoming(<int>[0x42]);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      expect(
+        controller.displaySnapshot.value.frames.last.bytes,
+        Uint8List.fromList(<int>[0x41, 0x42]),
+      );
+      expect(snapshotNotifications, greaterThan(0));
+      expect(statsNotifications, greaterThan(0));
+      expect(controllerNotifications, 0);
+    },
+  );
+
+  test(
+    'SessionController replaces a live packet preview when it commits',
+    () async {
+      final transport = _FakeTransportSession();
+      final controller = SessionController(
+        registry: _FakeTransportRegistry(transport),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
+        ),
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(
+            portName: 'COM1',
+            packetIntervalMs: 120,
+            packetDelimiter: '',
+          ),
+        ),
+      );
+
+      await controller.connect();
+      transport.addIncoming(<int>[0x41]);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      var displayedTraffic = controller.displaySnapshot.value.frames
+          .where((frame) => frame.direction != FrameDirection.system)
+          .toList();
+      expect(displayedTraffic, hasLength(1));
+      expect(displayedTraffic.single.bytes, Uint8List.fromList(<int>[0x41]));
+      expect(
+        controller.logBuffer
+            .snapshot(paused: false)
+            .frames
+            .where((frame) => frame.direction != FrameDirection.system),
+        isEmpty,
+      );
+
+      transport.addIncoming(<int>[0x42]);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      displayedTraffic = controller.displaySnapshot.value.frames
+          .where((frame) => frame.direction != FrameDirection.system)
+          .toList();
+      expect(displayedTraffic, hasLength(1));
+      expect(
+        displayedTraffic.single.bytes,
+        Uint8List.fromList(<int>[0x41, 0x42]),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      displayedTraffic = controller.displaySnapshot.value.frames
+          .where((frame) => frame.direction != FrameDirection.system)
+          .toList();
+      final committedTraffic = controller.logBuffer
           .snapshot(paused: false)
           .frames
-          .where((frame) => frame.direction != FrameDirection.system),
-      isEmpty,
-    );
-
-    transport.addIncoming(<int>[0x42]);
-    await Future<void>.delayed(const Duration(milliseconds: 60));
-    displayedTraffic = controller.displaySnapshot.value.frames
-        .where((frame) => frame.direction != FrameDirection.system)
-        .toList();
-    expect(displayedTraffic, hasLength(1));
-    expect(displayedTraffic.single.bytes,
-        Uint8List.fromList(<int>[0x41, 0x42]));
-
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    displayedTraffic = controller.displaySnapshot.value.frames
-        .where((frame) => frame.direction != FrameDirection.system)
-        .toList();
-    final committedTraffic = controller.logBuffer
-        .snapshot(paused: false)
-        .frames
-        .where((frame) => frame.direction != FrameDirection.system)
-        .toList();
-    expect(displayedTraffic, hasLength(1));
-    expect(committedTraffic, hasLength(1));
-    expect(displayedTraffic.single.sequence, committedTraffic.single.sequence);
-  });
+          .where((frame) => frame.direction != FrameDirection.system)
+          .toList();
+      expect(displayedTraffic, hasLength(1));
+      expect(committedTraffic, hasLength(1));
+      expect(
+        displayedTraffic.single.sequence,
+        committedTraffic.single.sequence,
+      );
+    },
+  );
 
   test('SessionController clear discards an unfinished packet', () async {
     final transport = _FakeTransportSession();
@@ -424,8 +439,42 @@ void main() {
 
     expect(transport.sentBytes.single, <int>[0x03]);
     expect(controller.sendHistory, isEmpty);
-    expect(controller.displaySnapshot.value.frames.last.bytes,
-        Uint8List.fromList(<int>[0x03]));
+    expect(
+      controller.displaySnapshot.value.frames.last.bytes,
+      Uint8List.fromList(<int>[0x03]),
+    );
+  });
+
+  test('SessionController ignores rapid duplicate connect requests', () async {
+    final transport = _FakeTransportSession(
+      connectDelay: const Duration(milliseconds: 50),
+    );
+    final controller = SessionController(
+      registry: _FakeTransportRegistry(transport),
+    );
+    addTearDown(controller.dispose);
+    controller.capabilities = const <TransportCapability>[
+      TransportCapability(
+        type: TransportType.serial,
+        supported: true,
+        reason: '',
+      ),
+    ];
+    controller.updateConfig(
+      const ConnectionConfig(
+        type: TransportType.serial,
+        serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+      ),
+    );
+
+    await Future.wait<void>(<Future<void>>[
+      controller.connect(),
+      controller.connect(),
+      controller.connect(),
+    ]);
+
+    expect(transport.connectCalls, 1);
+    expect(controller.status, TransportStatus.connected);
   });
 
   test('SessionController auto send does not overlap slow sends', () async {
@@ -504,47 +553,49 @@ void main() {
     final traffic = controller.displaySnapshot.value.frames
         .where((frame) => frame.direction != FrameDirection.system)
         .toList();
-    expect(
-      traffic.map((frame) => frame.source),
-      <String>['COM1 → COM2', 'COM2 → COM1'],
-    );
-    expect(
-      traffic.map((frame) => frame.direction),
-      <FrameDirection>[FrameDirection.tx, FrameDirection.rx],
-    );
+    expect(traffic.map((frame) => frame.source), <String>[
+      'COM1 → COM2',
+      'COM2 → COM1',
+    ]);
+    expect(traffic.map((frame) => frame.direction), <FrameDirection>[
+      FrameDirection.tx,
+      FrameDirection.rx,
+    ]);
   });
 
-  test('SessionController rejects forwarding to the same serial port',
-      () async {
-    final primary = _FakeTransportSession(label: 'COM1');
-    final controller = SessionController(
-      registry: _ForwardingTransportRegistry(<String, TransportSession>{
-        'COM1': primary,
-      }),
-    );
-    addTearDown(controller.dispose);
-    controller.capabilities = const <TransportCapability>[
-      TransportCapability(
-        type: TransportType.serial,
-        supported: true,
-        reason: '',
-      ),
-    ];
-    controller.updateConfig(
-      const ConnectionConfig(
-        serial: SerialConfig(
-          portName: 'COM1',
-          forwardingEnabled: true,
-          forwardPortName: 'com1',
+  test(
+    'SessionController rejects forwarding to the same serial port',
+    () async {
+      final primary = _FakeTransportSession(label: 'COM1');
+      final controller = SessionController(
+        registry: _ForwardingTransportRegistry(<String, TransportSession>{
+          'COM1': primary,
+        }),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
         ),
-      ),
-    );
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(
+          serial: SerialConfig(
+            portName: 'COM1',
+            forwardingEnabled: true,
+            forwardPortName: 'com1',
+          ),
+        ),
+      );
 
-    await controller.connect();
+      await controller.connect();
 
-    expect(controller.status, TransportStatus.error);
-    expect(primary.isConnected, isFalse);
-  });
+      expect(controller.status, TransportStatus.error);
+      expect(primary.isConnected, isFalse);
+    },
+  );
 
   test('Serial forwarding serializes writes to a slow destination', () async {
     final primary = _FakeTransportSession(label: 'COM1');
@@ -592,42 +643,44 @@ void main() {
     expect(peer.maxConcurrentSends, 1);
   });
 
-  test('Serial forwarding closes the other port after one side disconnects',
-      () async {
-    final primary = _FakeTransportSession(label: 'COM1');
-    final peer = _FakeTransportSession(label: 'COM2');
-    final controller = SessionController(
-      registry: _ForwardingTransportRegistry(<String, TransportSession>{
-        'COM1': primary,
-        'COM2': peer,
-      }),
-    );
-    addTearDown(controller.dispose);
-    controller.capabilities = const <TransportCapability>[
-      TransportCapability(
-        type: TransportType.serial,
-        supported: true,
-        reason: '',
-      ),
-    ];
-    controller.updateConfig(
-      const ConnectionConfig(
-        serial: SerialConfig(
-          portName: 'COM1',
-          forwardingEnabled: true,
-          forwardPortName: 'COM2',
+  test(
+    'Serial forwarding closes the other port after one side disconnects',
+    () async {
+      final primary = _FakeTransportSession(label: 'COM1');
+      final peer = _FakeTransportSession(label: 'COM2');
+      final controller = SessionController(
+        registry: _ForwardingTransportRegistry(<String, TransportSession>{
+          'COM1': primary,
+          'COM2': peer,
+        }),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
         ),
-      ),
-    );
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(
+          serial: SerialConfig(
+            portName: 'COM1',
+            forwardingEnabled: true,
+            forwardPortName: 'COM2',
+          ),
+        ),
+      );
 
-    await controller.connect();
-    await peer.closeIncoming();
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+      await controller.connect();
+      await peer.closeIncoming();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    expect(controller.status, TransportStatus.error);
-    expect(primary.isConnected, isFalse);
-    expect(peer.isConnected, isFalse);
-  });
+      expect(controller.status, TransportStatus.error);
+      expect(primary.isConnected, isFalse);
+      expect(peer.isConnected, isFalse);
+    },
+  );
 }
 
 class _FakeTransportRegistry extends TransportRegistry {
@@ -663,17 +716,20 @@ class _ForwardingTransportRegistry extends TransportRegistry {
 class _FakeTransportSession implements TransportSession {
   _FakeTransportSession({
     this.label = 'COM1',
+    this.connectDelay = Duration.zero,
     this.sendDelay = Duration.zero,
   });
 
   @override
   final String label;
+  final Duration connectDelay;
   final Duration sendDelay;
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
   final List<List<int>> sentBytes = <List<int>>[];
   int maxConcurrentSends = 0;
   int _activeSends = 0;
+  int connectCalls = 0;
   var _connected = false;
 
   @override
@@ -687,6 +743,10 @@ class _FakeTransportSession implements TransportSession {
 
   @override
   Future<void> connect() async {
+    connectCalls++;
+    if (connectDelay != Duration.zero) {
+      await Future<void>.delayed(connectDelay);
+    }
     _connected = true;
   }
 

@@ -6,7 +6,7 @@ import 'package:window_manager/window_manager.dart';
 bool get _isDesktop =>
     Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
-const Size _minimumWindowSize = Size(1120, 720);
+const Size _minimumWindowSize = Size(10, 10);
 
 Future<void> initializeWindowTitlePlatform() async {
   if (!_isDesktop) {
@@ -14,12 +14,6 @@ Future<void> initializeWindowTitlePlatform() async {
   }
   await windowManager.ensureInitialized();
   await windowManager.setMinimumSize(_minimumWindowSize);
-
-  final currentSize = await windowManager.getSize();
-  if (currentSize.width < _minimumWindowSize.width ||
-      currentSize.height < _minimumWindowSize.height) {
-    await windowManager.setSize(_minimumWindowSize);
-  }
 }
 
 Future<void> setAppWindowTitlePlatform(String title) async {

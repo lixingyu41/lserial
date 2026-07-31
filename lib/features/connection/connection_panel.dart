@@ -133,15 +133,19 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     remoteHost = TextEditingController(text: config.udp.remoteHost);
     remotePort = TextEditingController(text: config.udp.remotePort.toString());
     baudRate = TextEditingController(text: config.serial.baudRate.toString());
-    forwardBaudRate =
-        TextEditingController(text: config.serial.forwardBaudRate.toString());
-    packetInterval =
-        TextEditingController(text: config.serial.packetIntervalMs.toString());
-    packetDelimiter =
-        TextEditingController(text: config.serial.packetDelimiter);
+    forwardBaudRate = TextEditingController(
+      text: config.serial.forwardBaudRate.toString(),
+    );
+    packetInterval = TextEditingController(
+      text: config.serial.packetIntervalMs.toString(),
+    );
+    packetDelimiter = TextEditingController(
+      text: config.serial.packetDelimiter,
+    );
     bluetoothDeviceId = TextEditingController(text: config.bluetooth.deviceId);
-    bluetoothServiceUuid =
-        TextEditingController(text: config.bluetooth.serviceUuid);
+    bluetoothServiceUuid = TextEditingController(
+      text: config.bluetooth.serviceUuid,
+    );
     bluetoothWriteCharacteristicUuid = TextEditingController(
       text: config.bluetooth.effectiveWriteCharacteristicUuid,
     );
@@ -191,16 +195,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               Padding(
                 padding: widget.padding,
                 child: Column(
-                  children: [
-                    widget.sessionHeader!,
-                    const Divider(height: 1),
-                  ],
+                  children: [widget.sessionHeader!, const Divider(height: 1)],
                 ),
               ),
             Expanded(
               child: ScrollConfiguration(
-                behavior:
-                    ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
                 child: Theme(
                   data: _framelessConnectionTheme(context),
                   child: ListView(
@@ -215,10 +217,12 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       const Divider(height: 1),
                       DropdownButtonFormField<TransportType>(
                         key: ValueKey(
-                            'type-${identityHashCode(controller)}-${config.type}'),
+                          'type-${identityHashCode(controller)}-${config.type}',
+                        ),
                         initialValue: config.type,
-                        decoration:
-                            InputDecoration(labelText: strings.connectionType),
+                        decoration: InputDecoration(
+                          labelText: strings.connectionType,
+                        ),
                         items: TransportType.values.map((type) {
                           final supported = controller.isTypeSupported(type);
                           final label = supported
@@ -230,9 +234,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                           return DropdownMenuItem(
                             value: type,
                             enabled: supported,
-                            child: Text(
-                              label,
-                            ),
+                            child: Text(label),
                           );
                         }).toList(),
                         onChanged: controller.isConnected
@@ -288,18 +290,26 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     final actionPressed = busy
         ? null
         : controller.isConnected
-            ? controller.disconnect
-            : _connect;
+        ? controller.disconnect
+        : _connect;
+    final actionChild = busy
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox.square(
+                dimension: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 8),
+              Text(actionLabel),
+            ],
+          )
+        : Text(actionLabel);
 
     final mainAction = controller.isConnected
-        ? OutlinedButton(
-            onPressed: actionPressed,
-            child: Text(actionLabel),
-          )
-        : FilledButton(
-            onPressed: actionPressed,
-            child: Text(actionLabel),
-          );
+        ? OutlinedButton(onPressed: actionPressed, child: actionChild)
+        : FilledButton(onPressed: actionPressed, child: actionChild);
     final listAction = _listActionFor(config);
 
     return SizedBox(
@@ -317,26 +327,29 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   }
 
   Widget? _listActionFor(ConnectionConfig config) {
+    final busy =
+        controller.status == TransportStatus.connecting ||
+        controller.status == TransportStatus.disconnecting;
     return switch (config.type) {
       TransportType.serial when !kIsWeb => OutlinedButton.icon(
-          onPressed: controller.refreshSerialPorts,
-          icon: const Icon(Icons.refresh),
-          label: Text(controller.strings.refreshList),
-        ),
+        onPressed: busy ? null : controller.refreshSerialPorts,
+        icon: const Icon(Icons.refresh),
+        label: Text(controller.strings.refreshList),
+      ),
       TransportType.bluetooth => OutlinedButton.icon(
-          onPressed: controller.isConnected ? null : _scanBluetoothDevices,
-          icon: controller.isScanningBluetooth
-              ? const SizedBox.square(
-                  dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.refresh),
-          label: Text(
-            controller.isScanningBluetooth
-                ? controller.strings.stopScan
-                : controller.strings.refreshList,
-          ),
+        onPressed: controller.isConnected ? null : _scanBluetoothDevices,
+        icon: controller.isScanningBluetooth
+            ? const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.refresh),
+        label: Text(
+          controller.isScanningBluetooth
+              ? controller.strings.stopScan
+              : controller.strings.refreshList,
         ),
+      ),
       _ => null,
     };
   }
@@ -379,26 +392,30 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         config.serial.forwardPortName,
     };
     final wheelPorts = controller.serialPorts
-        .where((portName) =>
-            !blockedPrimaryPorts.contains(portName) &&
-            !isSerialPickerOption(portName))
+        .where(
+          (portName) =>
+              !blockedPrimaryPorts.contains(portName) &&
+              !isSerialPickerOption(portName),
+        )
         .toList(growable: false);
     final baudOptions = _baudOptionsFor(config.serial.baudRate);
     final selectedPort =
         controller.serialPorts.contains(config.serial.portName) &&
-                !blockedPrimaryPorts.contains(config.serial.portName)
-            ? config.serial.portName
-            : null;
+            !blockedPrimaryPorts.contains(config.serial.portName)
+        ? config.serial.portName
+        : null;
     final forwardPorts = controller.serialPorts
-        .where((portName) =>
-            !occupiedPorts.contains(portName) &&
-            portName != config.serial.portName &&
-            !isSerialPickerOption(portName))
+        .where(
+          (portName) =>
+              !occupiedPorts.contains(portName) &&
+              portName != config.serial.portName &&
+              !isSerialPickerOption(portName),
+        )
         .toList(growable: false);
     final selectedForwardPort =
         forwardPorts.contains(config.serial.forwardPortName)
-            ? config.serial.forwardPortName
-            : null;
+        ? config.serial.forwardPortName
+        : null;
     return Column(
       children: [
         SwitchListTile(
@@ -412,21 +429,24 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               : (enabled) {
                   final current = controller.config;
                   final availablePeers = controller.serialPorts
-                      .where((portName) =>
-                          !occupiedPorts.contains(portName) &&
-                          portName != current.serial.portName &&
-                          !isSerialPickerOption(portName))
+                      .where(
+                        (portName) =>
+                            !occupiedPorts.contains(portName) &&
+                            portName != current.serial.portName &&
+                            !isSerialPickerOption(portName),
+                      )
                       .toList(growable: false);
-                  final availablePeer =
-                      availablePeers.isEmpty ? null : availablePeers.first;
+                  final availablePeer = availablePeers.isEmpty
+                      ? null
+                      : availablePeers.first;
                   controller.updateConfig(
                     current.copyWith(
                       serial: current.serial.copyWith(
                         forwardingEnabled: enabled,
                         forwardPortName:
                             current.serial.forwardPortName.isNotEmpty
-                                ? current.serial.forwardPortName
-                                : availablePeer ?? '',
+                            ? current.serial.forwardPortName
+                            : availablePeer ?? '',
                       ),
                     ),
                   );
@@ -438,7 +458,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           onStep: (step) => _stepSerialPort(wheelPorts, step),
           child: DropdownButtonFormField<String>(
             key: ValueKey(
-                'serial-${controller.serialPorts.join("|")}-$selectedPort'),
+              'serial-${controller.serialPorts.join("|")}-$selectedPort',
+            ),
             initialValue: selectedPort,
             decoration: InputDecoration(
               labelText: config.serial.forwardingEnabled
@@ -517,29 +538,29 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               'serial-forward-${controller.serialPorts.join("|")}-$selectedForwardPort',
             ),
             initialValue: selectedForwardPort,
-            decoration:
-                InputDecoration(labelText: controller.strings.serialPortB),
-            items: controller.serialPorts.map(
-              (portName) {
-                final blocked = occupiedPorts.contains(portName) ||
-                    portName == config.serial.portName ||
-                    isSerialPickerOption(portName);
-                return DropdownMenuItem(
-                  value: portName,
-                  enabled: !blocked,
-                  child: Text(
-                    serialPortOptionLabel(
-                      portName,
-                      pickLabel: controller.strings.chooseWebSerialPort,
-                      selectedLabel: controller.strings.webSerialSelectedPort,
-                    ),
-                    style: blocked
-                        ? TextStyle(color: Theme.of(context).disabledColor)
-                        : null,
+            decoration: InputDecoration(
+              labelText: controller.strings.serialPortB,
+            ),
+            items: controller.serialPorts.map((portName) {
+              final blocked =
+                  occupiedPorts.contains(portName) ||
+                  portName == config.serial.portName ||
+                  isSerialPickerOption(portName);
+              return DropdownMenuItem(
+                value: portName,
+                enabled: !blocked,
+                child: Text(
+                  serialPortOptionLabel(
+                    portName,
+                    pickLabel: controller.strings.chooseWebSerialPort,
+                    selectedLabel: controller.strings.webSerialSelectedPort,
                   ),
-                );
-              },
-            ).toList(),
+                  style: blocked
+                      ? TextStyle(color: Theme.of(context).disabledColor)
+                      : null,
+                ),
+              );
+            }).toList(),
             onChanged: controller.isConnected
                 ? null
                 : (value) {
@@ -547,8 +568,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       final current = controller.config;
                       controller.updateConfig(
                         current.copyWith(
-                          serial:
-                              current.serial.copyWith(forwardPortName: value),
+                          serial: current.serial.copyWith(
+                            forwardPortName: value,
+                          ),
                         ),
                       );
                     }
@@ -562,8 +584,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             initialValue: config.serial.forwardBaudRate,
             isExpanded: true,
             menuMaxHeight: 260,
-            decoration:
-                InputDecoration(labelText: controller.strings.baudRateB),
+            decoration: InputDecoration(
+              labelText: controller.strings.baudRateB,
+            ),
             items: _baudOptionsFor(config.serial.forwardBaudRate)
                 .map(
                   (value) => DropdownMenuItem<int>(
@@ -580,8 +603,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       final current = controller.config;
                       controller.updateConfig(
                         current.copyWith(
-                          serial:
-                              current.serial.copyWith(forwardBaudRate: value),
+                          serial: current.serial.copyWith(
+                            forwardBaudRate: value,
+                          ),
                         ),
                       );
                     }
@@ -638,10 +662,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                   '/R/N',
                   r'\x00',
                 ])
-                  PopupMenuItem(
-                    value: value,
-                    child: Text(value),
-                  ),
+                  PopupMenuItem(value: value, child: Text(value)),
               ],
             ),
           ),
@@ -658,11 +679,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.dataBits,
                 isExpanded: true,
-                decoration:
-                    InputDecoration(labelText: controller.strings.dataBits),
+                decoration: InputDecoration(
+                  labelText: controller.strings.dataBits,
+                ),
                 items: const [5, 6, 7, 8]
-                    .map((bits) =>
-                        DropdownMenuItem(value: bits, child: Text('$bits')))
+                    .map(
+                      (bits) =>
+                          DropdownMenuItem(value: bits, child: Text('$bits')),
+                    )
                     .toList(),
                 onChanged: controller.isConnected
                     ? null
@@ -670,8 +694,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                         if (value != null) {
                           controller.updateConfig(
                             config.copyWith(
-                                serial:
-                                    config.serial.copyWith(dataBits: value)),
+                              serial: config.serial.copyWith(dataBits: value),
+                            ),
                           );
                         }
                       },
@@ -686,11 +710,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.stopBits,
                 isExpanded: true,
-                decoration:
-                    InputDecoration(labelText: controller.strings.stopBits),
+                decoration: InputDecoration(
+                  labelText: controller.strings.stopBits,
+                ),
                 items: const [1, 2]
-                    .map((bits) =>
-                        DropdownMenuItem(value: bits, child: Text('$bits')))
+                    .map(
+                      (bits) =>
+                          DropdownMenuItem(value: bits, child: Text('$bits')),
+                    )
                     .toList(),
                 onChanged: controller.isConnected
                     ? null
@@ -698,8 +725,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                         if (value != null) {
                           controller.updateConfig(
                             config.copyWith(
-                                serial:
-                                    config.serial.copyWith(stopBits: value)),
+                              serial: config.serial.copyWith(stopBits: value),
+                            ),
                           );
                         }
                       },
@@ -713,13 +740,16 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.parity,
                 isExpanded: true,
-                decoration:
-                    InputDecoration(labelText: controller.strings.parity),
+                decoration: InputDecoration(
+                  labelText: controller.strings.parity,
+                ),
                 items: SerialParity.values
-                    .map((parity) => DropdownMenuItem(
-                          value: parity,
-                          child: Text(controller.strings.serialParity(parity)),
-                        ))
+                    .map(
+                      (parity) => DropdownMenuItem(
+                        value: parity,
+                        child: Text(controller.strings.serialParity(parity)),
+                      ),
+                    )
                     .toList(),
                 onChanged: controller.isConnected
                     ? null
@@ -727,7 +757,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                         if (value != null) {
                           controller.updateConfig(
                             config.copyWith(
-                                serial: config.serial.copyWith(parity: value)),
+                              serial: config.serial.copyWith(parity: value),
+                            ),
                           );
                         }
                       },
@@ -843,10 +874,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                   '/R/N',
                   r'\x00',
                 ])
-                  PopupMenuItem(
-                    value: value,
-                    child: Text(value),
-                  ),
+                  PopupMenuItem(value: value, child: Text(value)),
               ],
             ),
           ),
@@ -863,11 +891,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.dataBits,
                 isExpanded: true,
-                decoration:
-                    InputDecoration(labelText: controller.strings.dataBits),
+                decoration: InputDecoration(
+                  labelText: controller.strings.dataBits,
+                ),
                 items: const [5, 6, 7, 8]
-                    .map((bits) =>
-                        DropdownMenuItem(value: bits, child: Text('$bits')))
+                    .map(
+                      (bits) =>
+                          DropdownMenuItem(value: bits, child: Text('$bits')),
+                    )
                     .toList(),
                 onChanged: controller.isConnected
                     ? null
@@ -875,8 +906,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                         if (value != null) {
                           controller.updateConfig(
                             config.copyWith(
-                                serial:
-                                    config.serial.copyWith(dataBits: value)),
+                              serial: config.serial.copyWith(dataBits: value),
+                            ),
                           );
                         }
                       },
@@ -891,11 +922,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.stopBits,
                 isExpanded: true,
-                decoration:
-                    InputDecoration(labelText: controller.strings.stopBits),
+                decoration: InputDecoration(
+                  labelText: controller.strings.stopBits,
+                ),
                 items: const [1, 2]
-                    .map((bits) =>
-                        DropdownMenuItem(value: bits, child: Text('$bits')))
+                    .map(
+                      (bits) =>
+                          DropdownMenuItem(value: bits, child: Text('$bits')),
+                    )
                     .toList(),
                 onChanged: controller.isConnected
                     ? null
@@ -903,8 +937,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                         if (value != null) {
                           controller.updateConfig(
                             config.copyWith(
-                                serial:
-                                    config.serial.copyWith(stopBits: value)),
+                              serial: config.serial.copyWith(stopBits: value),
+                            ),
                           );
                         }
                       },
@@ -918,13 +952,16 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                 ),
                 initialValue: config.serial.parity,
                 isExpanded: true,
-                decoration:
-                    InputDecoration(labelText: controller.strings.parity),
+                decoration: InputDecoration(
+                  labelText: controller.strings.parity,
+                ),
                 items: SerialParity.values
-                    .map((parity) => DropdownMenuItem(
-                          value: parity,
-                          child: Text(controller.strings.serialParity(parity)),
-                        ))
+                    .map(
+                      (parity) => DropdownMenuItem(
+                        value: parity,
+                        child: Text(controller.strings.serialParity(parity)),
+                      ),
+                    )
                     .toList(),
                 onChanged: controller.isConnected
                     ? null
@@ -932,7 +969,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                         if (value != null) {
                           controller.updateConfig(
                             config.copyWith(
-                                serial: config.serial.copyWith(parity: value)),
+                              serial: config.serial.copyWith(parity: value),
+                            ),
                           );
                         }
                       },
@@ -948,8 +986,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     return Column(
       children: [
         TextField(
-            controller: host,
-            decoration: InputDecoration(labelText: controller.strings.host)),
+          controller: host,
+          decoration: InputDecoration(labelText: controller.strings.host),
+        ),
         const Divider(height: 1),
         TextField(
           controller: port,
@@ -965,8 +1004,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       children: [
         TextField(
           controller: bindAddress,
-          decoration:
-              InputDecoration(labelText: controller.strings.bindAddress),
+          decoration: InputDecoration(
+            labelText: controller.strings.bindAddress,
+          ),
         ),
         const Divider(height: 1),
         TextField(
@@ -983,8 +1023,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       children: [
         TextField(
           controller: bindAddress,
-          decoration:
-              InputDecoration(labelText: controller.strings.bindAddress),
+          decoration: InputDecoration(
+            labelText: controller.strings.bindAddress,
+          ),
         ),
         const Divider(height: 1),
         TextField(
@@ -1009,8 +1050,10 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
 
   Widget _bluetoothFields() {
     final config = controller.config;
-    final selectedDevice = controller.bluetoothDevices
-            .any((device) => device.id == config.bluetooth.deviceId)
+    final selectedDevice =
+        controller.bluetoothDevices.any(
+          (device) => device.id == config.bluetooth.deviceId,
+        )
         ? config.bluetooth.deviceId
         : null;
     return Column(
@@ -1059,8 +1102,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             TextField(
               controller: bluetoothServiceUuid,
               enabled: !controller.isConnected,
-              decoration:
-                  InputDecoration(labelText: controller.strings.serviceUuid),
+              decoration: InputDecoration(
+                labelText: controller.strings.serviceUuid,
+              ),
               onChanged: (value) {
                 controller.updateConfig(
                   controller.config.copyWith(
@@ -1161,8 +1205,10 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           packetIntervalMs: serialPacketInterval,
           packetDelimiter: packetDelimiter.text,
         ),
-        tcpClient:
-            current.tcpClient.copyWith(host: host.text.trim(), port: tcpPort),
+        tcpClient: current.tcpClient.copyWith(
+          host: host.text.trim(),
+          port: tcpPort,
+        ),
         tcpServer: current.tcpServer.copyWith(
           bindAddress: bindAddress.text.trim(),
           port: tcpPort,
@@ -1178,8 +1224,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           deviceName: _bluetoothDeviceNameFor(bluetoothDeviceId.text.trim()),
           serviceUuid: bluetoothServiceUuid.text.trim(),
           writeCharacteristicUuid: bluetoothWriteCharacteristicUuid.text.trim(),
-          notifyCharacteristicUuid:
-              bluetoothNotifyCharacteristicUuid.text.trim(),
+          notifyCharacteristicUuid: bluetoothNotifyCharacteristicUuid.text
+              .trim(),
         ),
       ),
     );
@@ -1219,9 +1265,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     final next = _nextBaudRate(currentBaud, step);
     baudRate.text = '$next';
     controller.updateConfig(
-      current.copyWith(
-        serial: current.serial.copyWith(baudRate: next),
-      ),
+      current.copyWith(serial: current.serial.copyWith(baudRate: next)),
     );
   }
 
@@ -1272,21 +1316,19 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   void _setPacketDelimiter(String value) {
     final current = controller.config;
     controller.updateConfig(
-      current.copyWith(
-        serial: current.serial.copyWith(packetDelimiter: value),
-      ),
+      current.copyWith(serial: current.serial.copyWith(packetDelimiter: value)),
     );
   }
 
   String? _delimiterPresetValue(String value) {
     return const <String>{
-      '',
-      r'\r',
-      r'\n',
-      r'\r\n',
-      '/R/N',
-      r'\x00',
-    }.contains(value)
+          '',
+          r'\r',
+          r'\n',
+          r'\r\n',
+          '/R/N',
+          r'\x00',
+        }.contains(value)
         ? value
         : null;
   }
@@ -1299,8 +1341,8 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           deviceName: _bluetoothDeviceNameFor(bluetoothDeviceId.text.trim()),
           serviceUuid: bluetoothServiceUuid.text.trim(),
           writeCharacteristicUuid: bluetoothWriteCharacteristicUuid.text.trim(),
-          notifyCharacteristicUuid:
-              bluetoothNotifyCharacteristicUuid.text.trim(),
+          notifyCharacteristicUuid: bluetoothNotifyCharacteristicUuid.text
+              .trim(),
         ),
       ),
     );
@@ -1352,8 +1394,10 @@ class _BluetoothDeviceList extends StatelessWidget {
                       ? null
                       : () => onSelected(device.id),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 7,
+                    ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1377,9 +1421,9 @@ class _BluetoothDeviceList extends StatelessWidget {
                                           ? controller.strings.unknownBleDevice
                                           : device.name,
                                       softWrap: true,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
                                     ),
                                   ),
                                   if (device.rssi != null) ...[
@@ -1398,9 +1442,7 @@ class _BluetoothDeviceList extends StatelessWidget {
                               Text(
                                 device.id,
                                 softWrap: true,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelSmall
+                                style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(color: scheme.onSurfaceVariant),
                               ),
                             ],
@@ -1428,9 +1470,7 @@ class _StatusLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _statusColor(context, controller.status);
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color.withAlpha(22),
-      ),
+      decoration: BoxDecoration(color: color.withAlpha(22)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
@@ -1459,8 +1499,7 @@ class _StatusLine extends StatelessWidget {
     return switch (status) {
       TransportStatus.connected => const Color(0xff1f8a4c),
       TransportStatus.connecting ||
-      TransportStatus.disconnecting =>
-        scheme.tertiary,
+      TransportStatus.disconnecting => scheme.tertiary,
       TransportStatus.error => scheme.error,
       TransportStatus.disconnected => scheme.outline,
     };
@@ -1508,11 +1547,7 @@ class _CollapsiblePanel extends StatelessWidget {
                       onTap: () => onChanged(!expanded),
                       child: Row(
                         children: [
-                          Icon(
-                            icon,
-                            size: 18,
-                            color: scheme.onSurfaceVariant,
-                          ),
+                          Icon(icon, size: 18, color: scheme.onSurfaceVariant),
                           const SizedBox(width: 6),
                           Text(
                             title,
@@ -1535,10 +1570,7 @@ class _CollapsiblePanel extends StatelessWidget {
             ],
           ),
         ),
-        if (expanded) ...[
-          const Divider(height: 1),
-          child,
-        ],
+        if (expanded) ...[const Divider(height: 1), child],
       ],
     );
   }
@@ -1554,18 +1586,13 @@ class _HeaderSeparator extends StatelessWidget {
     return SizedBox(
       height: 40,
       width: 1,
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: color),
-      ),
+      child: DecoratedBox(decoration: BoxDecoration(color: color)),
     );
   }
 }
 
 class _StatsPanel extends StatelessWidget {
-  const _StatsPanel({
-    required this.controller,
-    required this.workspace,
-  });
+  const _StatsPanel({required this.controller, required this.workspace});
 
   final SessionController controller;
   final WorkspaceController workspace;
@@ -1763,20 +1790,10 @@ class _StatRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         children: [
-          SizedBox(
-            width: 44,
-            child: Text(
-              label,
-              style: textStyle,
-            ),
-          ),
+          SizedBox(width: 44, child: Text(label, style: textStyle)),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: textStyle,
-            ),
+            child: Text(value, textAlign: TextAlign.right, style: textStyle),
           ),
         ],
       ),

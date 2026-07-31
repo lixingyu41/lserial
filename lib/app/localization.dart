@@ -4,21 +4,18 @@ import '../domain/connection_config.dart';
 import '../domain/transport.dart';
 import '../storage/log_export_result.dart';
 
-enum AppLanguage {
-  zh,
-  en,
-}
+enum AppLanguage { zh, en }
 
 extension AppLanguageLabel on AppLanguage {
   String get code => switch (this) {
-        AppLanguage.zh => 'zh',
-        AppLanguage.en => 'en',
-      };
+    AppLanguage.zh => 'zh',
+    AppLanguage.en => 'en',
+  };
 
   String get nativeLabel => switch (this) {
-        AppLanguage.zh => '中文',
-        AppLanguage.en => 'English',
-      };
+    AppLanguage.zh => '中文',
+    AppLanguage.en => 'English',
+  };
 }
 
 class AppStrings {
@@ -27,9 +24,9 @@ class AppStrings {
   final AppLanguage language;
 
   static AppStrings of(AppLanguage language) => switch (language) {
-        AppLanguage.zh => zh,
-        AppLanguage.en => en,
-      };
+    AppLanguage.zh => zh,
+    AppLanguage.en => en,
+  };
 
   static const zh = AppStrings._(AppLanguage.zh);
   static const en = AppStrings._(AppLanguage.en);
@@ -185,45 +182,45 @@ class AppStrings {
   String get delete => isZh ? '删除' : 'Delete';
 
   String transportType(TransportType type) => switch (type) {
-        TransportType.serial => isZh ? '串口' : 'Serial',
-        TransportType.bluetooth => isZh ? '蓝牙' : 'Bluetooth',
-        TransportType.tcpClient => isZh ? 'TCP 客户端' : 'TCP Client',
-        TransportType.tcpServer => isZh ? 'TCP 服务端' : 'TCP Server',
-        TransportType.udp => 'UDP',
-      };
+    TransportType.serial => isZh ? '串口' : 'Serial',
+    TransportType.bluetooth => isZh ? '蓝牙' : 'Bluetooth',
+    TransportType.tcpClient => isZh ? 'TCP 客户端' : 'TCP Client',
+    TransportType.tcpServer => isZh ? 'TCP 服务端' : 'TCP Server',
+    TransportType.udp => 'UDP',
+  };
 
   String serialParity(SerialParity value) => switch (value) {
-        SerialParity.none => isZh ? '无' : 'None',
-        SerialParity.odd => isZh ? '奇' : 'Odd',
-        SerialParity.even => isZh ? '偶' : 'Even',
-      };
+    SerialParity.none => isZh ? '无' : 'None',
+    SerialParity.odd => isZh ? '奇' : 'Odd',
+    SerialParity.even => isZh ? '偶' : 'Even',
+  };
 
   String payloadFormat(PayloadFormat format) => switch (format) {
-        PayloadFormat.ascii => 'ASCII',
-        PayloadFormat.hex => 'HEX',
-      };
+    PayloadFormat.ascii => 'ASCII',
+    PayloadFormat.hex => 'HEX',
+  };
 
   String consoleViewMode(ConsoleViewMode mode) => switch (mode) {
-        ConsoleViewMode.ascii => 'ASCII',
-        ConsoleViewMode.hex => 'HEX',
-      };
+    ConsoleViewMode.ascii => 'ASCII',
+    ConsoleViewMode.hex => 'HEX',
+  };
 
   String lineEndingLabel(LineEnding ending) => switch (ending) {
-        LineEnding.none => isZh ? '无' : 'None',
-        LineEnding.cr => 'CR',
-        LineEnding.lf => 'LF',
-        LineEnding.crlf => 'CRLF',
-      };
+    LineEnding.none => isZh ? '无' : 'None',
+    LineEnding.cr => 'CR',
+    LineEnding.lf => 'LF',
+    LineEnding.crlf => 'CRLF',
+  };
 
   String shortcutMode(SendShortcutMode mode) => switch (mode) {
-        SendShortcutMode.enter => isZh ? '回车发送' : 'Enter sends',
-        SendShortcutMode.ctrlEnter => isZh ? 'Ctrl+回车发送' : 'Ctrl+Enter sends',
-      };
+    SendShortcutMode.enter => isZh ? '回车发送' : 'Enter sends',
+    SendShortcutMode.ctrlEnter => isZh ? 'Ctrl+回车发送' : 'Ctrl+Enter sends',
+  };
 
   String shortcutModeShort(SendShortcutMode mode) => switch (mode) {
-        SendShortcutMode.enter => isZh ? '回车' : 'Enter',
-        SendShortcutMode.ctrlEnter => isZh ? 'Ctrl+回车' : 'Ctrl+Enter',
-      };
+    SendShortcutMode.enter => isZh ? '回车' : 'Enter',
+    SendShortcutMode.ctrlEnter => isZh ? 'Ctrl+回车' : 'Ctrl+Enter',
+  };
 
   String onOff(bool value) {
     if (isZh) {
@@ -236,17 +233,17 @@ class AppStrings {
       isZh ? '$label：$value' : '$label: $value';
 
   String sessionStat(SessionStat stat) => switch (stat) {
-        SessionStat.rxCount => rxCount,
-        SessionStat.txCount => txCount,
-        SessionStat.rxCurrentRate => rxCurrentRate,
-        SessionStat.txCurrentRate => txCurrentRate,
-        SessionStat.rxRate => rxRate,
-        SessionStat.txRate => txRate,
-        SessionStat.sessionDuration => sessionDuration,
-        SessionStat.displayCache => displayCache,
-        SessionStat.droppedData => droppedData,
-        SessionStat.rawCache => rawCache,
-      };
+    SessionStat.rxCount => rxCount,
+    SessionStat.txCount => txCount,
+    SessionStat.rxCurrentRate => rxCurrentRate,
+    SessionStat.txCurrentRate => txCurrentRate,
+    SessionStat.rxRate => rxRate,
+    SessionStat.txRate => txRate,
+    SessionStat.sessionDuration => sessionDuration,
+    SessionStat.displayCache => displayCache,
+    SessionStat.droppedData => droppedData,
+    SessionStat.rawCache => rawCache,
+  };
 
   String get openingWebBluetoothPicker =>
       isZh ? '正在打开 Web Bluetooth 选择器...' : 'Opening Web Bluetooth picker...';
@@ -345,6 +342,9 @@ class AppStrings {
   }
 
   String errorMessage(Object error) {
+    if (error is SerialOpenException) {
+      return _serialOpenError(error);
+    }
     final raw = error.toString();
     if (!isZh) {
       return raw;
@@ -356,6 +356,45 @@ class AppStrings {
       return known;
     }
     return _fallbackErrorMessage(message);
+  }
+
+  String _serialOpenError(SerialOpenException error) {
+    final nativeDetails = error.nativeCode == null || error.nativeCode == 0
+        ? ''
+        : isZh
+        ? '（系统错误 ${error.nativeCode}）'
+        : ' (system error ${error.nativeCode})';
+    return switch (error.failure) {
+      SerialOpenFailure.busyOrPermission =>
+        isZh
+            ? '无法打开 ${error.portName}：串口正被其他程序占用，或当前账户没有访问权限。请关闭占用该串口的程序后重试$nativeDetails。'
+            : 'Cannot open ${error.portName}: the port is in use by another program or access was denied. Close the program using the port and try again$nativeDetails.',
+      SerialOpenFailure.unavailable =>
+        isZh
+            ? '无法打开 ${error.portName}：设备已断开、端口已失效或驱动未就绪。请重新插拔设备并刷新串口列表$nativeDetails。'
+            : 'Cannot open ${error.portName}: the device is disconnected, the port is stale, or the driver is not ready. Reconnect the device and refresh the port list$nativeDetails.',
+      SerialOpenFailure.driverInitialization =>
+        isZh
+            ? '无法打开 ${error.portName}：设备驱动无法初始化串口参数。系统已识别设备，但驱动拒绝应用通信设置。请重新插拔设备、换 USB 接口，或在设备管理器中重启/重装驱动。'
+            : 'Cannot open ${error.portName}: the device driver could not initialize the serial settings. Reconnect the device, try another USB port, or restart/reinstall its driver.',
+      SerialOpenFailure.timedOut =>
+        isZh
+            ? '无法打开 ${error.portName}：驱动响应超时。连接已在后台终止，请重新插拔设备后重试。'
+            : 'Cannot open ${error.portName}: the driver timed out. The background connection attempt was stopped; reconnect the device and try again.',
+      SerialOpenFailure.unknown =>
+        isZh
+            ? '无法打开 ${error.portName}：发生未知串口错误${_serialNativeMessage(error)}。'
+            : 'Cannot open ${error.portName}: an unknown serial error occurred${_serialNativeMessage(error)}.',
+    };
+  }
+
+  String _serialNativeMessage(SerialOpenException error) {
+    final message = error.nativeMessage?.trim();
+    final parts = <String>[
+      if (error.nativeCode != null) '${error.nativeCode}',
+      if (message != null && message.isNotEmpty) message,
+    ];
+    return parts.isEmpty ? '' : ' (${parts.join(': ')})';
   }
 
   String _stripErrorPrefix(String raw) {
@@ -402,8 +441,9 @@ class AppStrings {
 
     const failedSerialPrefix = 'Failed to open serial port ';
     if (message.startsWith(failedSerialPrefix)) {
-      final port =
-          _trimTrailingPeriod(message.substring(failedSerialPrefix.length));
+      final port = _trimTrailingPeriod(
+        message.substring(failedSerialPrefix.length),
+      );
       return '打开串口失败：$port。';
     }
 
@@ -424,8 +464,9 @@ class AppStrings {
 
     const noWritablePrefix = 'No writable BLE characteristic found in ';
     if (message.startsWith(noWritablePrefix)) {
-      final service =
-          _trimTrailingPeriod(message.substring(noWritablePrefix.length));
+      final service = _trimTrailingPeriod(
+        message.substring(noWritablePrefix.length),
+      );
       return '在 BLE 服务 $service 中未找到可写特征。';
     }
 
@@ -500,15 +541,15 @@ class AppStrings {
       isZh ? '导出失败：${errorMessage(error)}' : 'Export failed: $error';
 
   String? windowsSocketErrorMeaning(int code) => switch (code) {
-        10048 => isZh ? '地址已被占用' : 'address already in use',
-        10049 => isZh ? '无法分配请求的地址' : 'cannot assign requested address',
-        10054 => isZh ? '连接被对端重置' : 'connection reset by peer',
-        10060 => isZh ? '连接超时' : 'connection timed out',
-        10061 => isZh ? '连接被拒绝' : 'connection refused',
-        10065 => isZh ? '没有到主机的路由' : 'no route to host',
-        1225 => isZh ? '连接被拒绝' : 'connection refused',
-        _ => null,
-      };
+    10048 => isZh ? '地址已被占用' : 'address already in use',
+    10049 => isZh ? '无法分配请求的地址' : 'cannot assign requested address',
+    10054 => isZh ? '连接被对端重置' : 'connection reset by peer',
+    10060 => isZh ? '连接超时' : 'connection timed out',
+    10061 => isZh ? '连接被拒绝' : 'connection refused',
+    10065 => isZh ? '没有到主机的路由' : 'no route to host',
+    1225 => isZh ? '连接被拒绝' : 'connection refused',
+    _ => null,
+  };
 
   String get socketExceptionLabel => isZh ? 'Socket 错误' : 'SocketException';
   String get socketErrnoLabel => isZh ? '错误码' : 'errno';
@@ -516,21 +557,24 @@ class AppStrings {
   String get socketPortLabel => isZh ? '端口' : 'port';
 
   String exportResult(LogExportResult result) => switch (result.type) {
-        LogExportResultType.saved =>
-          isZh ? '已导出到 ${result.target}' : 'Exported to ${result.target}',
-        LogExportResultType.downloadStarted => isZh
-            ? '已开始下载 ${result.target}'
-            : 'Started browser download: ${result.target}',
-      };
+    LogExportResultType.saved =>
+      isZh ? '已导出到 ${result.target}' : 'Exported to ${result.target}',
+    LogExportResultType.downloadStarted =>
+      isZh
+          ? '已开始下载 ${result.target}'
+          : 'Started browser download: ${result.target}',
+  };
 
   String connectionSummary(ConnectionConfig config, String serialDisplayName) {
     return switch (config.type) {
-      TransportType.serial => config.serial.portName.isEmpty
-          ? (isZh ? '串口：未选择端口' : 'Serial: no port selected')
-          : '${transportType(TransportType.serial)} $serialDisplayName @ ${config.serial.baudRate}',
-      TransportType.bluetooth => config.bluetooth.deviceName.isEmpty
-          ? 'BLE ${config.bluetooth.deviceId}'
-          : 'BLE ${config.bluetooth.deviceName}',
+      TransportType.serial =>
+        config.serial.portName.isEmpty
+            ? (isZh ? '串口：未选择端口' : 'Serial: no port selected')
+            : '${transportType(TransportType.serial)} $serialDisplayName @ ${config.serial.baudRate}',
+      TransportType.bluetooth =>
+        config.bluetooth.deviceName.isEmpty
+            ? 'BLE ${config.bluetooth.deviceId}'
+            : 'BLE ${config.bluetooth.deviceName}',
       TransportType.tcpClient =>
         'TCP ${config.tcpClient.host}:${config.tcpClient.port}',
       TransportType.tcpServer =>

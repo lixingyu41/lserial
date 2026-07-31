@@ -26,12 +26,7 @@ import 'session_options.dart';
 export 'session_options.dart';
 
 const List<QuickCommand> _defaultQuickCommands = <QuickCommand>[
-  QuickCommand(
-    id: 1,
-    name: 'AT',
-    content: 'AT',
-    format: PayloadFormat.ascii,
-  ),
+  QuickCommand(id: 1, name: 'AT', content: 'AT', format: PayloadFormat.ascii),
   QuickCommand(
     id: 2,
     name: 'Reset',
@@ -55,12 +50,14 @@ class SessionController extends ChangeNotifier {
     this.language = AppLanguage.zh,
     Future<List<QuickCommand>?> Function()? loadQuickCommands,
     Future<void> Function(List<QuickCommand> commands)? saveQuickCommands,
-  })  : registry = registry ?? const TransportRegistry(),
-        _loadQuickCommands = loadQuickCommands ?? readQuickCommands,
-        _saveQuickCommands = saveQuickCommands ?? writeQuickCommands,
-        rawBuffer = ByteRingBuffer(maxCacheBytes),
-        logBuffer =
-            LogBuffer(maxFrames: maxDisplayFrames, maxBytes: maxCacheBytes) {
+  }) : registry = registry ?? const TransportRegistry(),
+       _loadQuickCommands = loadQuickCommands ?? readQuickCommands,
+       _saveQuickCommands = saveQuickCommands ?? writeQuickCommands,
+       rawBuffer = ByteRingBuffer(maxCacheBytes),
+       logBuffer = LogBuffer(
+         maxFrames: maxDisplayFrames,
+         maxBytes: maxCacheBytes,
+       ) {
     statusMessage = strings.ready;
     _pipeline = ReceivePipeline(
       rawBuffer: rawBuffer,
@@ -79,8 +76,9 @@ class SessionController extends ChangeNotifier {
   final FrameFormatter formatter = const FrameFormatter();
   final int serialAliasNumber;
   AppLanguage language;
-  final ValueNotifier<LogSnapshot> displaySnapshot =
-      ValueNotifier<LogSnapshot>(LogSnapshot.empty());
+  final ValueNotifier<LogSnapshot> displaySnapshot = ValueNotifier<LogSnapshot>(
+    LogSnapshot.empty(),
+  );
   final ChangeNotifier _statsNotifier = ChangeNotifier();
 
   late final ReceivePipeline _pipeline;
@@ -94,6 +92,7 @@ class SessionController extends ChangeNotifier {
   Timer? _autoSendTimer;
   Timer? _statsTimer;
   bool _autoSendInFlight = false;
+  bool _connectInFlight = false;
   int _sequence = 0;
   int _displayRevision = 0;
   DataFrame? _packetPreview;
@@ -131,10 +130,12 @@ class SessionController extends ChangeNotifier {
   int txByteCount = 0;
   double currentRxBytesPerSecond = 0;
   double currentTxBytesPerSecond = 0;
-  final Set<SessionStat> visibleStats =
-      Set<SessionStat>.of(sessionStatDisplayOrder);
-  final List<QuickCommand> quickCommands =
-      List<QuickCommand>.of(_defaultQuickCommands);
+  final Set<SessionStat> visibleStats = Set<SessionStat>.of(
+    sessionStatDisplayOrder,
+  );
+  final List<QuickCommand> quickCommands = List<QuickCommand>.of(
+    _defaultQuickCommands,
+  );
   final List<SendHistoryEntry> sendHistory = <SendHistoryEntry>[];
 
   AppStrings get strings => AppStrings.of(language);
@@ -146,22 +147,23 @@ class SessionController extends ChangeNotifier {
   Listenable get statsListenable => _statsNotifier;
 
   String get sourceLabel => switch (config.type) {
-        TransportType.serial => config.serial.forwardingEnabled
-            ? '${serialDisplayName}_${_titleValue(config.serial.forwardPortName, 'Serial')}'
-            : serialDisplayName,
-        TransportType.bluetooth => _titleValue(
-            config.bluetooth.deviceName.isEmpty
-                ? config.bluetooth.deviceId
-                : config.bluetooth.deviceName,
-            'BLE',
-          ),
-        TransportType.tcpClient =>
-          'TCP ${_titleValue(config.tcpClient.host, 'Client')}:${config.tcpClient.port}',
-        TransportType.tcpServer =>
-          'TCP Server ${_titleValue(config.tcpServer.bindAddress, 'Server')}:${config.tcpServer.port}',
-        TransportType.udp =>
-          'UDP ${_titleValue(config.udp.bindAddress, 'Local')}:${config.udp.localPort}',
-      };
+    TransportType.serial =>
+      config.serial.forwardingEnabled
+          ? '${serialDisplayName}_${_titleValue(config.serial.forwardPortName, 'Serial')}'
+          : serialDisplayName,
+    TransportType.bluetooth => _titleValue(
+      config.bluetooth.deviceName.isEmpty
+          ? config.bluetooth.deviceId
+          : config.bluetooth.deviceName,
+      'BLE',
+    ),
+    TransportType.tcpClient =>
+      'TCP ${_titleValue(config.tcpClient.host, 'Client')}:${config.tcpClient.port}',
+    TransportType.tcpServer =>
+      'TCP Server ${_titleValue(config.tcpServer.bindAddress, 'Server')}:${config.tcpServer.port}',
+    TransportType.udp =>
+      'UDP ${_titleValue(config.udp.bindAddress, 'Local')}:${config.udp.localPort}',
+  };
 
   Duration get sessionDuration {
     final startedAt = _sessionStartedAt;
@@ -172,18 +174,19 @@ class SessionController extends ChangeNotifier {
   }
 
   String get windowTitle => switch (config.type) {
-        TransportType.serial => config.serial.forwardingEnabled
-            ? 'LSerial-$serialDisplayName-${_titleValue(config.serial.forwardPortName, 'Serial')}-Bridge'
-            : 'LSerial-$serialDisplayName-${config.serial.baudRate}',
-        TransportType.bluetooth =>
-          'LSerial-BLE-${_titleValue(config.bluetooth.deviceName.isEmpty ? config.bluetooth.deviceId : config.bluetooth.deviceName, 'Device')}',
-        TransportType.tcpClient =>
-          'LSerial-TCP-${_titleValue(config.tcpClient.host, 'Client')}',
-        TransportType.tcpServer =>
-          'LSerial-TCP-Server-${_titleValue(config.tcpServer.bindAddress, 'Server')}:${config.tcpServer.port}',
-        TransportType.udp =>
-          'LSerial-UDP-${_titleValue(config.udp.remoteHost, 'Remote')}:${config.udp.remotePort}',
-      };
+    TransportType.serial =>
+      config.serial.forwardingEnabled
+          ? 'LSerial-$serialDisplayName-${_titleValue(config.serial.forwardPortName, 'Serial')}-Bridge'
+          : 'LSerial-$serialDisplayName-${config.serial.baudRate}',
+    TransportType.bluetooth =>
+      'LSerial-BLE-${_titleValue(config.bluetooth.deviceName.isEmpty ? config.bluetooth.deviceId : config.bluetooth.deviceName, 'Device')}',
+    TransportType.tcpClient =>
+      'LSerial-TCP-${_titleValue(config.tcpClient.host, 'Client')}',
+    TransportType.tcpServer =>
+      'LSerial-TCP-Server-${_titleValue(config.tcpServer.bindAddress, 'Server')}:${config.tcpServer.port}',
+    TransportType.udp =>
+      'LSerial-UDP-${_titleValue(config.udp.remoteHost, 'Remote')}:${config.udp.remotePort}',
+  };
 
   String get serialDisplayName {
     if (isGenericSerialPortName(config.serial.portName)) {
@@ -192,22 +195,18 @@ class SessionController extends ChangeNotifier {
     return _titleValue(config.serial.portName, 'Serial$serialAliasNumber');
   }
 
-  double get averageRxBytesPerSecond => _averageBytesPerSecond(
-        rxByteCount.toDouble(),
-        startedAt: _rxStartedAt,
-      );
+  double get averageRxBytesPerSecond =>
+      _averageBytesPerSecond(rxByteCount.toDouble(), startedAt: _rxStartedAt);
 
-  double get averageTxBytesPerSecond => _averageBytesPerSecond(
-        txByteCount.toDouble(),
-        startedAt: _txStartedAt,
-      );
+  double get averageTxBytesPerSecond =>
+      _averageBytesPerSecond(txByteCount.toDouble(), startedAt: _txStartedAt);
 
   ConsoleFormatOptions get formatOptions => ConsoleFormatOptions(
-        viewMode: viewMode,
-        showTimestamp: showTimestamp,
-        showDirection: showDirection,
-        showLineEndingSymbols: showLineEndingSymbols,
-      );
+    viewMode: viewMode,
+    showTimestamp: showTimestamp,
+    showDirection: showDirection,
+    showLineEndingSymbols: showLineEndingSymbols,
+  );
 
   void setLanguage(AppLanguage next) {
     if (language == next) {
@@ -219,8 +218,8 @@ class SessionController extends ChangeNotifier {
     statusMessage = switch (status) {
       TransportStatus.connected => strings.connectedTo(sourceLabel),
       TransportStatus.connecting => strings.connectingTo(
-          strings.connectionSummary(config, serialDisplayName),
-        ),
+        strings.connectionSummary(config, serialDisplayName),
+      ),
       TransportStatus.disconnecting => strings.disconnectingStatus,
       TransportStatus.disconnected
           when previousMessage == previousStrings.ready =>
@@ -247,8 +246,9 @@ class SessionController extends ChangeNotifier {
     try {
       serialPorts = await registry.serialPorts();
       if (config.serial.portName.isEmpty && serialPorts.isNotEmpty) {
-        final selectablePorts =
-            serialPorts.where((port) => !isSerialPickerOption(port)).toList();
+        final selectablePorts = serialPorts
+            .where((port) => !isSerialPickerOption(port))
+            .toList();
         if (selectablePorts.isEmpty) {
           notifyListeners();
           return;
@@ -279,33 +279,37 @@ class SessionController extends ChangeNotifier {
       await _bluetoothScanSubscription?.cancel();
       _bluetoothScanSubscription = registry
           .bluetoothDeviceStream(
-        serviceUuid: config.bluetooth.serviceUuid.trim().isEmpty
-            ? null
-            : config.bluetooth.serviceUuid.trim(),
-      )
+            serviceUuid: config.bluetooth.serviceUuid.trim().isEmpty
+                ? null
+                : config.bluetooth.serviceUuid.trim(),
+          )
           .listen(
-        (devices) {
-          bluetoothDevices = devices;
-          _setStatusMessage(kIsWeb
-              ? strings.webBluetoothDeviceSelected
-              : strings.scanningBleDevicesCount(devices.length));
-        },
-        onError: (Object error) {
-          bluetoothDevices = const <BluetoothDeviceInfo>[];
-          isScanningBluetooth = false;
-          _bluetoothScanSubscription = null;
-          _setStatusMessage(strings.bleScanFailed(error));
-        },
-        onDone: () {
-          isScanningBluetooth = false;
-          _bluetoothScanSubscription = null;
-          if (bluetoothDevices.isEmpty) {
-            _setStatusMessage(strings.noBleDevicesFound);
-          } else {
-            _setStatusMessage(strings.foundBleDevices(bluetoothDevices.length));
-          }
-        },
-      );
+            (devices) {
+              bluetoothDevices = devices;
+              _setStatusMessage(
+                kIsWeb
+                    ? strings.webBluetoothDeviceSelected
+                    : strings.scanningBleDevicesCount(devices.length),
+              );
+            },
+            onError: (Object error) {
+              bluetoothDevices = const <BluetoothDeviceInfo>[];
+              isScanningBluetooth = false;
+              _bluetoothScanSubscription = null;
+              _setStatusMessage(strings.bleScanFailed(error));
+            },
+            onDone: () {
+              isScanningBluetooth = false;
+              _bluetoothScanSubscription = null;
+              if (bluetoothDevices.isEmpty) {
+                _setStatusMessage(strings.noBleDevicesFound);
+              } else {
+                _setStatusMessage(
+                  strings.foundBleDevices(bluetoothDevices.length),
+                );
+              }
+            },
+          );
     } on Object catch (error) {
       bluetoothDevices = const <BluetoothDeviceInfo>[];
       isScanningBluetooth = false;
@@ -321,9 +325,11 @@ class SessionController extends ChangeNotifier {
       return;
     }
     isScanningBluetooth = false;
-    _setStatusMessage(bluetoothDevices.isEmpty
-        ? strings.bleScanStopped
-        : strings.bleScanStoppedWithCount(bluetoothDevices.length));
+    _setStatusMessage(
+      bluetoothDevices.isEmpty
+          ? strings.bleScanStopped
+          : strings.bleScanStoppedWithCount(bluetoothDevices.length),
+    );
   }
 
   void selectBluetoothDevice(String deviceId) {
@@ -374,9 +380,7 @@ class SessionController extends ChangeNotifier {
       return;
     }
 
-    config = config.copyWith(
-      serial: config.serial.copyWith(portName: value),
-    );
+    config = config.copyWith(serial: config.serial.copyWith(portName: value));
     _syncReceivePacketOptions();
     notifyListeners();
   }
@@ -384,7 +388,8 @@ class SessionController extends ChangeNotifier {
   void setTransportType(TransportType type) {
     if (!isTypeSupported(type)) {
       _setStatusMessage(
-          strings.transportDisabled(type, unsupportedReason(type)));
+        strings.transportDisabled(type, unsupportedReason(type)),
+      );
       return;
     }
     config = config.copyWith(type: type);
@@ -508,9 +513,20 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> connect() async {
-    if (isConnected || status == TransportStatus.connecting) {
+    if (_connectInFlight ||
+        isConnected ||
+        status == TransportStatus.connecting) {
       return;
     }
+    _connectInFlight = true;
+    try {
+      await _connect();
+    } finally {
+      _connectInFlight = false;
+    }
+  }
+
+  Future<void> _connect() async {
     if (!isTypeSupported(config.type)) {
       _setStatusMessage(
         strings.transportDisabled(config.type, unsupportedReason(config.type)),
@@ -522,8 +538,9 @@ class SessionController extends ChangeNotifier {
     }
 
     status = TransportStatus.connecting;
-    statusMessage = strings
-        .connectingTo(strings.connectionSummary(config, serialDisplayName));
+    statusMessage = strings.connectingTo(
+      strings.connectionSummary(config, serialDisplayName),
+    );
     notifyListeners();
 
     try {
@@ -657,11 +674,7 @@ class SessionController extends ChangeNotifier {
     required LineEnding ending,
     required bool rememberHistory,
   }) async {
-    final request = SendRequest(
-      text: text,
-      format: format,
-      lineEnding: ending,
-    );
+    final request = SendRequest(text: text, format: format, lineEnding: ending);
     if (request.bytes.isEmpty) {
       return;
     }
@@ -721,9 +734,11 @@ class SessionController extends ChangeNotifier {
       return;
     }
     _autoSendInFlight = true;
-    unawaited(sendText(text).whenComplete(() {
-      _autoSendInFlight = false;
-    }));
+    unawaited(
+      sendText(text).whenComplete(() {
+        _autoSendInFlight = false;
+      }),
+    );
   }
 
   void stopAutoSend() {
@@ -919,9 +934,9 @@ class SessionController extends ChangeNotifier {
   }
 
   void _persistQuickCommands() {
-    unawaited(_saveQuickCommands(List<QuickCommand>.unmodifiable(
-      quickCommands,
-    )));
+    unawaited(
+      _saveQuickCommands(List<QuickCommand>.unmodifiable(quickCommands)),
+    );
   }
 
   void _rememberHistory(String text, PayloadFormat format) {
@@ -933,11 +948,7 @@ class SessionController extends ChangeNotifier {
     );
     sendHistory.insert(
       0,
-      SendHistoryEntry(
-        text: text,
-        format: format,
-        timestamp: DateTime.now(),
-      ),
+      SendHistoryEntry(text: text, format: format, timestamp: DateTime.now()),
     );
     if (sendHistory.length > 20) {
       sendHistory.removeRange(20, sendHistory.length);

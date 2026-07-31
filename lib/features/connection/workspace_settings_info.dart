@@ -73,19 +73,13 @@ class _LanguageButton extends StatelessWidget {
     return TextButton(
       style: _settingsButtonStyle(context, selected: selected),
       onPressed: onPressed,
-      child: _SettingsButtonText(
-        language.nativeLabel,
-        selected: selected,
-      ),
+      child: _SettingsButtonText(language.nativeLabel, selected: selected),
     );
   }
 }
 
 class _SettingsButtonText extends StatelessWidget {
-  const _SettingsButtonText(
-    this.label, {
-    this.selected = false,
-  });
+  const _SettingsButtonText(this.label, {this.selected = false});
 
   final String label;
   final bool selected;
@@ -103,9 +97,9 @@ class _SettingsButtonText extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: color,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelMedium?.copyWith(color: color),
           ),
         ),
       ),
@@ -163,8 +157,8 @@ class _SettingsTextRow extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ),
@@ -194,21 +188,21 @@ class _DownloadClientButton extends StatelessWidget {
       label: 'macOS',
       icon: Icons.laptop_mac,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.10/LSerial-v1.0.10-macOS.dmg',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.11/LSerial-v1.0.11-macOS.dmg',
       ),
     ),
     _DownloadTarget(
       label: 'Linux',
       icon: Icons.terminal,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.10/LSerial-v1.0.10-Linux-x64.tar.gz',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.11/LSerial-v1.0.11-Linux-x64.tar.gz',
       ),
     ),
     _DownloadTarget(
       label: 'Windows',
       icon: Icons.desktop_windows,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.10/LSerial-v1.0.10-Windows-x64-Setup.exe',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.11/LSerial-v1.0.11-Windows-x64-Setup.exe',
       ),
     ),
   ];
