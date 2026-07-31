@@ -4,8 +4,10 @@ import 'package:lserial/app/app.dart';
 import 'package:lserial/app/localization.dart';
 import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/application/workspace_controller.dart';
+import 'package:lserial/application/workspace_settings.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/data_frame.dart';
+import 'package:lserial/features/connection/workspace_settings_info.dart';
 import 'package:lserial/features/console/frame_list_view.dart';
 import 'package:lserial/features/console/workspace_console_panel.dart';
 import 'package:lserial/features/quick_commands/quick_commands_panel.dart';
@@ -101,6 +103,102 @@ void main() {
     expect(find.text(AppStrings.zh.importReplaceCurrent), findsOneWidget);
     expect(find.text(AppStrings.zh.importInsertCurrent), findsOneWidget);
     expect(find.text(AppStrings.zh.exportQuickCommands), findsOneWidget);
+  });
+
+  testWidgets('settings expose values and visibility for toolbar actions',
+      (tester) async {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: AnimatedBuilder(
+                animation: controller,
+                builder: (context, _) =>
+                    WorkspaceSettingsInfo(controller: controller),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final action in WorkspaceToolbarAction.values) {
+      expect(
+        find.byKey(ValueKey<String>('toolbar-setting-${action.name}')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey<String>('toolbar-visibility-${action.name}')),
+        findsOneWidget,
+      );
+    }
+    expect(find.text(AppStrings.zh.searchFilter), findsNothing);
+    expect(find.text(AppStrings.zh.viewFormat), findsNothing);
+
+    final autoScrollVisibility = find.byKey(
+      const ValueKey<String>('toolbar-visibility-autoScroll'),
+    );
+    expect(
+      find.descendant(
+        of: autoScrollVisibility,
+        matching: find.byIcon(Icons.visibility_off),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(autoScrollVisibility);
+    await tester.pumpAndSettle();
+    expect(
+      controller.isToolbarActionVisible(WorkspaceToolbarAction.autoScroll),
+      isTrue,
+    );
+  });
+
+  testWidgets('toolbar hides configured actions but keeps search and view mode',
+      (tester) async {
+    final controller = WorkspaceController();
+    addTearDown(controller.dispose);
+    for (final action in WorkspaceToolbarAction.values) {
+      controller.setToolbarActionVisible(action, false);
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 1400,
+            height: 400,
+            child: WorkspaceConsolePanel(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip(AppStrings.zh.searchFilter), findsOneWidget);
+    expect(find.byTooltip(AppStrings.zh.viewFormat), findsOneWidget);
+    expect(find.byTooltip(AppStrings.zh.clear), findsNothing);
+    expect(find.byTooltip(AppStrings.zh.autoScroll), findsNothing);
+    expect(find.byTooltip(AppStrings.zh.terminalMode), findsNothing);
+    expect(find.byTooltip(AppStrings.zh.inputFormat), findsNothing);
+    expect(find.byTooltip(AppStrings.zh.lineEnding), findsNothing);
+    expect(
+      find.byTooltip(
+        AppStrings.zh.shortcutMode(
+          controller.sendTarget.sendShortcutMode,
+        ),
+      ),
+      findsNothing,
+    );
+    expect(find.byTooltip(AppStrings.zh.leftConfigPanel), findsNothing);
+    expect(find.byTooltip(AppStrings.zh.quickCommands), findsNothing);
+    expect(find.byTooltip(AppStrings.zh.sendData), findsNothing);
+    expect(find.byTooltip(AppStrings.zh.logSettings), findsOneWidget);
   });
 
   testWidgets('console filtering preserves source and format behavior',

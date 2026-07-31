@@ -1,6 +1,18 @@
 import '../app/localization.dart';
 import '../core/encoding/data_format.dart';
 
+enum WorkspaceToolbarAction {
+  clearLog,
+  terminalMode,
+  sendFormat,
+  lineEnding,
+  sendShortcut,
+  connectionPanel,
+  quickCommandsPanel,
+  sendPanel,
+  autoScroll,
+}
+
 class WorkspaceSettings {
   const WorkspaceSettings({
     this.viewMode = ConsoleViewMode.ascii,
@@ -20,6 +32,9 @@ class WorkspaceSettings {
     this.logFontSize = 12,
     this.language = AppLanguage.zh,
     this.hiddenSources = const <String>{},
+    this.hiddenToolbarActions = const <WorkspaceToolbarAction>{
+      WorkspaceToolbarAction.autoScroll,
+    },
   });
 
   final ConsoleViewMode viewMode;
@@ -39,6 +54,7 @@ class WorkspaceSettings {
   final double logFontSize;
   final AppLanguage language;
   final Set<String> hiddenSources;
+  final Set<WorkspaceToolbarAction> hiddenToolbarActions;
 
   factory WorkspaceSettings.fromJson(Map<String, Object?> json) {
     const defaults = WorkspaceSettings();
@@ -86,6 +102,11 @@ class WorkspaceSettings {
         defaults.language,
       ),
       hiddenSources: _stringSetValue(json['hiddenSources']),
+      hiddenToolbarActions: _enumSetValue(
+        WorkspaceToolbarAction.values,
+        json['hiddenToolbarActions'],
+        defaults.hiddenToolbarActions,
+      ),
     );
   }
 
@@ -107,6 +128,8 @@ class WorkspaceSettings {
         'logFontSize': logFontSize,
         'language': language.name,
         'hiddenSources': hiddenSources.toList()..sort(),
+        'hiddenToolbarActions':
+            hiddenToolbarActions.map((action) => action.name).toList()..sort(),
       };
 }
 
@@ -138,5 +161,23 @@ Set<String> _stringSetValue(Object? value) {
       .whereType<String>()
       .map((source) => source.trim())
       .where((source) => source.isNotEmpty)
+      .toSet();
+}
+
+Set<T> _enumSetValue<T extends Enum>(
+  List<T> values,
+  Object? names,
+  Set<T> fallback,
+) {
+  if (names is! List) {
+    return Set<T>.of(fallback);
+  }
+  final byName = <String, T>{
+    for (final value in values) value.name: value,
+  };
+  return names
+      .whereType<String>()
+      .map((name) => byName[name])
+      .whereType<T>()
       .toSet();
 }

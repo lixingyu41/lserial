@@ -62,6 +62,9 @@ class AppStrings {
   String get decreaseLogFontSize => isZh ? '减小日志字号' : 'Decrease log font size';
   String get increaseLogFontSize => isZh ? '增大日志字号' : 'Increase log font size';
   String get autoScroll => isZh ? '自动滚动' : 'Auto scroll';
+  String get logToolbarButtons => isZh ? '日志栏按钮' : 'Log toolbar buttons';
+  String get showInLogToolbar => isZh ? '显示在日志栏' : 'Show in log toolbar';
+  String get hideFromLogToolbar => isZh ? '从日志栏隐藏' : 'Hide from log toolbar';
   String get exportTxt => isZh ? '导出为txt' : 'Export txt';
   String get sourceFilter => isZh ? '来源过滤' : 'Source filter';
   String get displayItems => isZh ? '显示项' : 'Display items';
@@ -144,6 +147,7 @@ class AppStrings {
   String get sendData => isZh ? '发送数据' : 'Send data';
   String get send => isZh ? '发送' : 'Send';
   String get inputFormat => isZh ? '输入' : 'Input';
+  String get sendFormatSetting => isZh ? '发送格式' : 'Send format';
   String get lineEnding => isZh ? '结尾' : 'Ending';
   String get sendShortcut => isZh ? '发送快捷键' : 'Shortcut';
   String get autoSendMs => isZh ? '定时 ms' : 'Auto ms';

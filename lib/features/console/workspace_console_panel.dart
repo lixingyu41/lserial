@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../application/session_controller.dart';
 import '../../application/workspace_controller.dart';
+import '../../application/workspace_settings.dart';
 import '../../core/encoding/data_format.dart';
 import '../../storage/log_buffer.dart';
 import '../send_panel/send_controls.dart';
@@ -285,21 +286,51 @@ class _RightActions extends StatelessWidget {
           children.add(child);
         }
 
-        add(
-          SizedBox.square(
-            dimension: 40,
-            child: IconButton(
-              tooltip: controller.strings.clear,
-              onPressed: () {
-                controller.clearLog();
-                _TopStatusBubble.show(context, controller.strings.clear);
-              },
-              icon: const Icon(Icons.close),
-              style: _toolbarIconStyle(Theme.of(context).colorScheme),
+        if (controller.isToolbarActionVisible(
+          WorkspaceToolbarAction.clearLog,
+        )) {
+          add(
+            SizedBox.square(
+              dimension: 40,
+              child: IconButton(
+                tooltip: controller.strings.clear,
+                onPressed: () {
+                  controller.clearLog();
+                  _TopStatusBubble.show(context, controller.strings.clear);
+                },
+                icon: const Icon(Icons.close),
+                style: _toolbarIconStyle(Theme.of(context).colorScheme),
+              ),
             ),
-          ),
-        );
-        add(_TerminalModeButton(controller: controller));
+          );
+        }
+        if (controller.isToolbarActionVisible(
+          WorkspaceToolbarAction.autoScroll,
+        )) {
+          add(
+            _PanelToggleButton(
+              tooltip: controller.strings.autoScroll,
+              selected: controller.autoScroll,
+              icon: Icons.vertical_align_bottom,
+              onPressed: () {
+                final next = !controller.autoScroll;
+                controller.setAutoScroll(next);
+                _TopStatusBubble.show(
+                  context,
+                  controller.strings.settingChanged(
+                    controller.strings.autoScroll,
+                    controller.strings.onOff(next),
+                  ),
+                );
+              },
+            ),
+          );
+        }
+        if (controller.isToolbarActionVisible(
+          WorkspaceToolbarAction.terminalMode,
+        )) {
+          add(_TerminalModeButton(controller: controller));
+        }
         if (connectedIndexes.length > 1) {
           add(
             SendTargetField(
@@ -317,7 +348,10 @@ class _RightActions extends StatelessWidget {
             ),
           );
         }
-        if (!terminalMode) {
+        if (!terminalMode &&
+            controller.isToolbarActionVisible(
+              WorkspaceToolbarAction.sendFormat,
+            )) {
           add(
             SendFormatToggleButton(
               controller: sendController,
@@ -331,6 +365,11 @@ class _RightActions extends StatelessWidget {
               ),
             ),
           );
+        }
+        if (!terminalMode &&
+            controller.isToolbarActionVisible(
+              WorkspaceToolbarAction.lineEnding,
+            )) {
           add(
             LineEndingToggleButton(
               controller: sendController,
@@ -344,6 +383,11 @@ class _RightActions extends StatelessWidget {
               ),
             ),
           );
+        }
+        if (!terminalMode &&
+            controller.isToolbarActionVisible(
+              WorkspaceToolbarAction.sendShortcut,
+            )) {
           add(
             ShortcutModeToggleButton(
               controller: sendController,
@@ -358,27 +402,58 @@ class _RightActions extends StatelessWidget {
             ),
           );
         }
-        add(
-          _PanelToggleButton(
-            tooltip: controller.strings.leftConfigPanel,
-            selected: controller.showConnectionPanel,
-            icon: panelsStackVertically
-                ? Icons.keyboard_arrow_up
-                : Icons.keyboard_arrow_left,
-            onPressed: () {
-              final next = !controller.showConnectionPanel;
-              controller.setConnectionPanelVisible(next);
-              _TopStatusBubble.show(
-                context,
-                controller.strings.settingChanged(
-                  controller.strings.leftConfigPanel,
-                  controller.strings.onOff(next),
-                ),
-              );
-            },
-          ),
-        );
-        if (!terminalMode) {
+        if (controller.isToolbarActionVisible(
+          WorkspaceToolbarAction.connectionPanel,
+        )) {
+          add(
+            _PanelToggleButton(
+              tooltip: controller.strings.leftConfigPanel,
+              selected: controller.showConnectionPanel,
+              icon: panelsStackVertically
+                  ? Icons.keyboard_arrow_up
+                  : Icons.keyboard_arrow_left,
+              onPressed: () {
+                final next = !controller.showConnectionPanel;
+                controller.setConnectionPanelVisible(next);
+                _TopStatusBubble.show(
+                  context,
+                  controller.strings.settingChanged(
+                    controller.strings.leftConfigPanel,
+                    controller.strings.onOff(next),
+                  ),
+                );
+              },
+            ),
+          );
+        }
+        if (controller.isToolbarActionVisible(
+          WorkspaceToolbarAction.quickCommandsPanel,
+        )) {
+          add(
+            _PanelToggleButton(
+              tooltip: controller.strings.quickCommands,
+              selected: controller.showQuickCommandsPanel,
+              icon: panelsStackVertically
+                  ? Icons.keyboard_arrow_down
+                  : Icons.keyboard_arrow_right,
+              onPressed: () {
+                final next = !controller.showQuickCommandsPanel;
+                controller.setQuickCommandsPanelVisible(next);
+                _TopStatusBubble.show(
+                  context,
+                  controller.strings.settingChanged(
+                    controller.strings.quickCommands,
+                    controller.strings.onOff(next),
+                  ),
+                );
+              },
+            ),
+          );
+        }
+        if (!terminalMode &&
+            controller.isToolbarActionVisible(
+              WorkspaceToolbarAction.sendPanel,
+            )) {
           add(
             _PanelToggleButton(
               tooltip: controller.strings.sendData,
@@ -398,26 +473,6 @@ class _RightActions extends StatelessWidget {
             ),
           );
         }
-        add(
-          _PanelToggleButton(
-            tooltip: controller.strings.quickCommands,
-            selected: controller.showQuickCommandsPanel,
-            icon: panelsStackVertically
-                ? Icons.keyboard_arrow_down
-                : Icons.keyboard_arrow_right,
-            onPressed: () {
-              final next = !controller.showQuickCommandsPanel;
-              controller.setQuickCommandsPanelVisible(next);
-              _TopStatusBubble.show(
-                context,
-                controller.strings.settingChanged(
-                  controller.strings.quickCommands,
-                  controller.strings.onOff(next),
-                ),
-              );
-            },
-          ),
-        );
         add(_LogSettingsButton(controller: controller));
 
         return Row(

@@ -147,6 +147,10 @@ void main() {
         terminalMode: false,
         logFontSize: 16,
         language: AppLanguage.en,
+        hiddenToolbarActions: <WorkspaceToolbarAction>{
+          WorkspaceToolbarAction.clearLog,
+          WorkspaceToolbarAction.autoScroll,
+        },
       ),
       saveWorkspaceSettings: (settings) async {
         savedSettings.add(settings);
@@ -170,12 +174,90 @@ void main() {
     expect(controller.settingsPanelExpanded, isFalse);
     expect(controller.logFontSize, 16);
     expect(controller.language, AppLanguage.en);
+    expect(
+      controller.isToolbarActionVisible(WorkspaceToolbarAction.clearLog),
+      isFalse,
+    );
+    expect(
+      controller.isToolbarActionVisible(WorkspaceToolbarAction.autoScroll),
+      isFalse,
+    );
+    expect(
+      controller.isToolbarActionVisible(
+        WorkspaceToolbarAction.connectionPanel,
+      ),
+      isTrue,
+    );
 
     controller.setLineEndingSymbolsVisible(false);
     controller.setLogSourceVisible('COM1', false);
+    controller.setToolbarActionVisible(
+      WorkspaceToolbarAction.autoScroll,
+      true,
+    );
 
     expect(savedSettings.first.showLineEndingSymbols, isFalse);
     expect(savedSettings.last.hiddenSources, contains('COM1'));
+    expect(
+      savedSettings.last.hiddenToolbarActions,
+      isNot(contains(WorkspaceToolbarAction.autoScroll)),
+    );
+  });
+
+  test('toolbar visibility settings round trip through JSON', () {
+    const settings = WorkspaceSettings(
+      hiddenToolbarActions: <WorkspaceToolbarAction>{
+        WorkspaceToolbarAction.clearLog,
+        WorkspaceToolbarAction.sendFormat,
+        WorkspaceToolbarAction.sendPanel,
+      },
+    );
+
+    final restored = WorkspaceSettings.fromJson(settings.toJson());
+
+    expect(
+      restored.hiddenToolbarActions,
+      <WorkspaceToolbarAction>{
+        WorkspaceToolbarAction.clearLog,
+        WorkspaceToolbarAction.sendFormat,
+        WorkspaceToolbarAction.sendPanel,
+      },
+    );
+  });
+
+  test('hiding connection panel restores its toolbar reopen action', () {
+    final savedSettings = <WorkspaceSettings>[];
+    final controller = WorkspaceController(
+      saveWorkspaceSettings: (settings) async {
+        savedSettings.add(settings);
+      },
+    );
+    addTearDown(controller.dispose);
+
+    controller.setToolbarActionVisible(
+      WorkspaceToolbarAction.connectionPanel,
+      false,
+    );
+    expect(
+      controller.isToolbarActionVisible(
+        WorkspaceToolbarAction.connectionPanel,
+      ),
+      isFalse,
+    );
+
+    controller.setConnectionPanelVisible(false);
+
+    expect(controller.showConnectionPanel, isFalse);
+    expect(
+      controller.isToolbarActionVisible(
+        WorkspaceToolbarAction.connectionPanel,
+      ),
+      isTrue,
+    );
+    expect(
+      savedSettings.last.hiddenToolbarActions,
+      isNot(contains(WorkspaceToolbarAction.connectionPanel)),
+    );
   });
 
   test('panel visibility settings can be toggled', () {

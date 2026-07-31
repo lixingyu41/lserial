@@ -56,6 +56,8 @@ class WorkspaceController extends ChangeNotifier {
   AppLanguage language = AppLanguage.zh;
 
   final Set<String> _hiddenSources = <String>{};
+  final Set<WorkspaceToolbarAction> _hiddenToolbarActions =
+      <WorkspaceToolbarAction>{WorkspaceToolbarAction.autoScroll};
   final Set<String> _sourceLabels = <String>{'SYS'};
   bool _sendPanelVisibleBeforeTerminal = true;
   int _revision = 0;
@@ -332,11 +334,31 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool isToolbarActionVisible(WorkspaceToolbarAction action) =>
+      !_hiddenToolbarActions.contains(action);
+
+  void setToolbarActionVisible(
+    WorkspaceToolbarAction action,
+    bool visible,
+  ) {
+    final changed = visible
+        ? _hiddenToolbarActions.remove(action)
+        : _hiddenToolbarActions.add(action);
+    if (!changed) {
+      return;
+    }
+    _persistSettings();
+    notifyListeners();
+  }
+
   void setConnectionPanelVisible(bool value) {
     if (showConnectionPanel == value) {
       return;
     }
     showConnectionPanel = value;
+    if (!value) {
+      _hiddenToolbarActions.remove(WorkspaceToolbarAction.connectionPanel);
+    }
     _persistSettings();
     notifyListeners();
   }
@@ -629,6 +651,8 @@ class WorkspaceController extends ChangeNotifier {
         logFontSize: logFontSize,
         language: language,
         hiddenSources: Set<String>.unmodifiable(_hiddenSources),
+        hiddenToolbarActions:
+            Set<WorkspaceToolbarAction>.unmodifiable(_hiddenToolbarActions),
       );
 
   void _applySettings(WorkspaceSettings settings) {
@@ -651,6 +675,12 @@ class WorkspaceController extends ChangeNotifier {
     _hiddenSources
       ..clear()
       ..addAll(settings.hiddenSources);
+    _hiddenToolbarActions
+      ..clear()
+      ..addAll(settings.hiddenToolbarActions);
+    if (!showConnectionPanel) {
+      _hiddenToolbarActions.remove(WorkspaceToolbarAction.connectionPanel);
+    }
     for (final session in sessions) {
       session.setLanguage(language);
     }
