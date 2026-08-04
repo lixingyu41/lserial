@@ -225,6 +225,17 @@ void main() {
     );
   });
 
+  test('MCP is enabled by default and persists through workspace JSON', () {
+    const defaults = WorkspaceSettings();
+    expect(defaults.mcpEnabled, isTrue);
+
+    final disabled = WorkspaceSettings.fromJson(
+      <String, Object?>{'mcpEnabled': false},
+    );
+    expect(disabled.mcpEnabled, isFalse);
+    expect(disabled.toJson()['mcpEnabled'], isFalse);
+  });
+
   test('hiding connection panel restores its toolbar reopen action', () {
     final savedSettings = <WorkspaceSettings>[];
     final controller = WorkspaceController(

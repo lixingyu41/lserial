@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../app/localization.dart';
 import '../../application/workspace_controller.dart';
+import '../../mcp/lserial_mcp_service_base.dart';
 import '../../platform/external_link.dart';
 
 const _settingsRowHeight = 40.0;
@@ -18,6 +20,8 @@ class WorkspaceSettingsInfo extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _McpServiceSetting(controller: controller),
+        const Divider(height: 1),
         _LanguageSelector(controller: controller),
         const Divider(height: 1),
         const _AppVersionText(),
@@ -26,6 +30,70 @@ class WorkspaceSettingsInfo extends StatelessWidget {
         const Divider(height: 1),
         const _CopyrightLink(),
       ],
+    );
+  }
+}
+
+class _McpServiceSetting extends StatelessWidget {
+  const _McpServiceSetting({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = controller.strings;
+    final service = controller.mcpService;
+    if (kIsWeb || service == null || !service.supported) {
+      return _SettingsTextRow(strings.mcpDesktopOnly);
+    }
+    final status = switch (service.status) {
+      McpServiceStatus.starting => strings.mcpStarting,
+      McpServiceStatus.running => strings.mcpRunning,
+      McpServiceStatus.stopping => strings.mcpStopping,
+      McpServiceStatus.stopped => strings.mcpStopped,
+      McpServiceStatus.error => strings.mcpError,
+    };
+    final details = switch (service.status) {
+      McpServiceStatus.running => '$status · ${service.endpoint}',
+      McpServiceStatus.error when service.errorMessage != null =>
+        '$status · ${service.errorMessage}',
+      _ => status,
+    };
+    return SizedBox(
+      height: 52,
+      child: Padding(
+        padding: _settingsTextPadding,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    strings.mcpService,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  Text(
+                    details,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: controller.mcpEnabled,
+              onChanged: (value) => controller.setMcpEnabled(value),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -188,21 +256,21 @@ class _DownloadClientButton extends StatelessWidget {
       label: 'macOS',
       icon: Icons.laptop_mac,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.12/LSerial-v1.0.12-macOS.dmg',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.13/LSerial-v1.0.13-macOS.dmg',
       ),
     ),
     _DownloadTarget(
       label: 'Linux',
       icon: Icons.terminal,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.12/LSerial-v1.0.12-Linux-x64.tar.gz',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.13/LSerial-v1.0.13-Linux-x64.tar.gz',
       ),
     ),
     _DownloadTarget(
       label: 'Windows',
       icon: Icons.desktop_windows,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.12/LSerial-v1.0.12-Windows-x64-Setup.exe',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.13/LSerial-v1.0.13-Windows-x64-Setup.exe',
       ),
     ),
   ];

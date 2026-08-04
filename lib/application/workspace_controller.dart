@@ -6,6 +6,7 @@ import '../app/localization.dart';
 import '../core/encoding/data_format.dart';
 import '../domain/data_frame.dart';
 import '../domain/transport.dart';
+import '../mcp/lserial_mcp_service_base.dart';
 import '../protocol/frame_formatter.dart';
 import '../storage/log_buffer.dart';
 import '../storage/log_exporter.dart';
@@ -51,6 +52,7 @@ class WorkspaceController extends ChangeNotifier {
   bool terminalMode = false;
   bool statsPanelExpanded = false;
   bool settingsPanelExpanded = false;
+  bool mcpEnabled = true;
   bool pauseDisplay = false;
   double logFontSize = 12;
   AppLanguage language = AppLanguage.zh;
@@ -62,6 +64,9 @@ class WorkspaceController extends ChangeNotifier {
   bool _sendPanelVisibleBeforeTerminal = true;
   int _revision = 0;
   bool _settingsChanged = false;
+  LSerialMcpService? _mcpService;
+
+  LSerialMcpService? get mcpService => _mcpService;
 
   SessionController get activeSession => sessions[activeSessionIndex];
 
@@ -157,6 +162,71 @@ class WorkspaceController extends ChangeNotifier {
     await Future.wait(sessions.map((session) => session.initialize()));
     _publishSnapshot(force: true);
     notifyListeners();
+  }
+
+  void attachMcpService(LSerialMcpService service) {
+    if (identical(_mcpService, service)) {
+      return;
+    }
+    _mcpService?.removeListener(_handleMcpServiceChanged);
+    _mcpService = service;
+    service.addListener(_handleMcpServiceChanged);
+    notifyListeners();
+  }
+
+  Future<void> setMcpEnabled(bool value) async {
+    if (mcpEnabled != value) {
+      mcpEnabled = value;
+      _persistSettings();
+      notifyListeners();
+    }
+    await _mcpService?.setEnabled(value);
+  }
+
+  Future<SessionController> createAutomationSession() async {
+    final session = _addSession(initialize: false);
+    await session.initialize();
+    activeSessionIndex = sessions.indexOf(session);
+    _syncSendTargetIndex();
+    _publishSnapshot(force: true);
+    notifyListeners();
+    return session;
+  }
+
+  bool removeAutomationSession(SessionController session) {
+    final index = sessions.indexOf(session);
+    if (index < 0 || session.isConnected || sessions.length <= 1) {
+      return false;
+    }
+    session.removeListener(_handleSessionChanged);
+    session.displaySnapshot.removeListener(_handleSessionSnapshotChanged);
+    sessions.removeAt(index);
+    session.dispose();
+    if (activeSessionIndex >= sessions.length) {
+      activeSessionIndex = sessions.length - 1;
+    } else if (index < activeSessionIndex) {
+      activeSessionIndex--;
+    }
+    if (sendTargetIndex >= sessions.length) {
+      sendTargetIndex = activeSessionIndex;
+    } else if (index < sendTargetIndex) {
+      sendTargetIndex--;
+    }
+    _syncSendTargetIndex();
+    _publishSnapshot(force: true);
+    notifyListeners();
+    return true;
+  }
+
+  bool activateAutomationSession(SessionController session) {
+    final index = sessions.indexOf(session);
+    if (index < 0) {
+      return false;
+    }
+    activeSessionIndex = index;
+    _syncSendTargetIndex();
+    notifyListeners();
+    return true;
   }
 
   void previousSession() {
@@ -496,6 +566,10 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _handleMcpServiceChanged() {
+    notifyListeners();
+  }
+
   void _handleSessionSnapshotChanged() {
     final sourcesChanged = _publishSnapshot();
     if (sourcesChanged) {
@@ -648,6 +722,7 @@ class WorkspaceController extends ChangeNotifier {
         terminalMode: terminalMode,
         statsPanelExpanded: statsPanelExpanded,
         settingsPanelExpanded: settingsPanelExpanded,
+        mcpEnabled: mcpEnabled,
         logFontSize: logFontSize,
         language: language,
         hiddenSources: Set<String>.unmodifiable(_hiddenSources),
@@ -670,6 +745,7 @@ class WorkspaceController extends ChangeNotifier {
     showQuickCommandsPanel = settings.showQuickCommandsPanel;
     statsPanelExpanded = settings.statsPanelExpanded;
     settingsPanelExpanded = settings.settingsPanelExpanded;
+    mcpEnabled = settings.mcpEnabled;
     logFontSize = settings.logFontSize.clamp(10, 22).toDouble();
     language = settings.language;
     _hiddenSources
@@ -693,6 +769,7 @@ class WorkspaceController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mcpService?.removeListener(_handleMcpServiceChanged);
     for (final session in sessions) {
       session.removeListener(_handleSessionChanged);
       session.displaySnapshot.removeListener(_handleSessionSnapshotChanged);

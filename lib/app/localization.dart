@@ -73,6 +73,14 @@ class AppStrings {
   String get leftConfigPanel => isZh ? '左侧配置' : 'Left config';
   String get languageSetting => isZh ? '语言' : 'Language';
   String get downloadClient => isZh ? '下载客户端' : 'Download client';
+  String get mcpService => isZh ? 'MCP 服务' : 'MCP service';
+  String get mcpDesktopOnly =>
+      isZh ? 'MCP 仅桌面客户端可用' : 'MCP is available in the desktop client only';
+  String get mcpStarting => isZh ? '正在启动' : 'Starting';
+  String get mcpRunning => isZh ? '运行中' : 'Running';
+  String get mcpStopping => isZh ? '正在停止' : 'Stopping';
+  String get mcpStopped => isZh ? '已停止' : 'Stopped';
+  String get mcpError => isZh ? '启动失败' : 'Failed';
 
   String get connect => isZh ? '连接' : 'Connect';
   String get connecting => isZh ? '连接中' : 'Connecting';

@@ -29,6 +29,7 @@ class WorkspaceSettings {
     this.terminalMode = false,
     this.statsPanelExpanded = false,
     this.settingsPanelExpanded = false,
+    this.mcpEnabled = true,
     this.logFontSize = 12,
     this.language = AppLanguage.zh,
     this.hiddenSources = const <String>{},
@@ -51,6 +52,7 @@ class WorkspaceSettings {
   final bool terminalMode;
   final bool statsPanelExpanded;
   final bool settingsPanelExpanded;
+  final bool mcpEnabled;
   final double logFontSize;
   final AppLanguage language;
   final Set<String> hiddenSources;
@@ -95,6 +97,7 @@ class WorkspaceSettings {
         json['settingsPanelExpanded'],
         defaults.settingsPanelExpanded,
       ),
+      mcpEnabled: _boolValue(json['mcpEnabled'], defaults.mcpEnabled),
       logFontSize: _fontSizeValue(json['logFontSize'], defaults.logFontSize),
       language: _enumByName(
         AppLanguage.values,
@@ -125,6 +128,7 @@ class WorkspaceSettings {
         'terminalMode': terminalMode,
         'statsPanelExpanded': statsPanelExpanded,
         'settingsPanelExpanded': settingsPanelExpanded,
+        'mcpEnabled': mcpEnabled,
         'logFontSize': logFontSize,
         'language': language.name,
         'hiddenSources': hiddenSources.toList()..sort(),

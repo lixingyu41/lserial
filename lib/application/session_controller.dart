@@ -651,6 +651,17 @@ class SessionController extends ChangeNotifier {
     await _sendBytes(bytes, rememberHistory: false);
   }
 
+  Future<void> sendRawBytesFrom(
+    List<int> bytes, {
+    required String source,
+  }) async {
+    await _sendBytes(
+      bytes,
+      rememberHistory: false,
+      sourceOverride: source,
+    );
+  }
+
   Future<void> sendQuickCommand(QuickCommand command) async {
     await _sendPayload(
       text: command.content,
@@ -692,6 +703,7 @@ class SessionController extends ChangeNotifier {
     required bool rememberHistory,
     String? historyText,
     PayloadFormat? historyFormat,
+    String? sourceOverride,
   }) async {
     if (bytes.isEmpty) {
       return;
@@ -710,7 +722,7 @@ class SessionController extends ChangeNotifier {
           timestamp: DateTime.now(),
           direction: FrameDirection.tx,
           bytes: bytes,
-          source: sourceLabel,
+          source: sourceOverride ?? sourceLabel,
         ),
       ]);
       if (rememberHistory && historyText != null && historyFormat != null) {
@@ -730,6 +742,28 @@ class SessionController extends ChangeNotifier {
     _setStatusMessage(strings.autoSendEvery(safeInterval.inMilliseconds));
   }
 
+  void startAutoSendFrom({
+    required String text,
+    required PayloadFormat format,
+    required LineEnding ending,
+    required Duration interval,
+    required String source,
+  }) {
+    final request = SendRequest(text: text, format: format, lineEnding: ending);
+    stopAutoSend();
+    if (request.bytes.isEmpty) {
+      return;
+    }
+    final safeInterval = interval < const Duration(milliseconds: 20)
+        ? const Duration(milliseconds: 20)
+        : interval;
+    _autoSendTimer = Timer.periodic(
+      safeInterval,
+      (_) => _sendAutoBytes(request.bytes, source),
+    );
+    _setStatusMessage(strings.autoSendEvery(safeInterval.inMilliseconds));
+  }
+
   void _sendAutoText(String text) {
     if (_autoSendInFlight) {
       return;
@@ -737,6 +771,18 @@ class SessionController extends ChangeNotifier {
     _autoSendInFlight = true;
     unawaited(
       sendText(text).whenComplete(() {
+        _autoSendInFlight = false;
+      }),
+    );
+  }
+
+  void _sendAutoBytes(List<int> bytes, String source) {
+    if (_autoSendInFlight) {
+      return;
+    }
+    _autoSendInFlight = true;
+    unawaited(
+      sendRawBytesFrom(bytes, source: source).whenComplete(() {
         _autoSendInFlight = false;
       }),
     );

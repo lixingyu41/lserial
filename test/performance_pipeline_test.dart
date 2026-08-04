@@ -436,13 +436,18 @@ void main() {
     controller.setSendFormat(PayloadFormat.hex);
 
     await controller.sendRawBytes(<int>[0x03]);
+    await controller.sendRawBytesFrom(<int>[0x04], source: 'AI[1]');
 
-    expect(transport.sentBytes.single, <int>[0x03]);
+    expect(transport.sentBytes, <List<int>>[
+      <int>[0x03],
+      <int>[0x04],
+    ]);
     expect(controller.sendHistory, isEmpty);
     expect(
       controller.displaySnapshot.value.frames.last.bytes,
-      Uint8List.fromList(<int>[0x03]),
+      Uint8List.fromList(<int>[0x04]),
     );
+    expect(controller.displaySnapshot.value.frames.last.source, 'AI[1]');
   });
 
   test('SessionController ignores rapid duplicate connect requests', () async {

@@ -2,7 +2,7 @@ name: lserial
 description: "High-throughput cross-platform communication debug tool."
 publish_to: 'none'
 
-version: 1.0.12+13
+version: 1.0.13+14
 
 environment:
   sdk: ^3.9.0
@@ -12,6 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_libserialport: ^0.4.0
+  mcp_dart: ^2.4.0
   package_info_plus: ^8.3.1
   path_provider: ^2.1.5
   universal_ble: ^1.2.0

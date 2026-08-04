@@ -14,6 +14,8 @@
 
 Web 端是纯静态前端，无后端依赖。浏览器不暴露原生 TCP/UDP socket，所以 Web 端不会伪造 TCP/UDP 支持。
 
+桌面客户端内置本机 MCP 服务，默认地址为 `http://127.0.0.1:8765/mcp`，用于让 AI 扫描、配置和操作连接。完整说明见 [docs/mcp.md](docs/mcp.md)。Web 端不启动 MCP 服务。
+
 Web Serial 的串口选择在“串口”下拉栏中完成：选择“选择 Web Serial 串口...”后 Chrome 会弹出授权窗口，授权完成后再点击连接。
 
 Bluetooth 当前实现的是 BLE GATT，不是 Bluetooth Classic/SPP。使用 BLE 时通常只需要扫描并选择设备，连接时会优先自动识别常见 BLE 串口通道，例如 Nordic UART、FFE0/FFE1、FFF0/FFF1；如果设备使用私有 GATT 通道且自动识别失败，再在“高级 BLE 设置”里填写 Service UUID、写入 Characteristic UUID、通知 Characteristic UUID。

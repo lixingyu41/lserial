@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../application/workspace_controller.dart';
+import '../mcp/lserial_mcp_service.dart';
+import '../mcp/lserial_mcp_service_base.dart';
 import '../platform/window_title.dart';
 import 'app_shell.dart';
 
@@ -15,26 +17,35 @@ class CommToolApp extends StatefulWidget {
 
 class _CommToolAppState extends State<CommToolApp> {
   late final WorkspaceController controller;
+  late final LSerialMcpService mcpService;
   late String _title;
 
   @override
   void initState() {
     super.initState();
     controller = WorkspaceController();
+    mcpService = createLSerialMcpService(controller);
+    controller.attachMcpService(mcpService);
     _title = controller.windowTitle;
     controller.addListener(_syncWindowTitle);
-    controller.initialize();
+    unawaited(_initialize());
     _syncWindowTitle();
   }
 
   @override
   void dispose() {
     controller.removeListener(_syncWindowTitle);
+    mcpService.dispose();
     controller.dispose();
     super.dispose();
   }
 
   String? _appliedWindowTitle;
+
+  Future<void> _initialize() async {
+    await controller.initialize();
+    await mcpService.setEnabled(controller.mcpEnabled);
+  }
 
   void _syncWindowTitle() {
     final title = controller.windowTitle;
