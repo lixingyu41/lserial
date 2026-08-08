@@ -1,0 +1,219 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lserial/application/session_controller.dart';
+import 'package:lserial/core/encoding/data_format.dart';
+import 'package:lserial/domain/quick_command.dart';
+import 'package:lserial/features/quick_commands/quick_commands_panel.dart';
+
+void main() {
+  const longName = 'Charlie command name that is deliberately too long to fit';
+  testWidgets('quick commands stay on one row and sort from headers', (
+    tester,
+  ) async {
+    final controller = SessionController();
+    controller.quickCommands
+      ..clear()
+      ..addAll(const <QuickCommand>[
+        QuickCommand(
+          id: 1,
+          name: longName,
+          content: 'CC CC CC CC CC CC CC CC',
+          format: PayloadFormat.hex,
+        ),
+        QuickCommand(
+          id: 2,
+          name: 'Alpha',
+          content: 'AT+ALPHA',
+          format: PayloadFormat.ascii,
+        ),
+        QuickCommand(
+          id: 3,
+          name: 'Bravo',
+          content: 'AT+BRAVO',
+          format: PayloadFormat.ascii,
+        ),
+      ]);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            height: 320,
+            child: QuickCommandsPanel(controller: controller),
+          ),
+        ),
+      ),
+    );
+
+    final contentText = tester.widget<Text>(
+      find.text('CC CC CC CC CC CC CC CC'),
+    );
+    expect(contentText.maxLines, 1);
+    expect(contentText.softWrap, isFalse);
+    expect(find.byTooltip(controller.strings.send), findsNWidgets(3));
+    expect(find.byTooltip(controller.strings.edit), findsNothing);
+    expect(find.byTooltip(controller.strings.delete), findsNothing);
+    expect(find.byTooltip(controller.strings.addCommand), findsOneWidget);
+    expect(find.text('A'), findsNWidgets(2));
+    expect(find.text('H'), findsOneWidget);
+    expect(find.byType(ReorderableListView), findsOneWidget);
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('quick-command-add-row'))).dy,
+      greaterThan(tester.getCenter(find.text('Bravo')).dy),
+    );
+    final longNameHost = find.byKey(
+      const ValueKey<String>('quick-command-name-tooltip-1'),
+    );
+    final continuationLayer = find.byKey(
+      const ValueKey<String>('quick-command-name-continuation-1'),
+    );
+    expect(continuationLayer, findsNothing);
+    final bravoYBeforeHover = tester.getCenter(find.text('Bravo')).dy;
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(longNameHost));
+    await tester.pump();
+
+    expect(continuationLayer, findsOneWidget);
+    expect(find.text(longName), findsOneWidget);
+    expect(tester.getCenter(find.text('Bravo')).dy, bravoYBeforeHover);
+    expect(
+      tester.getSize(continuationLayer).width,
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('quick-command-name-cell-1')),
+          )
+          .width,
+    );
+    final continuationText = tester.widget<Text>(
+      find.descendant(of: continuationLayer, matching: find.byType(Text)),
+    );
+    expect(continuationText.data, isNotEmpty);
+    expect(continuationText.data, isNot(longName));
+    expect(continuationText.maxLines, isNull);
+    expect(
+      tester.getSize(continuationLayer).height,
+      greaterThan(tester.getSize(find.text(longName)).height),
+    );
+    final ignorePointer = tester.widget<IgnorePointer>(
+      find.ancestor(
+        of: continuationLayer,
+        matching: find.byType(IgnorePointer),
+      ),
+    );
+    expect(ignorePointer.ignoring, isTrue);
+
+    await mouse.moveTo(tester.getCenter(find.text('H')));
+    await tester.pump();
+    expect(continuationLayer, findsNothing);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('quick-command-row-1')))
+          .height,
+      30,
+    );
+
+    for (final column in <String>['name', 'content']) {
+      expect(
+        find.byKey(ValueKey<String>('quick-command-resize-$column')),
+        findsOneWidget,
+      );
+    }
+    expect(
+      find.byKey(const ValueKey<String>('quick-command-resize-format')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('quick-command-resize-send')),
+      findsNothing,
+    );
+    final formatHeader = find.byKey(
+      const ValueKey<String>('quick-command-header-format'),
+    );
+    final sendHeader = find.byKey(
+      const ValueKey<String>('quick-command-header-send'),
+    );
+    final formatRectBeforeResize = tester.getRect(formatHeader);
+    final sendRectBeforeResize = tester.getRect(sendHeader);
+    expect(formatRectBeforeResize.width, 36);
+    expect(sendRectBeforeResize.width, 36);
+    expect(formatRectBeforeResize.right, sendRectBeforeResize.left);
+
+    final nameHeaderWidth = tester
+        .getSize(find.byKey(const ValueKey<String>('quick-command-sort-name')))
+        .width;
+    await tester.drag(
+      find.byKey(const ValueKey<String>('quick-command-resize-name')),
+      const Offset(40, 0),
+    );
+    await tester.pump();
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('quick-command-sort-name')),
+          )
+          .width,
+      greaterThan(nameHeaderWidth),
+    );
+    expect(tester.getRect(formatHeader), formatRectBeforeResize);
+    expect(tester.getRect(sendHeader), sendRectBeforeResize);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('quick-command-sort-name')),
+    );
+    await tester.pump();
+    expect(_verticalOrder(tester), <String>['Alpha', 'Bravo', longName]);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('quick-command-sort-name')),
+    );
+    await tester.pump();
+    expect(_verticalOrder(tester), <String>[longName, 'Bravo', 'Alpha']);
+    expect(find.byType(ReorderableListView), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('quick-command-sort-name')),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(controller.strings.restoreSavedOrder));
+    await tester.pumpAndSettle();
+    expect(_verticalOrder(tester), <String>[longName, 'Alpha', 'Bravo']);
+    expect(find.byType(ReorderableListView), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('quick-command-row-1')),
+      const Offset(0, 70),
+    );
+    await tester.pumpAndSettle();
+    expect(controller.quickCommands.map((command) => command.id), <int>[
+      2,
+      1,
+      3,
+    ]);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('quick-command-row-1')),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(controller.strings.edit), findsOneWidget);
+    expect(find.text(controller.strings.delete), findsOneWidget);
+  });
+}
+
+List<String> _verticalOrder(WidgetTester tester) {
+  const longName = 'Charlie command name that is deliberately too long to fit';
+  final names = <String>['Alpha', 'Bravo', longName];
+  names.sort(
+    (left, right) => tester
+        .getCenter(find.text(left))
+        .dy
+        .compareTo(tester.getCenter(find.text(right)).dy),
+  );
+  return names;
+}

@@ -48,9 +48,11 @@ class SessionController extends ChangeNotifier {
     int maxCacheBytes = 16 * 1024 * 1024,
     this.serialAliasNumber = 1,
     this.language = AppLanguage.zh,
+    Duration serialReconnectInterval = const Duration(seconds: 1),
     Future<List<QuickCommand>?> Function()? loadQuickCommands,
     Future<void> Function(List<QuickCommand> commands)? saveQuickCommands,
   }) : registry = registry ?? const TransportRegistry(),
+       _serialReconnectInterval = serialReconnectInterval,
        _loadQuickCommands = loadQuickCommands ?? readQuickCommands,
        _saveQuickCommands = saveQuickCommands ?? writeQuickCommands,
        rawBuffer = ByteRingBuffer(maxCacheBytes),
@@ -71,6 +73,7 @@ class SessionController extends ChangeNotifier {
   final TransportRegistry registry;
   final Future<List<QuickCommand>?> Function() _loadQuickCommands;
   final Future<void> Function(List<QuickCommand> commands) _saveQuickCommands;
+  final Duration _serialReconnectInterval;
   final ByteRingBuffer rawBuffer;
   final LogBuffer logBuffer;
   final FrameFormatter formatter = const FrameFormatter();
@@ -91,8 +94,11 @@ class SessionController extends ChangeNotifier {
   Future<void> _forwardWriteTail = Future<void>.value();
   Timer? _autoSendTimer;
   Timer? _statsTimer;
+  Timer? _serialReconnectTimer;
   bool _autoSendInFlight = false;
   bool _connectInFlight = false;
+  bool _serialReconnectRequested = false;
+  bool _disposed = false;
   int _sequence = 0;
   int _displayRevision = 0;
   DataFrame? _packetPreview;
@@ -498,6 +504,17 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void reorderQuickCommand(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= quickCommands.length) {
+      return;
+    }
+    final command = quickCommands.removeAt(oldIndex);
+    final targetIndex = newIndex.clamp(0, quickCommands.length);
+    quickCommands.insert(targetIndex, command);
+    _persistQuickCommands();
+    notifyListeners();
+  }
+
   void importQuickCommands(
     Iterable<QuickCommand> commands, {
     required QuickCommandImportMode mode,
@@ -519,6 +536,10 @@ class SessionController extends ChangeNotifier {
         status == TransportStatus.connecting) {
       return;
     }
+    _manualDisconnect = false;
+    _serialReconnectRequested = false;
+    _serialReconnectTimer?.cancel();
+    _serialReconnectTimer = null;
     _connectInFlight = true;
     try {
       await _connect();
@@ -565,6 +586,9 @@ class SessionController extends ChangeNotifier {
       _session = session;
       _forwardSession = forwardSession;
       _manualDisconnect = false;
+      _serialReconnectRequested = false;
+      _serialReconnectTimer?.cancel();
+      _serialReconnectTimer = null;
       _incomingSubscription = session.incoming.listen(
         forwardSession == null
             ? (bytes) => _pipeline.addBytes(bytes, source: sourceLabel)
@@ -605,6 +629,9 @@ class SessionController extends ChangeNotifier {
       return;
     }
     _manualDisconnect = true;
+    _serialReconnectRequested = false;
+    _serialReconnectTimer?.cancel();
+    _serialReconnectTimer = null;
     status = TransportStatus.disconnecting;
     statusMessage = strings.disconnectingStatus;
     stopAutoSend();
@@ -655,11 +682,7 @@ class SessionController extends ChangeNotifier {
     List<int> bytes, {
     required String source,
   }) async {
-    await _sendBytes(
-      bytes,
-      rememberHistory: false,
-      sourceOverride: source,
-    );
+    await _sendBytes(bytes, rememberHistory: false, sourceOverride: source);
   }
 
   Future<void> sendQuickCommand(QuickCommand command) async {
@@ -676,7 +699,7 @@ class SessionController extends ChangeNotifier {
       text: entry.text,
       format: entry.format,
       ending: lineEnding,
-      rememberHistory: true,
+      rememberHistory: false,
     );
   }
 
@@ -1172,20 +1195,93 @@ class SessionController extends ChangeNotifier {
     if (_manualDisconnect || status == TransportStatus.error) {
       return;
     }
-    _manualDisconnect = true;
+    _serialReconnectRequested = config.type == TransportType.serial;
     status = TransportStatus.error;
     statusMessage = strings.unexpectedDisconnect;
     _stopStatsTicker();
     _appendSystem(strings.unexpectedDisconnect);
     notifyListeners();
-    unawaited(
-      _closeTransportSessions().catchError((Object _, StackTrace __) {}),
-    );
+    unawaited(_closeAfterUnexpectedDisconnect());
   }
 
   void _handleReceiveError(Object error) {
     _appendSystem(strings.receiveError(_formatError(error)));
     _handleUnexpectedDisconnect();
+  }
+
+  Future<void> _closeAfterUnexpectedDisconnect() async {
+    try {
+      await _closeTransportSessions();
+    } on Object {
+      // Reconnection creates fresh transport sessions even if cleanup failed.
+    }
+    _scheduleSerialReconnect();
+  }
+
+  void _scheduleSerialReconnect() {
+    if (_disposed ||
+        _manualDisconnect ||
+        !_serialReconnectRequested ||
+        config.type != TransportType.serial ||
+        isConnected ||
+        _serialReconnectTimer != null) {
+      return;
+    }
+    _serialReconnectTimer = Timer(_serialReconnectInterval, () {
+      _serialReconnectTimer = null;
+      unawaited(_attemptSerialReconnect());
+    });
+  }
+
+  Future<void> _attemptSerialReconnect() async {
+    if (_disposed ||
+        _manualDisconnect ||
+        !_serialReconnectRequested ||
+        config.type != TransportType.serial ||
+        isConnected) {
+      return;
+    }
+    if (_connectInFlight) {
+      _scheduleSerialReconnect();
+      return;
+    }
+
+    try {
+      final ports = await registry.serialPorts();
+      serialPorts = ports;
+      notifyListeners();
+      if (!_serialEndpointsAvailable(ports)) {
+        _scheduleSerialReconnect();
+        return;
+      }
+    } on Object {
+      _scheduleSerialReconnect();
+      return;
+    }
+
+    _connectInFlight = true;
+    try {
+      await _connect();
+    } finally {
+      _connectInFlight = false;
+    }
+    if (!isConnected) {
+      _scheduleSerialReconnect();
+    }
+  }
+
+  bool _serialEndpointsAvailable(List<String> ports) {
+    bool contains(String portName) {
+      final target = portName.trim().toLowerCase();
+      return target.isNotEmpty &&
+          ports.any((port) => port.trim().toLowerCase() == target);
+    }
+
+    final serial = config.serial;
+    if (!contains(serial.portName)) {
+      return false;
+    }
+    return !serial.forwardingEnabled || contains(serial.forwardPortName);
   }
 
   Future<void> _closeTransportSessions() async {
@@ -1249,9 +1345,12 @@ class SessionController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _manualDisconnect = true;
+    _serialReconnectRequested = false;
     _autoSendTimer?.cancel();
     _statsTimer?.cancel();
+    _serialReconnectTimer?.cancel();
     _incomingSubscription?.cancel();
     _forwardIncomingSubscription?.cancel();
     _bluetoothScanSubscription?.cancel();

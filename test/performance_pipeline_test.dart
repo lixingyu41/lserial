@@ -8,6 +8,7 @@ import 'package:lserial/core/buffer/byte_ring_buffer.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/connection_config.dart';
 import 'package:lserial/domain/data_frame.dart';
+import 'package:lserial/domain/send_history_entry.dart';
 import 'package:lserial/domain/transport.dart';
 import 'package:lserial/storage/log_buffer.dart';
 import 'package:lserial/transports/transport_registry.dart';
@@ -483,6 +484,47 @@ void main() {
   });
 
   test(
+    'sending a history entry preserves history order and timestamps',
+    () async {
+      final transport = _FakeTransportSession();
+      final controller = SessionController(
+        registry: _FakeTransportRegistry(transport),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
+        ),
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+        ),
+      );
+
+      await controller.connect();
+      await controller.sendAsciiText('first');
+      await controller.sendAsciiText('second');
+      final before = List<SendHistoryEntry>.of(controller.sendHistory);
+
+      await controller.sendHistoryEntry(before.last);
+
+      expect(controller.sendHistory.map((entry) => entry.text), <String>[
+        'second',
+        'first',
+      ]);
+      expect(
+        controller.sendHistory.map((entry) => entry.timestamp),
+        before.map((entry) => entry.timestamp),
+      );
+      expect(transport.sentBytes, hasLength(3));
+    },
+  );
+
+  test(
     'SessionController notifies when refreshed serial ports change',
     () async {
       final transport = _FakeTransportSession();
@@ -530,6 +572,47 @@ void main() {
     expect(controller.status, TransportStatus.error);
     expect(transport.isConnected, isFalse);
   });
+
+  test(
+    'SessionController reconnects when a removed serial port returns',
+    () async {
+      final registry = _ReconnectTransportRegistry()..ports.add('COM1');
+      final controller = SessionController(
+        registry: registry,
+        serialReconnectInterval: const Duration(milliseconds: 10),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
+        ),
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(portName: 'COM1', packetDelimiter: ''),
+        ),
+      );
+
+      await controller.connect();
+      final firstSession = registry.sessions.single;
+      registry.ports.clear();
+      firstSession.addIncomingError(StateError('device removed'));
+      await Future<void>.delayed(const Duration(milliseconds: 35));
+
+      expect(controller.status, TransportStatus.error);
+      expect(registry.sessions, hasLength(1));
+
+      registry.ports.add('COM1');
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(controller.status, TransportStatus.connected);
+      expect(registry.sessions, hasLength(2));
+      expect(registry.sessions.last.isConnected, isTrue);
+    },
+  );
 
   test('SessionController auto send does not overlap slow sends', () async {
     final transport = _FakeTransportSession(
@@ -775,6 +858,21 @@ class _MutableSerialPortRegistry extends TransportRegistry {
 
   @override
   Future<TransportSession> create(ConnectionConfig config) async => session;
+
+  @override
+  Future<List<String>> serialPorts() async => List<String>.of(ports);
+}
+
+class _ReconnectTransportRegistry extends TransportRegistry {
+  final List<String> ports = <String>[];
+  final List<_FakeTransportSession> sessions = <_FakeTransportSession>[];
+
+  @override
+  Future<TransportSession> create(ConnectionConfig config) async {
+    final session = _FakeTransportSession(label: config.serial.portName);
+    sessions.add(session);
+    return session;
+  }
 
   @override
   Future<List<String>> serialPorts() async => List<String>.of(ports);

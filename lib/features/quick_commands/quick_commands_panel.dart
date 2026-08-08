@@ -9,11 +9,15 @@ import '../../domain/send_history_entry.dart';
 import '../../storage/quick_command_text_codec.dart';
 import '../../storage/text_file_transfer.dart';
 
-enum _QuickCommandFileAction {
-  importReplace,
-  importAppend,
-  export,
-}
+enum _QuickCommandFileAction { importReplace, importAppend, export }
+
+enum _QuickCommandSortColumn { name, content, format }
+
+enum _QuickCommandColumn { name, content }
+
+enum _QuickCommandHeaderAction { restoreSavedOrder }
+
+enum _QuickCommandRowAction { edit, delete }
 
 class QuickCommandsPanel extends StatefulWidget {
   const QuickCommandsPanel({super.key, required this.controller});
@@ -26,6 +30,9 @@ class QuickCommandsPanel extends StatefulWidget {
 
 class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
   double _quickRatio = 0.62;
+  _QuickCommandSortColumn? _sortColumn;
+  bool _sortAscending = true;
+  _QuickCommandColumnWidths _columnWidths = const _QuickCommandColumnWidths();
 
   SessionController get controller => widget.controller;
 
@@ -43,9 +50,16 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
             children: [
               Row(
                 children: [
-                  Text(strings.quickCommands,
-                      style: Theme.of(context).textTheme.titleSmall),
+                  Text(
+                    strings.quickCommands,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                   const Spacer(),
+                  IconButton(
+                    tooltip: strings.addCommand,
+                    onPressed: () => _openEditor(context, null),
+                    icon: const Icon(Icons.add, size: 20),
+                  ),
                   PopupMenuButton<_QuickCommandFileAction>(
                     tooltip: strings.quickCommandImportExport,
                     icon: const Icon(Icons.import_export, size: 20),
@@ -93,6 +107,12 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                     controller: controller,
                     onEdit: (command) => _openEditor(context, command),
                     onAdd: () => _openEditor(context, null),
+                    sortColumn: _sortColumn,
+                    sortAscending: _sortAscending,
+                    onSort: _sortQuickCommands,
+                    columnWidths: _columnWidths,
+                    onResizeColumn: _resizeQuickCommandColumn,
+                    onRestoreSavedOrder: _restoreSavedOrder,
                   ),
                 )
               else
@@ -110,6 +130,12 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                               onEdit: (command) =>
                                   _openEditor(context, command),
                               onAdd: () => _openEditor(context, null),
+                              sortColumn: _sortColumn,
+                              sortAscending: _sortAscending,
+                              onSort: _sortQuickCommands,
+                              columnWidths: _columnWidths,
+                              onResizeColumn: _resizeQuickCommandColumn,
+                              onRestoreSavedOrder: _restoreSavedOrder,
                             ),
                           ),
                           _HistorySplitDivider(
@@ -159,8 +185,33 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
       return;
     }
     setState(() {
-      _quickRatio =
-          (_quickRatio + delta / availableHeight).clamp(0.25, 0.82).toDouble();
+      _quickRatio = (_quickRatio + delta / availableHeight)
+          .clamp(0.25, 0.82)
+          .toDouble();
+    });
+  }
+
+  void _sortQuickCommands(_QuickCommandSortColumn column) {
+    setState(() {
+      if (_sortColumn == column) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortColumn = column;
+        _sortAscending = true;
+      }
+    });
+  }
+
+  void _resizeQuickCommandColumn(_QuickCommandColumn column, double delta) {
+    setState(() {
+      _columnWidths = _columnWidths.resize(column, delta);
+    });
+  }
+
+  void _restoreSavedOrder() {
+    setState(() {
+      _sortColumn = null;
+      _sortAscending = true;
     });
   }
 
@@ -225,10 +276,7 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
   }
 
@@ -255,8 +303,9 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                   children: [
                     TextField(
                       controller: name,
-                      decoration:
-                          InputDecoration(labelText: controller.strings.name),
+                      decoration: InputDecoration(
+                        labelText: controller.strings.name,
+                      ),
                       textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 8),
@@ -272,14 +321,16 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                     DropdownButtonFormField<PayloadFormat>(
                       initialValue: format,
                       isExpanded: true,
-                      decoration:
-                          InputDecoration(labelText: controller.strings.format),
+                      decoration: InputDecoration(
+                        labelText: controller.strings.format,
+                      ),
                       items: PayloadFormat.values
                           .map(
                             (value) => DropdownMenuItem(
                               value: value,
-                              child:
-                                  Text(controller.strings.payloadFormat(value)),
+                              child: Text(
+                                controller.strings.payloadFormat(value),
+                              ),
                             ),
                           )
                           .toList(),
@@ -344,12 +395,7 @@ class _HistorySplitDivider extends StatelessWidget {
         onVerticalDragUpdate: (details) => onDrag(details.delta.dy),
         child: SizedBox(
           height: 9,
-          child: Center(
-            child: Container(
-              height: 1,
-              color: color,
-            ),
-          ),
+          child: Center(child: Container(height: 1, color: color)),
         ),
       ),
     );
@@ -361,41 +407,434 @@ class _QuickCommandList extends StatelessWidget {
     required this.controller,
     required this.onEdit,
     required this.onAdd,
+    required this.sortColumn,
+    required this.sortAscending,
+    required this.onSort,
+    required this.columnWidths,
+    required this.onResizeColumn,
+    required this.onRestoreSavedOrder,
   });
 
   final SessionController controller;
   final void Function(QuickCommand command) onEdit;
   final VoidCallback onAdd;
+  final _QuickCommandSortColumn? sortColumn;
+  final bool sortAscending;
+  final ValueChanged<_QuickCommandSortColumn> onSort;
+  final _QuickCommandColumnWidths columnWidths;
+  final void Function(_QuickCommandColumn column, double delta) onResizeColumn;
+  final VoidCallback onRestoreSavedOrder;
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        if (controller.quickCommands.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: Text(controller.strings.noQuickCommands)),
-          )
-        else
-          for (final command in controller.quickCommands) ...[
-            _QuickCommandRow(
-              controller: controller,
-              command: command,
-              onSend: controller.sendQuickCommand,
-              onEdit: onEdit,
-              onRemove: controller.removeQuickCommand,
+    final commands = List<QuickCommand>.of(controller.quickCommands);
+    final column = sortColumn;
+    if (column != null) {
+      commands.sort((left, right) {
+        final comparison = _compareCommands(left, right, column);
+        if (comparison == 0) {
+          return left.id.compareTo(right.id);
+        }
+        return sortAscending ? comparison : -comparison;
+      });
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final effectiveWidths = columnWidths.fitTo(width);
+        final flexibleWidth = math.max(
+          0.0,
+          width - _quickCommandFixedColumnsWidth,
+        );
+        final scale = flexibleWidth / columnWidths.flexibleTotal;
+        return SizedBox(
+          width: width,
+          height: constraints.maxHeight,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _QuickCommandHeader(
+                controller: controller,
+                sortColumn: sortColumn,
+                sortAscending: sortAscending,
+                onSort: onSort,
+                columnWidths: effectiveWidths,
+                onResizeColumn: (column, delta) {
+                  onResizeColumn(column, delta / scale);
+                },
+                onRestoreSavedOrder: onRestoreSavedOrder,
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: sortColumn == null
+                    ? ReorderableListView.builder(
+                        buildDefaultDragHandles: false,
+                        itemCount: commands.length + 1,
+                        onReorderItem: controller.reorderQuickCommand,
+                        itemBuilder: (context, index) => _buildListItem(
+                          context,
+                          commands,
+                          index,
+                          effectiveWidths,
+                          reorderable: true,
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: commands.length + 1,
+                        itemBuilder: (context, index) => _buildListItem(
+                          context,
+                          commands,
+                          index,
+                          effectiveWidths,
+                          reorderable: false,
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildListItem(
+    BuildContext context,
+    List<QuickCommand> commands,
+    int index,
+    _QuickCommandColumnWidths effectiveWidths, {
+    required bool reorderable,
+  }) {
+    if (index == commands.length) {
+      return _QuickCommandAddRow(
+        key: const ValueKey<String>('quick-command-add-row'),
+        controller: controller,
+        onAdd: onAdd,
+      );
+    }
+
+    final command = commands[index];
+    Widget row = _QuickCommandRow(
+      key: ValueKey<String>('quick-command-row-${command.id}'),
+      controller: controller,
+      command: command,
+      onSend: controller.sendQuickCommand,
+      onEdit: onEdit,
+      onRemove: controller.removeQuickCommand,
+      columnWidths: effectiveWidths,
+    );
+    if (reorderable) {
+      row = ReorderableDragStartListener(index: index, child: row);
+    }
+    return KeyedSubtree(
+      key: ValueKey<String>('quick-command-item-${command.id}'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [row, const Divider(height: 1)],
+      ),
+    );
+  }
+
+  int _compareCommands(
+    QuickCommand left,
+    QuickCommand right,
+    _QuickCommandSortColumn column,
+  ) {
+    final leftValue = switch (column) {
+      _QuickCommandSortColumn.name => left.name,
+      _QuickCommandSortColumn.content => left.content,
+      _QuickCommandSortColumn.format => left.format.name,
+    };
+    final rightValue = switch (column) {
+      _QuickCommandSortColumn.name => right.name,
+      _QuickCommandSortColumn.content => right.content,
+      _QuickCommandSortColumn.format => right.format.name,
+    };
+    return leftValue.toLowerCase().compareTo(rightValue.toLowerCase());
+  }
+}
+
+const _quickCommandRowHeight = 30.0;
+const _quickCommandFormatWidth = 36.0;
+const _quickCommandSendWidth = 36.0;
+const _quickCommandFixedColumnsWidth =
+    _quickCommandFormatWidth + _quickCommandSendWidth;
+
+class _QuickCommandColumnWidths {
+  const _QuickCommandColumnWidths({this.name = 110, this.content = 180});
+
+  final double name;
+  final double content;
+
+  double get flexibleTotal => name + content;
+
+  double get format => _quickCommandFormatWidth;
+
+  double get send => _quickCommandSendWidth;
+
+  double widthOf(_QuickCommandColumn column) => switch (column) {
+    _QuickCommandColumn.name => name,
+    _QuickCommandColumn.content => content,
+  };
+
+  _QuickCommandColumnWidths fitTo(double targetWidth) {
+    final available = math.max(
+      0.0,
+      targetWidth - _quickCommandFixedColumnsWidth,
+    );
+    final scale = available / flexibleTotal;
+    return _QuickCommandColumnWidths(
+      name: name * scale,
+      content: content * scale,
+    );
+  }
+
+  _QuickCommandColumnWidths resize(_QuickCommandColumn column, double delta) {
+    final minimum = switch (column) {
+      _QuickCommandColumn.name => 60.0,
+      _QuickCommandColumn.content => 80.0,
+    };
+    final width = math.max(minimum, widthOf(column) + delta);
+    return _QuickCommandColumnWidths(
+      name: column == _QuickCommandColumn.name ? width : name,
+      content: column == _QuickCommandColumn.content ? width : content,
+    );
+  }
+}
+
+class _QuickCommandHeader extends StatelessWidget {
+  const _QuickCommandHeader({
+    required this.controller,
+    required this.sortColumn,
+    required this.sortAscending,
+    required this.onSort,
+    required this.columnWidths,
+    required this.onResizeColumn,
+    required this.onRestoreSavedOrder,
+  });
+
+  final SessionController controller;
+  final _QuickCommandSortColumn? sortColumn;
+  final bool sortAscending;
+  final ValueChanged<_QuickCommandSortColumn> onSort;
+  final _QuickCommandColumnWidths columnWidths;
+  final void Function(_QuickCommandColumn column, double delta) onResizeColumn;
+  final VoidCallback onRestoreSavedOrder;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = controller.strings;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onSecondaryTapDown: (details) => _showHeaderMenu(context, details),
+      child: SizedBox(
+        height: 28,
+        child: Row(
+          children: [
+            _ResizableQuickCommandHeader(
+              column: _QuickCommandColumn.name,
+              width: columnWidths.name,
+              onResize: onResizeColumn,
+              child: _SortableQuickCommandHeader(
+                key: const ValueKey<String>('quick-command-sort-name'),
+                label: strings.name,
+                column: _QuickCommandSortColumn.name,
+                activeColumn: sortColumn,
+                ascending: sortAscending,
+                onSort: onSort,
+              ),
             ),
-            const Divider(height: 1),
+            _ResizableQuickCommandHeader(
+              column: _QuickCommandColumn.content,
+              width: columnWidths.content,
+              onResize: onResizeColumn,
+              child: _SortableQuickCommandHeader(
+                key: const ValueKey<String>('quick-command-sort-content'),
+                label: strings.content,
+                column: _QuickCommandSortColumn.content,
+                activeColumn: sortColumn,
+                ascending: sortAscending,
+                onSort: onSort,
+              ),
+            ),
+            SizedBox(
+              key: const ValueKey<String>('quick-command-header-format'),
+              width: _quickCommandFormatWidth,
+              child: _SortableQuickCommandHeader(
+                key: const ValueKey<String>('quick-command-sort-format'),
+                label: strings.format,
+                column: _QuickCommandSortColumn.format,
+                activeColumn: sortColumn,
+                ascending: sortAscending,
+                onSort: onSort,
+                centered: true,
+                horizontalPadding: 3,
+              ),
+            ),
+            SizedBox(
+              key: const ValueKey<String>('quick-command-header-send'),
+              width: _quickCommandSendWidth,
+              child: _QuickCommandActionHeader(strings.send),
+            ),
           ],
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: OutlinedButton.icon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.add),
-            label: Text(controller.strings.addCommand),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showHeaderMenu(
+    BuildContext context,
+    TapDownDetails details,
+  ) async {
+    final action = await showMenu<_QuickCommandHeaderAction>(
+      context: context,
+      position: _menuPosition(context, details.globalPosition),
+      items: [
+        PopupMenuItem<_QuickCommandHeaderAction>(
+          value: _QuickCommandHeaderAction.restoreSavedOrder,
+          child: Row(
+            children: [
+              const Icon(Icons.restore, size: 18),
+              const SizedBox(width: 8),
+              Text(controller.strings.restoreSavedOrder),
+            ],
           ),
         ),
       ],
+    );
+    if (action == _QuickCommandHeaderAction.restoreSavedOrder) {
+      onRestoreSavedOrder();
+    }
+  }
+}
+
+class _ResizableQuickCommandHeader extends StatelessWidget {
+  const _ResizableQuickCommandHeader({
+    required this.column,
+    required this.width,
+    required this.onResize,
+    required this.child,
+  });
+
+  final _QuickCommandColumn column;
+  final double width;
+  final void Function(_QuickCommandColumn column, double delta) onResize;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final dividerColor = Theme.of(context).dividerColor;
+    return SizedBox(
+      width: width,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Padding(padding: const EdgeInsets.only(right: 5), child: child),
+          Positioned(
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 9,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              child: GestureDetector(
+                key: ValueKey<String>('quick-command-resize-${column.name}'),
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (details) {
+                  onResize(column, details.delta.dx);
+                },
+                child: Center(child: Container(width: 1, color: dividerColor)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SortableQuickCommandHeader extends StatelessWidget {
+  const _SortableQuickCommandHeader({
+    super.key,
+    required this.label,
+    required this.column,
+    required this.activeColumn,
+    required this.ascending,
+    required this.onSort,
+    this.centered = false,
+    this.horizontalPadding = 8,
+  });
+
+  final String label;
+  final _QuickCommandSortColumn column;
+  final _QuickCommandSortColumn? activeColumn;
+  final bool ascending;
+  final ValueChanged<_QuickCommandSortColumn> onSort;
+  final bool centered;
+  final double horizontalPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = activeColumn == column;
+    final color = active
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onSurfaceVariant;
+    return InkWell(
+      onTap: () => onSort(column),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: Row(
+          mainAxisAlignment: centered
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.start,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (active) ...[
+              const SizedBox(width: 3),
+              Icon(
+                ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 12,
+                color: color,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickCommandActionHeader extends StatelessWidget {
+  const _QuickCommandActionHeader(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Center(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -424,11 +863,13 @@ class _HistoryList extends StatelessWidget {
 
 class _QuickCommandRow extends StatelessWidget {
   const _QuickCommandRow({
+    super.key,
     required this.controller,
     required this.command,
     required this.onSend,
     required this.onEdit,
     required this.onRemove,
+    required this.columnWidths,
   });
 
   final SessionController controller;
@@ -436,63 +877,321 @@ class _QuickCommandRow extends StatelessWidget {
   final Future<void> Function(QuickCommand command) onSend;
   final void Function(QuickCommand command) onEdit;
   final void Function(int id) onRemove;
+  final _QuickCommandColumnWidths columnWidths;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        command.name,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onSecondaryTapDown: (details) => _showRowMenu(context, details),
+      child: SizedBox(
+        height: _quickCommandRowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            children: [
+              SizedBox(
+                key: ValueKey<String>('quick-command-name-cell-${command.id}'),
+                width: columnWidths.name,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: _OverflowTooltipText(
+                    key: ValueKey<String>(
+                      'quick-command-name-tooltip-${command.id}',
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      controller.strings.payloadFormat(command.format),
-                      style: Theme.of(context).textTheme.labelSmall,
+                    overlayKey: ValueKey<String>(
+                      'quick-command-name-continuation-${command.id}',
                     ),
-                  ],
+                    overlayWidth: columnWidths.name,
+                    text: command.name,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  command.content,
-                  softWrap: true,
-                  style: Theme.of(context).textTheme.bodySmall,
+              ),
+              SizedBox(
+                width: columnWidths.content,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(
+                    command.content,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
-              ],
-            ),
+              ),
+              SizedBox(
+                width: columnWidths.format,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Text(
+                    command.format == PayloadFormat.ascii ? 'A' : 'H',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ),
+              _QuickCommandActionButton(
+                width: columnWidths.send,
+                tooltip: controller.strings.send,
+                onPressed: () => onSend(command),
+                icon: Icons.send,
+              ),
+            ],
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: controller.strings.send,
-            onPressed: () => onSend(command),
-            icon: const Icon(Icons.send),
-          ),
-          IconButton(
-            tooltip: controller.strings.edit,
-            onPressed: () => onEdit(command),
-            icon: const Icon(Icons.edit_outlined),
-          ),
-          IconButton(
-            tooltip: controller.strings.delete,
-            onPressed: () => onRemove(command.id),
-            icon: const Icon(Icons.delete_outline),
-          ),
-        ],
+        ),
       ),
     );
   }
+
+  Future<void> _showRowMenu(
+    BuildContext context,
+    TapDownDetails details,
+  ) async {
+    final action = await showMenu<_QuickCommandRowAction>(
+      context: context,
+      position: _menuPosition(context, details.globalPosition),
+      items: [
+        PopupMenuItem<_QuickCommandRowAction>(
+          value: _QuickCommandRowAction.edit,
+          child: Row(
+            children: [
+              const Icon(Icons.edit_outlined, size: 18),
+              const SizedBox(width: 8),
+              Text(controller.strings.edit),
+            ],
+          ),
+        ),
+        PopupMenuItem<_QuickCommandRowAction>(
+          value: _QuickCommandRowAction.delete,
+          child: Row(
+            children: [
+              const Icon(Icons.delete_outline, size: 18),
+              const SizedBox(width: 8),
+              Text(controller.strings.delete),
+            ],
+          ),
+        ),
+      ],
+    );
+    switch (action) {
+      case _QuickCommandRowAction.edit:
+        onEdit(command);
+      case _QuickCommandRowAction.delete:
+        onRemove(command.id);
+      case null:
+        return;
+    }
+  }
+}
+
+class _QuickCommandActionButton extends StatelessWidget {
+  const _QuickCommandActionButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+    required this.width,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData icon;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: 24,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: IconButton(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          visualDensity: VisualDensity.compact,
+          iconSize: 18,
+          icon: Icon(icon),
+        ),
+      ),
+    );
+  }
+}
+
+class _OverflowTooltipText extends StatefulWidget {
+  const _OverflowTooltipText({
+    super.key,
+    required this.overlayKey,
+    required this.overlayWidth,
+    required this.text,
+    this.style,
+  });
+
+  final Key overlayKey;
+  final double overlayWidth;
+  final String text;
+  final TextStyle? style;
+
+  @override
+  State<_OverflowTooltipText> createState() => _OverflowTooltipTextState();
+}
+
+class _OverflowTooltipTextState extends State<_OverflowTooltipText> {
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: widget.text, style: widget.style),
+          textDirection: Directionality.of(context),
+        )..layout(maxWidth: constraints.maxWidth);
+        final lines = painter.computeLineMetrics();
+        final truncated = lines.length > 1;
+        final firstLineEnd = truncated
+            ? painter.getLineBoundary(const TextPosition(offset: 0)).end
+            : widget.text.length;
+        final continuation = truncated
+            ? widget.text.substring(firstLineEnd).trimLeft()
+            : '';
+        final label = Text(
+          widget.text,
+          maxLines: 1,
+          softWrap: true,
+          overflow: _hovered ? TextOverflow.clip : TextOverflow.ellipsis,
+          style: widget.style,
+        );
+        return MouseRegion(
+          onEnter: truncated && continuation.isNotEmpty
+              ? (_) => _showContinuation(context, continuation)
+              : null,
+          onExit: (_) => _hideContinuation(),
+          child: CompositedTransformTarget(link: _layerLink, child: label),
+        );
+      },
+    );
+  }
+
+  void _showContinuation(BuildContext context, String continuation) {
+    if (_overlayEntry != null) {
+      return;
+    }
+    setState(() => _hovered = true);
+    final colors = Theme.of(context).colorScheme;
+    final dividerColor = Theme.of(context).dividerColor;
+    _overlayEntry = OverlayEntry(
+      builder: (context) => CompositedTransformFollower(
+        link: _layerLink,
+        showWhenUnlinked: false,
+        targetAnchor: Alignment.bottomLeft,
+        followerAnchor: Alignment.topLeft,
+        offset: const Offset(-6, 0),
+        child: Align(
+          alignment: Alignment.topLeft,
+          widthFactor: 1,
+          heightFactor: 1,
+          child: IgnorePointer(
+            child: Material(
+              key: widget.overlayKey,
+              color: colors.surfaceContainerHighest,
+              elevation: 6,
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(4),
+                bottomRight: Radius.circular(4),
+              ),
+              child: Container(
+                width: widget.overlayWidth,
+                padding: const EdgeInsets.fromLTRB(6, 1, 6, 4),
+                decoration: BoxDecoration(
+                  border: Border.all(color: dividerColor),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(4),
+                    bottomRight: Radius.circular(4),
+                  ),
+                ),
+                child: Text(continuation, softWrap: true, style: widget.style),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _hideContinuation() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    if (mounted && _hovered) {
+      setState(() => _hovered = false);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _OverflowTooltipText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text || oldWidget.style != widget.style) {
+      _hideContinuation();
+    }
+  }
+
+  @override
+  void dispose() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    super.dispose();
+  }
+}
+
+class _QuickCommandAddRow extends StatelessWidget {
+  const _QuickCommandAddRow({
+    super.key,
+    required this.controller,
+    required this.onAdd,
+  });
+
+  final SessionController controller;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _quickCommandRowHeight,
+      child: InkWell(
+        onTap: onAdd,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: Row(
+            children: [
+              const Icon(Icons.add, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                controller.strings.addCommand,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+RelativeRect _menuPosition(BuildContext context, Offset globalPosition) {
+  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+  return RelativeRect.fromLTRB(
+    globalPosition.dx,
+    globalPosition.dy,
+    overlay.size.width - globalPosition.dx,
+    overlay.size.height - globalPosition.dy,
+  );
 }
 
 class _HistoryRow extends StatelessWidget {
@@ -517,8 +1216,10 @@ class _HistoryRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(controller.strings.payloadFormat(entry.format),
-                    style: Theme.of(context).textTheme.labelSmall),
+                Text(
+                  controller.strings.payloadFormat(entry.format),
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
                 const SizedBox(height: 2),
                 Text(
                   entry.text,

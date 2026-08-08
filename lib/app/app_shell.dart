@@ -73,9 +73,7 @@ class _AppShellState extends State<AppShell> {
                       Expanded(
                         flex: 2,
                         child: RepaintBoundary(
-                          child: SendPanel(
-                            controller: sendTarget,
-                          ),
+                          child: SendPanel(controller: sendTarget),
                         ),
                       ),
                     ],
@@ -92,6 +90,18 @@ class _AppShellState extends State<AppShell> {
                   ],
                 );
               }
+              final occupiedConnectionWidth = controller.showConnectionPanel
+                  ? _connectionWidth + _panelDividerHitExtent
+                  : 0.0;
+              final maxQuickWidth =
+                  constraints.maxWidth -
+                  occupiedConnectionWidth -
+                  _panelDividerHitExtent;
+              final quickWidth = _clampPanelExtent(
+                _quickWidth,
+                min: 260,
+                max: maxQuickWidth,
+              );
               return Row(
                 children: [
                   if (controller.showConnectionPanel)
@@ -125,12 +135,11 @@ class _AppShellState extends State<AppShell> {
                             }),
                           ),
                           SizedBox(
-                              height: _sendHeight,
-                              child: RepaintBoundary(
-                                child: SendPanel(
-                                  controller: sendTarget,
-                                ),
-                              )),
+                            height: _sendHeight,
+                            child: RepaintBoundary(
+                              child: SendPanel(controller: sendTarget),
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -138,10 +147,14 @@ class _AppShellState extends State<AppShell> {
                   if (controller.showQuickCommandsPanel)
                     _AnimatedQuickCommandsSidePanel(
                       controller: sendTarget,
-                      width: _quickWidth,
+                      width: quickWidth,
                       onResize: (delta) => setState(() {
-                        _quickWidth =
-                            (_quickWidth - delta).clamp(260, 520).toDouble();
+                        _quickWidth = (_quickWidth - delta)
+                            .clamp(
+                              maxQuickWidth < 260 ? maxQuickWidth : 260,
+                              maxQuickWidth,
+                            )
+                            .toDouble();
                       }),
                     ),
                 ],
@@ -418,8 +431,9 @@ class _SessionPager extends StatelessWidget {
         children: [
           _SessionPagerButton(
             tooltip: strings.previousSessionPage,
-            onPressed:
-                controller.canGoPrevious ? controller.previousSession : null,
+            onPressed: controller.canGoPrevious
+                ? controller.previousSession
+                : null,
             icon: Icons.chevron_left,
           ),
           const _PanelSeparator(),
@@ -433,8 +447,9 @@ class _SessionPager extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: ScrollConfiguration(
-                behavior:
-                    ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   physics: const ClampingScrollPhysics(),
@@ -556,11 +571,17 @@ class _VerticalDragDivider extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (details) => onDrag(details.delta.dx),
         child: SizedBox(
-          width: 1,
+          width: _panelDividerHitExtent,
           height: double.infinity,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).dividerColor,
+          child: Center(
+            child: SizedBox(
+              width: 1,
+              height: double.infinity,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor,
+                ),
+              ),
             ),
           ),
         ),
@@ -583,10 +604,16 @@ class _HorizontalDragDivider extends StatelessWidget {
         onVerticalDragUpdate: (details) => onDrag(details.delta.dy),
         child: SizedBox(
           width: double.infinity,
-          height: 1,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).dividerColor,
+          height: _panelDividerHitExtent,
+          child: Center(
+            child: SizedBox(
+              width: double.infinity,
+              height: 1,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor,
+                ),
+              ),
             ),
           ),
         ),
@@ -594,3 +621,5 @@ class _HorizontalDragDivider extends StatelessWidget {
     );
   }
 }
+
+const _panelDividerHitExtent = 9.0;

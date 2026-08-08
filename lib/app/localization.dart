@@ -188,6 +188,7 @@ class AppStrings {
   String get save => isZh ? '保存' : 'Save';
   String get edit => isZh ? '编辑' : 'Edit';
   String get delete => isZh ? '删除' : 'Delete';
+  String get restoreSavedOrder => isZh ? '恢复默认排序' : 'Restore default order';
 
   String transportType(TransportType type) => switch (type) {
     TransportType.serial => isZh ? '串口' : 'Serial',

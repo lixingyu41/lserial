@@ -7,34 +7,39 @@ import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/domain/quick_command.dart';
 import 'package:lserial/domain/transport.dart';
+import 'package:lserial/storage/quick_command_text_codec.dart';
 import 'package:lserial/transports/transport_registry.dart';
 
 void main() {
-  test('add action reuses existing empty page when active page is connected',
-      () async {
-    final controller = WorkspaceController();
-    addTearDown(controller.dispose);
+  test(
+    'add action reuses existing empty page when active page is connected',
+    () async {
+      final controller = WorkspaceController();
+      addTearDown(controller.dispose);
 
-    controller.activeSession.status = TransportStatus.connected;
-    controller.sessions.add(SessionController(serialAliasNumber: 2));
+      controller.activeSession.status = TransportStatus.connected;
+      controller.sessions.add(SessionController(serialAliasNumber: 2));
 
-    expect(controller.activeSessionIndex, 0);
-    expect(controller.canAddSession, isTrue);
+      expect(controller.activeSessionIndex, 0);
+      expect(controller.canAddSession, isTrue);
 
-    await controller.addSession();
+      await controller.addSession();
 
-    expect(controller.sessions, hasLength(2));
-    expect(controller.activeSessionIndex, 1);
-    expect(controller.pageIndicator, isEmpty);
-  });
+      expect(controller.sessions, hasLength(2));
+      expect(controller.activeSessionIndex, 1);
+      expect(controller.pageIndicator, isEmpty);
+    },
+  );
 
   test('session page navigation updates page indicator', () {
     final controller = WorkspaceController();
     addTearDown(controller.dispose);
 
     controller.activeSession.status = TransportStatus.connected;
-    controller.sessions.add(SessionController(serialAliasNumber: 2)
-      ..status = TransportStatus.connected);
+    controller.sessions.add(
+      SessionController(serialAliasNumber: 2)
+        ..status = TransportStatus.connected,
+    );
 
     controller.nextSession();
 
@@ -112,10 +117,14 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.activeSession.status = TransportStatus.connected;
-    controller.sessions.add(SessionController(serialAliasNumber: 2)
-      ..status = TransportStatus.connected);
-    controller.sessions.add(SessionController(serialAliasNumber: 3)
-      ..status = TransportStatus.connected);
+    controller.sessions.add(
+      SessionController(serialAliasNumber: 2)
+        ..status = TransportStatus.connected,
+    );
+    controller.sessions.add(
+      SessionController(serialAliasNumber: 3)
+        ..status = TransportStatus.connected,
+    );
 
     controller.stepSendTarget(1);
     expect(controller.sendTargetIndex, 1);
@@ -183,18 +192,13 @@ void main() {
       isFalse,
     );
     expect(
-      controller.isToolbarActionVisible(
-        WorkspaceToolbarAction.connectionPanel,
-      ),
+      controller.isToolbarActionVisible(WorkspaceToolbarAction.connectionPanel),
       isTrue,
     );
 
     controller.setLineEndingSymbolsVisible(false);
     controller.setLogSourceVisible('COM1', false);
-    controller.setToolbarActionVisible(
-      WorkspaceToolbarAction.autoScroll,
-      true,
-    );
+    controller.setToolbarActionVisible(WorkspaceToolbarAction.autoScroll, true);
 
     expect(savedSettings.first.showLineEndingSymbols, isFalse);
     expect(savedSettings.last.hiddenSources, contains('COM1'));
@@ -215,23 +219,20 @@ void main() {
 
     final restored = WorkspaceSettings.fromJson(settings.toJson());
 
-    expect(
-      restored.hiddenToolbarActions,
-      <WorkspaceToolbarAction>{
-        WorkspaceToolbarAction.clearLog,
-        WorkspaceToolbarAction.sendFormat,
-        WorkspaceToolbarAction.sendPanel,
-      },
-    );
+    expect(restored.hiddenToolbarActions, <WorkspaceToolbarAction>{
+      WorkspaceToolbarAction.clearLog,
+      WorkspaceToolbarAction.sendFormat,
+      WorkspaceToolbarAction.sendPanel,
+    });
   });
 
   test('MCP is enabled by default and persists through workspace JSON', () {
     const defaults = WorkspaceSettings();
     expect(defaults.mcpEnabled, isTrue);
 
-    final disabled = WorkspaceSettings.fromJson(
-      <String, Object?>{'mcpEnabled': false},
-    );
+    final disabled = WorkspaceSettings.fromJson(<String, Object?>{
+      'mcpEnabled': false,
+    });
     expect(disabled.mcpEnabled, isFalse);
     expect(disabled.toJson()['mcpEnabled'], isFalse);
   });
@@ -250,9 +251,7 @@ void main() {
       false,
     );
     expect(
-      controller.isToolbarActionVisible(
-        WorkspaceToolbarAction.connectionPanel,
-      ),
+      controller.isToolbarActionVisible(WorkspaceToolbarAction.connectionPanel),
       isFalse,
     );
 
@@ -260,9 +259,7 @@ void main() {
 
     expect(controller.showConnectionPanel, isFalse);
     expect(
-      controller.isToolbarActionVisible(
-        WorkspaceToolbarAction.connectionPanel,
-      ),
+      controller.isToolbarActionVisible(WorkspaceToolbarAction.connectionPanel),
       isTrue,
     );
     expect(
@@ -397,7 +394,9 @@ void main() {
 
     controller.removeQuickCommand(added.id);
     expect(
-        savedCommands.map((command) => command.id), isNot(contains(added.id)));
+      savedCommands.map((command) => command.id),
+      isNot(contains(added.id)),
+    );
   });
 
   test('quick command import supports replace and append modes', () {
@@ -410,39 +409,63 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    controller.importQuickCommands(
-      const <QuickCommand>[
-        QuickCommand(
-          id: 99,
-          name: 'Imported',
-          content: 'AA 55',
-          format: PayloadFormat.hex,
-        ),
-      ],
-      mode: QuickCommandImportMode.replace,
-    );
+    controller.importQuickCommands(const <QuickCommand>[
+      QuickCommand(
+        id: 99,
+        name: 'Imported',
+        content: 'AA 55',
+        format: PayloadFormat.hex,
+      ),
+    ], mode: QuickCommandImportMode.replace);
     expect(controller.quickCommands.map((command) => command.name), [
       'Imported',
     ]);
     expect(controller.quickCommands.single.id, 1);
 
-    controller.importQuickCommands(
-      const <QuickCommand>[
-        QuickCommand(
-          id: 1,
-          name: 'Appended',
-          content: 'AT',
-          format: PayloadFormat.ascii,
-        ),
-      ],
-      mode: QuickCommandImportMode.append,
-    );
-    expect(
-      controller.quickCommands.map((command) => command.name),
-      ['Imported', 'Appended'],
-    );
+    controller.importQuickCommands(const <QuickCommand>[
+      QuickCommand(
+        id: 1,
+        name: 'Appended',
+        content: 'AT',
+        format: PayloadFormat.ascii,
+      ),
+    ], mode: QuickCommandImportMode.append);
+    expect(controller.quickCommands.map((command) => command.name), [
+      'Imported',
+      'Appended',
+    ]);
     expect(controller.quickCommands.last.id, 2);
     expect(savedCommands, hasLength(2));
+  });
+
+  test('quick command reorder is persisted in export order', () {
+    var savedCommands = const <QuickCommand>[];
+    final controller = SessionController(
+      saveQuickCommands: (commands) {
+        savedCommands = List<QuickCommand>.of(commands);
+        return Future<void>.value();
+      },
+    );
+    addTearDown(controller.dispose);
+
+    controller.reorderQuickCommand(0, 2);
+
+    expect(controller.quickCommands.map((command) => command.name), <String>[
+      'Reset',
+      'Ping',
+      'AT',
+    ]);
+    expect(savedCommands.map((command) => command.name), <String>[
+      'Reset',
+      'Ping',
+      'AT',
+    ]);
+    final exported = encodeQuickCommandsText(controller.quickCommands);
+    expect(
+      exported.indexOf('\tReset\t'),
+      lessThan(exported.indexOf('\tPing\t')),
+    );
+    expect(exported.indexOf('\tPing\t'), lessThan(exported.indexOf('\tAT\t')));
   });
 }
 
