@@ -11,6 +11,21 @@ import 'package:lserial/storage/quick_command_text_codec.dart';
 import 'package:lserial/transports/transport_registry.dart';
 
 void main() {
+  test('workspace auto scroll stays synchronized with every session', () async {
+    final controller = WorkspaceController(
+      loadWorkspaceSettings: () async => null,
+      saveWorkspaceSettings: (_) async {},
+    );
+    addTearDown(controller.dispose);
+
+    controller.setAutoScroll(false);
+    expect(controller.autoScroll, isFalse);
+    expect(controller.sessions.every((session) => !session.autoScroll), isTrue);
+
+    final addedSession = await controller.createAutomationSession();
+    expect(addedSession.autoScroll, isFalse);
+  });
+
   test(
     'add action reuses existing empty page when active page is connected',
     () async {

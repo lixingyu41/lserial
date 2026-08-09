@@ -400,6 +400,9 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     autoScroll = value;
+    for (final session in sessions) {
+      session.setAutoScroll(value);
+    }
     _persistSettings();
     notifyListeners();
   }
@@ -674,6 +677,7 @@ class WorkspaceController extends ChangeNotifier {
       serialAliasNumber: _nextAvailableSerialAliasNumber(),
       language: language,
     );
+    session.setAutoScroll(autoScroll);
     session.addListener(_handleSessionChanged);
     session.displaySnapshot.addListener(_handleSessionSnapshotChanged);
     sessions.add(session);
@@ -759,6 +763,7 @@ class WorkspaceController extends ChangeNotifier {
     }
     for (final session in sessions) {
       session.setLanguage(language);
+      session.setAutoScroll(autoScroll);
     }
   }
 

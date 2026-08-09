@@ -49,13 +49,20 @@ class _FrameListViewState extends State<FrameListView> {
   String? _filteredFilter;
   ConsoleFormatOptions? _filteredOptions;
   Set<String>? _filteredVisibleSources;
+  final Set<DataFrame> _renderedFrames = HashSet<DataFrame>.identity();
   bool _scrollPending = false;
   int _scrollGeneration = 0;
   int _scrollRequest = 0;
+  int _anchorGeneration = 0;
 
   @override
   void didUpdateWidget(FrameListView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.autoScroll &&
+        !widget.pauseDisplay &&
+        widget.snapshot.revision != oldWidget.snapshot.revision) {
+      _scheduleAnchorCorrection();
+    }
     if (widget.snapshot.revision != oldWidget.snapshot.revision) {
       _pruneFrameCaches();
     }
@@ -80,6 +87,7 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   void dispose() {
     _scrollGeneration++;
+    _anchorGeneration++;
     scroll.dispose();
     super.dispose();
   }
@@ -87,10 +95,10 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   Widget build(BuildContext context) {
     final frames = _filteredFrames();
-    final frameIndexes = <int, int>{
-      for (var index = 0; index < frames.length; index++)
-        frames[index].sequence: index,
-    };
+    final frameIndexes = HashMap<DataFrame, int>.identity();
+    frameIndexes.addAll(<DataFrame, int>{
+      for (var index = 0; index < frames.length; index++) frames[index]: index,
+    });
     final options = widget.options;
     final formatter = widget.formatter;
     final filter = widget.filter.trim();
@@ -100,12 +108,17 @@ class _FrameListViewState extends State<FrameListView> {
         padding: EdgeInsets.only(bottom: widget.bottomPadding),
         itemCount: frames.length,
         findChildIndexCallback: (key) {
-          return key is ValueKey<int> ? frameIndexes[key.value] : null;
+          if (key is GlobalObjectKey<State<StatefulWidget>> &&
+              key.value is DataFrame) {
+            return frameIndexes[key.value as DataFrame];
+          }
+          return null;
         },
         itemBuilder: (context, index) {
           final frame = frames[index];
+          _renderedFrames.add(frame);
           return DecoratedBox(
-            key: ValueKey<int>(frame.sequence),
+            key: _frameKey(frame),
             decoration: BoxDecoration(
               color: _rowColor(context, frame),
               border: frame.direction == FrameDirection.system
@@ -397,6 +410,76 @@ class _FrameListViewState extends State<FrameListView> {
     }
   }
 
+  void _scheduleAnchorCorrection() {
+    if (!scroll.hasClients) {
+      return;
+    }
+    final viewport = context.findRenderObject();
+    if (viewport is! RenderBox || !viewport.attached) {
+      return;
+    }
+
+    final viewportTop = viewport.localToGlobal(Offset.zero).dy;
+    final viewportBottom = viewportTop + viewport.size.height;
+    final viewportCenter = (viewportTop + viewportBottom) / 2;
+    DataFrame? anchor;
+    double? anchorTop;
+    var closestDistance = double.infinity;
+    final staleFrames = <DataFrame>[];
+
+    for (final frame in _renderedFrames) {
+      final anchorContext = _frameKey(frame).currentContext;
+      final renderObject = anchorContext?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.attached) {
+        staleFrames.add(frame);
+        continue;
+      }
+      final top = renderObject.localToGlobal(Offset.zero).dy;
+      final bottom = top + renderObject.size.height;
+      if (bottom <= viewportTop || top >= viewportBottom) {
+        continue;
+      }
+      final distance = ((top + bottom) / 2 - viewportCenter).abs();
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        anchor = frame;
+        anchorTop = top;
+      }
+    }
+    _renderedFrames.removeAll(staleFrames);
+    if (anchor == null || anchorTop == null) {
+      return;
+    }
+
+    final generation = ++_anchorGeneration;
+    final offsetBefore = scroll.offset;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          generation != _anchorGeneration ||
+          widget.autoScroll ||
+          widget.pauseDisplay ||
+          !scroll.hasClients ||
+          (scroll.offset - offsetBefore).abs() > 0.5) {
+        return;
+      }
+      final anchorContext = _frameKey(anchor!).currentContext;
+      final renderObject = anchorContext?.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.attached) {
+        return;
+      }
+      final nextTop = renderObject.localToGlobal(Offset.zero).dy;
+      final delta = nextTop - anchorTop!;
+      if (delta.abs() <= 0.5) {
+        return;
+      }
+      final target = (scroll.offset + delta).clamp(
+        scroll.position.minScrollExtent,
+        scroll.position.maxScrollExtent,
+      );
+      scroll.jumpTo(target);
+    });
+  }
+
   String _timestampText(DataFrame frame, FrameFormatter formatter) {
     return _timestampCache.putIfAbsent(
       frame,
@@ -461,8 +544,13 @@ class _FrameListViewState extends State<FrameListView> {
       (key, _) => !retained.contains(key.frame),
     );
     _payloadCache.removeWhere((key, _) => !retained.contains(key.frame));
+    _renderedFrames.removeWhere((frame) => !retained.contains(frame));
     _filteredFramesCache = null;
   }
+}
+
+GlobalObjectKey<State<StatefulWidget>> _frameKey(DataFrame frame) {
+  return GlobalObjectKey<State<StatefulWidget>>(frame);
 }
 
 class _FrameFormatKey {

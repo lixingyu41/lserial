@@ -62,5 +62,14 @@ void main() {
     expect(result.isError, isFalse);
     expect(result.structuredContent?['ok'], isTrue);
     expect(result.structuredContent?['session_count'], 1);
+
+    workspace.setAutoScroll(false);
+    final updatedState = await client.callTool(
+      const CallToolRequest(name: 'lserial_get_state', arguments: {}),
+    );
+    final sessions = updatedState.structuredContent?['sessions'] as List;
+    final session = sessions.first as Map;
+    final options = session['options'] as Map;
+    expect(options['auto_scroll'], isFalse);
   });
 }
