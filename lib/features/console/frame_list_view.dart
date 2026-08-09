@@ -50,6 +50,8 @@ class _FrameListViewState extends State<FrameListView> {
   ConsoleFormatOptions? _filteredOptions;
   Set<String>? _filteredVisibleSources;
   bool _scrollPending = false;
+  int _scrollGeneration = 0;
+  int _scrollRequest = 0;
 
   @override
   void didUpdateWidget(FrameListView oldWidget) {
@@ -64,6 +66,10 @@ class _FrameListViewState extends State<FrameListView> {
     if (widget.options.viewMode != oldWidget.options.viewMode) {
       _payloadCache.clear();
     }
+    if ((!widget.autoScroll && oldWidget.autoScroll) ||
+        (widget.pauseDisplay && !oldWidget.pauseDisplay)) {
+      _cancelScrollToBottom();
+    }
     if (widget.autoScroll &&
         !widget.pauseDisplay &&
         widget.snapshot.revision != oldWidget.snapshot.revision) {
@@ -73,6 +79,7 @@ class _FrameListViewState extends State<FrameListView> {
 
   @override
   void dispose() {
+    _scrollGeneration++;
     scroll.dispose();
     super.dispose();
   }
@@ -80,6 +87,10 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   Widget build(BuildContext context) {
     final frames = _filteredFrames();
+    final frameIndexes = <int, int>{
+      for (var index = 0; index < frames.length; index++)
+        frames[index].sequence: index,
+    };
     final options = widget.options;
     final formatter = widget.formatter;
     final filter = widget.filter.trim();
@@ -88,9 +99,13 @@ class _FrameListViewState extends State<FrameListView> {
         controller: scroll,
         padding: EdgeInsets.only(bottom: widget.bottomPadding),
         itemCount: frames.length,
+        findChildIndexCallback: (key) {
+          return key is ValueKey<int> ? frameIndexes[key.value] : null;
+        },
         itemBuilder: (context, index) {
           final frame = frames[index];
           return DecoratedBox(
+            key: ValueKey<int>(frame.sequence),
             decoration: BoxDecoration(
               color: _rowColor(context, frame),
               border: frame.direction == FrameDirection.system
@@ -161,16 +176,22 @@ class _FrameListViewState extends State<FrameListView> {
     }
     final formatter = widget.formatter;
     final options = widget.options;
-    return widget.snapshot.frames.where((frame) {
-      if (visibleSources != null &&
-          !visibleSources.contains(formatter.sourceToken(frame))) {
-        return false;
-      }
-      if (filter.isEmpty) {
-        return true;
-      }
-      return _lowerFormattedFrame(frame, formatter, options).contains(filter);
-    }).toList(growable: false);
+    return widget.snapshot.frames
+        .where((frame) {
+          if (visibleSources != null &&
+              !visibleSources.contains(formatter.sourceToken(frame))) {
+            return false;
+          }
+          if (filter.isEmpty) {
+            return true;
+          }
+          return _lowerFormattedFrame(
+            frame,
+            formatter,
+            options,
+          ).contains(filter);
+        })
+        .toList(growable: false);
   }
 
   Color _rowColor(BuildContext context, DataFrame frame) {
@@ -200,10 +221,9 @@ class _FrameListViewState extends State<FrameListView> {
     final colonColor = Theme.of(context).colorScheme.outline;
     final highlightStyle = TextStyle(
       color: Theme.of(context).colorScheme.onTertiaryContainer,
-      backgroundColor: Theme.of(context)
-          .colorScheme
-          .tertiaryContainer
-          .withValues(alpha: 0.72),
+      backgroundColor: Theme.of(
+        context,
+      ).colorScheme.tertiaryContainer.withValues(alpha: 0.72),
     );
     final spans = <TextSpan>[];
     if (options.showTimestamp) {
@@ -282,7 +302,8 @@ class _FrameListViewState extends State<FrameListView> {
 
       if (index > cursor) {
         spans.add(
-            TextSpan(text: text.substring(cursor, index), style: baseStyle));
+          TextSpan(text: text.substring(cursor, index), style: baseStyle),
+        );
       }
 
       final end = index + needle.length;
@@ -307,25 +328,73 @@ class _FrameListViewState extends State<FrameListView> {
     };
   }
 
-  void _scrollToBottom() {
-    if (!scroll.hasClients) {
+  void _scheduleScrollToBottom() {
+    if (!widget.autoScroll || widget.pauseDisplay) {
       return;
     }
-    scroll.jumpTo(scroll.position.maxScrollExtent);
-  }
-
-  void _scheduleScrollToBottom() {
+    _scrollRequest++;
     if (_scrollPending) {
       return;
     }
     _scrollPending = true;
+    final generation = _scrollGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollPending = false;
-      if (!mounted) {
+      _settleScrollToBottom(generation);
+    });
+  }
+
+  void _settleScrollToBottom(int generation) {
+    if (!_canAutoScroll(generation)) {
+      _finishScrollRequest(generation);
+      return;
+    }
+    if (!scroll.hasClients || !scroll.position.hasContentDimensions) {
+      _finishScrollRequest(generation);
+      return;
+    }
+
+    final request = _scrollRequest;
+    final extentBefore = scroll.position.maxScrollExtent;
+    if ((scroll.position.pixels - extentBefore).abs() > 0.5) {
+      scroll.jumpTo(extentBefore);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_canAutoScroll(generation)) {
+        _finishScrollRequest(generation);
         return;
       }
-      _scrollToBottom();
+      if (!scroll.hasClients || !scroll.position.hasContentDimensions) {
+        _finishScrollRequest(generation);
+        return;
+      }
+      final extentAfter = scroll.position.maxScrollExtent;
+      final atBottom = (scroll.position.pixels - extentAfter).abs() <= 0.5;
+      final layoutChanged = (extentAfter - extentBefore).abs() > 0.5;
+      if (_scrollRequest != request || layoutChanged || !atBottom) {
+        _settleScrollToBottom(generation);
+        return;
+      }
+      _finishScrollRequest(generation);
     });
+  }
+
+  bool _canAutoScroll(int generation) {
+    return mounted &&
+        generation == _scrollGeneration &&
+        widget.autoScroll &&
+        !widget.pauseDisplay;
+  }
+
+  void _cancelScrollToBottom() {
+    _scrollGeneration++;
+    _scrollPending = false;
+  }
+
+  void _finishScrollRequest(int generation) {
+    if (generation == _scrollGeneration) {
+      _scrollPending = false;
+    }
   }
 
   String _timestampText(DataFrame frame, FrameFormatter formatter) {
@@ -387,9 +456,7 @@ class _FrameListViewState extends State<FrameListView> {
     final retained = HashSet<DataFrame>.identity()
       ..addAll(widget.snapshot.frames);
     _timestampCache.removeWhere((frame, _) => !retained.contains(frame));
-    _formattedFrameCache.removeWhere(
-      (key, _) => !retained.contains(key.frame),
-    );
+    _formattedFrameCache.removeWhere((key, _) => !retained.contains(key.frame));
     _lowerFormattedFrameCache.removeWhere(
       (key, _) => !retained.contains(key.frame),
     );
