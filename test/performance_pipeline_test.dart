@@ -781,6 +781,41 @@ void main() {
   });
 
   test(
+    'SessionController rethrows raw send failures for MCP callers',
+    () async {
+      final primary = _FakeTransportSession(
+        label: 'COM1',
+        sendError: StateError('write failed'),
+      );
+      final controller = SessionController(
+        registry: _ForwardingTransportRegistry(<String, TransportSession>{
+          'COM1': primary,
+        }),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
+        ),
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(serial: SerialConfig(portName: 'COM1')),
+      );
+
+      await controller.connect();
+
+      await expectLater(
+        controller.sendRawBytesFrom(<int>[0x01, 0x02], source: 'AI[1]'),
+        throwsA(isA<StateError>()),
+      );
+      expect(primary.isConnected, isTrue);
+      expect(primary.sentBytes, isEmpty);
+    },
+  );
+
+  test(
     'Serial forwarding closes the other port after one side disconnects',
     () async {
       final primary = _FakeTransportSession(label: 'COM1');
@@ -883,12 +918,14 @@ class _FakeTransportSession implements TransportSession {
     this.label = 'COM1',
     this.connectDelay = Duration.zero,
     this.sendDelay = Duration.zero,
+    this.sendError,
   });
 
   @override
   final String label;
   final Duration connectDelay;
   final Duration sendDelay;
+  final Object? sendError;
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
   final List<List<int>> sentBytes = <List<int>>[];
@@ -932,6 +969,10 @@ class _FakeTransportSession implements TransportSession {
     try {
       if (sendDelay != Duration.zero) {
         await Future<void>.delayed(sendDelay);
+      }
+      final error = sendError;
+      if (error != null) {
+        throw error;
       }
       sentBytes.add(List<int>.of(bytes));
     } finally {

@@ -17,6 +17,41 @@ TransportSession createSerialSession(ConnectionConfig config) {
   return DesktopSerialTransportSession(config);
 }
 
+const int serialMaxReadChunkBytes = 64 * 1024;
+const int _serialWriteTimeoutMs = 250;
+
+typedef SerialWriteChunk = int Function(Uint8List bytes);
+
+int serialReadLengthForAvailable(
+  int available, {
+  int maxChunkBytes = serialMaxReadChunkBytes,
+}) {
+  if (available <= 0) {
+    return available;
+  }
+  return available > maxChunkBytes ? maxChunkBytes : available;
+}
+
+int writeSerialBytesFully(Uint8List bytes, SerialWriteChunk writeChunk) {
+  var offset = 0;
+  while (offset < bytes.length) {
+    final remaining = Uint8List.sublistView(bytes, offset);
+    final written = writeChunk(remaining);
+    if (written <= 0) {
+      throw StateError(
+        'Serial write stalled: $offset of ${bytes.length} bytes.',
+      );
+    }
+    if (written > remaining.length) {
+      throw StateError(
+        'Serial write overflow: $written of ${remaining.length} bytes.',
+      );
+    }
+    offset += written;
+  }
+  return offset;
+}
+
 class DesktopSerialTransportSession implements TransportSession {
   DesktopSerialTransportSession(this.config);
 
@@ -330,12 +365,11 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
         try {
           if (type == 'write') {
             final bytes = rawCommand['bytes'] as Uint8List;
-            final written = activePort.write(bytes);
-            if (written != bytes.length) {
-              throw StateError(
-                'Serial write incomplete: $written of ${bytes.length} bytes.',
-              );
-            }
+            writeSerialBytesFully(
+              bytes,
+              (remaining) =>
+                  activePort.write(remaining, timeout: _serialWriteTimeoutMs),
+            );
             mainPort.send(_responseEvent(id, true));
           } else if (type == 'disconnect') {
             closing = true;
@@ -346,7 +380,9 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
           }
         } on Object catch (error) {
           mainPort.send(_responseEvent(id, false, error.toString()));
-          finishUnexpectedly(error);
+          if (type != 'write') {
+            finishUnexpectedly(error);
+          }
         }
       },
       onError: finishUnexpectedly,
@@ -369,13 +405,19 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
           );
           return;
         }
-        if (available == 0) {
+        final readLength = serialReadLengthForAvailable(available);
+        if (readLength == 0) {
           return;
         }
-        final bytes = activePort.read(available);
+        final bytes = activePort.read(readLength);
         if (bytes.isNotEmpty) {
           mainPort.send(<String, Object?>{'type': 'data', 'bytes': bytes});
         }
+      } on ArgumentError catch (error) {
+        if (error.toString().contains('length must be in the range')) {
+          return;
+        }
+        finishUnexpectedly(error);
       } on Object catch (error) {
         finishUnexpectedly(error);
       }

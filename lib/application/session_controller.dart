@@ -990,7 +990,12 @@ class SessionController extends ChangeNotifier {
     List<int> bytes, {
     required String source,
   }) async {
-    await _sendBytes(bytes, rememberHistory: false, sourceOverride: source);
+    await _sendBytes(
+      bytes,
+      rememberHistory: false,
+      sourceOverride: source,
+      rethrowOnFailure: true,
+    );
   }
 
   Future<void> sendQuickCommand(QuickCommand command) async {
@@ -1035,6 +1040,7 @@ class SessionController extends ChangeNotifier {
     String? historyText,
     PayloadFormat? historyFormat,
     String? sourceOverride,
+    bool rethrowOnFailure = false,
   }) async {
     if (bytes.isEmpty) {
       return;
@@ -1042,6 +1048,9 @@ class SessionController extends ChangeNotifier {
     final session = _session;
     if (session == null || !session.isConnected) {
       _appendSystem(strings.sendSkippedNoConnection);
+      if (rethrowOnFailure) {
+        throw StateError('No connected transport session.');
+      }
       return;
     }
 
@@ -1070,6 +1079,9 @@ class SessionController extends ChangeNotifier {
       }
       if (!isClassicBluetooth) {
         _appendSystem(strings.sendFailed(_formatError(error)));
+      }
+      if (rethrowOnFailure) {
+        rethrow;
       }
     }
   }
@@ -1123,7 +1135,11 @@ class SessionController extends ChangeNotifier {
     }
     _autoSendInFlight = true;
     unawaited(
-      sendRawBytesFrom(bytes, source: source).whenComplete(() {
+      _sendBytes(
+        bytes,
+        rememberHistory: false,
+        sourceOverride: source,
+      ).whenComplete(() {
         _autoSendInFlight = false;
       }),
     );
