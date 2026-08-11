@@ -116,6 +116,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   late final TextEditingController packetInterval;
   late final TextEditingController packetDelimiter;
   late final TextEditingController bluetoothDeviceId;
+  late final TextEditingController classicBluetoothAddress;
   late final TextEditingController bluetoothServiceUuid;
   late final TextEditingController bluetoothWriteCharacteristicUuid;
   late final TextEditingController bluetoothNotifyCharacteristicUuid;
@@ -143,6 +144,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       text: config.serial.packetDelimiter,
     );
     bluetoothDeviceId = TextEditingController(text: config.bluetooth.deviceId);
+    classicBluetoothAddress = TextEditingController(
+      text: config.bluetoothClassic.address,
+    );
     bluetoothServiceUuid = TextEditingController(
       text: config.bluetooth.serviceUuid,
     );
@@ -175,6 +179,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     packetInterval.dispose();
     packetDelimiter.dispose();
     bluetoothDeviceId.dispose();
+    classicBluetoothAddress.dispose();
     bluetoothServiceUuid.dispose();
     bluetoothWriteCharacteristicUuid.dispose();
     bluetoothNotifyCharacteristicUuid.dispose();
@@ -274,6 +279,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       TransportType.tcpServer => _tcpServerFields(),
       TransportType.udp => _udpFields(),
       TransportType.bluetooth => _bluetoothFields(),
+      TransportType.bluetoothClassic => _classicBluetoothFields(),
     };
   }
 
@@ -350,6 +356,23 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
               : controller.strings.refreshList,
         ),
       ),
+      TransportType.bluetoothClassic => OutlinedButton.icon(
+        onPressed:
+            controller.isConnected || controller.isScanningClassicBluetooth
+            ? null
+            : controller.scanClassicBluetoothDevices,
+        icon: controller.isScanningClassicBluetooth
+            ? const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.refresh),
+        label: Text(
+          controller.isScanningClassicBluetooth
+              ? controller.strings.scanningClassicBluetooth
+              : controller.strings.refreshList,
+        ),
+      ),
       _ => null,
     };
   }
@@ -372,6 +395,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     packetInterval.text = config.serial.packetIntervalMs.toString();
     packetDelimiter.text = config.serial.packetDelimiter;
     bluetoothDeviceId.text = config.bluetooth.deviceId;
+    classicBluetoothAddress.text = config.bluetoothClassic.address;
     bluetoothServiceUuid.text = config.bluetooth.serviceUuid;
     bluetoothWriteCharacteristicUuid.text =
         config.bluetooth.effectiveWriteCharacteristicUuid;
@@ -1176,6 +1200,50 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     );
   }
 
+  Widget _classicBluetoothFields() {
+    final config = controller.config.bluetoothClassic;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          controller.strings.classicBluetoothInfo,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (!controller.isConnected &&
+            controller.classicBluetoothDevices.isNotEmpty) ...[
+          const Divider(height: 1),
+          _ClassicBluetoothDeviceList(
+            controller: controller,
+            selectedAddress: config.address,
+            onSelected: (address) {
+              classicBluetoothAddress.text = address;
+              controller.selectClassicBluetoothDevice(address);
+            },
+          ),
+        ],
+        const Divider(height: 1),
+        TextField(
+          controller: classicBluetoothAddress,
+          enabled: !controller.isConnected,
+          decoration: InputDecoration(
+            labelText: controller.strings.bluetoothAddress,
+          ),
+          onChanged: (value) {
+            final address = value.trim();
+            controller.updateConfig(
+              controller.config.copyWith(
+                bluetoothClassic: controller.config.bluetoothClassic.copyWith(
+                  address: address,
+                  deviceName: _classicBluetoothDeviceNameFor(address),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   Future<void> _scanBluetoothDevices() async {
     _syncBluetoothConfig();
     await controller.scanBluetoothDevices();
@@ -1227,6 +1295,12 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           notifyCharacteristicUuid: bluetoothNotifyCharacteristicUuid.text
               .trim(),
         ),
+        bluetoothClassic: current.bluetoothClassic.copyWith(
+          address: classicBluetoothAddress.text.trim(),
+          deviceName: _classicBluetoothDeviceNameFor(
+            classicBluetoothAddress.text.trim(),
+          ),
+        ),
       ),
     );
     await controller.connect();
@@ -1272,11 +1346,11 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   int _nextBaudRate(int current, int step) {
     final exactIndex = _baudRateOptions.indexOf(current);
     if (exactIndex >= 0) {
-      return _baudRateOptions[_wrappedIndex(
-        exactIndex,
-        step,
-        _baudRateOptions.length,
-      )];
+      final nextIndex = (exactIndex + step).clamp(
+        0,
+        _baudRateOptions.length - 1,
+      );
+      return _baudRateOptions[nextIndex];
     }
     if (step > 0) {
       for (final rate in _baudRateOptions) {
@@ -1284,14 +1358,14 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
           return rate;
         }
       }
-      return _baudRateOptions.first;
+      return _baudRateOptions.last;
     }
     for (final rate in _baudRateOptions.reversed) {
       if (rate < current) {
         return rate;
       }
     }
-    return _baudRateOptions.last;
+    return _baudRateOptions.first;
   }
 
   T? _steppedValue<T>(List<T> values, T? current, int step) {
@@ -1358,6 +1432,164 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
       return controller.config.bluetooth.deviceName;
     }
     return '';
+  }
+
+  String _classicBluetoothDeviceNameFor(String address) {
+    for (final device in controller.classicBluetoothDevices) {
+      if (device.address == address) {
+        return device.name;
+      }
+    }
+    if (address == controller.config.bluetoothClassic.address) {
+      return controller.config.bluetoothClassic.deviceName;
+    }
+    return '';
+  }
+}
+
+class _ClassicBluetoothDeviceList extends StatelessWidget {
+  const _ClassicBluetoothDeviceList({
+    required this.controller,
+    required this.selectedAddress,
+    required this.onSelected,
+  });
+
+  final SessionController controller;
+  final String selectedAddress;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final devices = controller.classicBluetoothDevices;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < devices.length; index++) ...[
+            if (index > 0) const Divider(height: 1),
+            Builder(
+              builder: (context) {
+                final device = devices[index];
+                final selected = device.address == selectedAddress;
+                final busy =
+                    controller.classicBluetoothBusyAddress == device.address;
+                return InkWell(
+                  onTap: busy ? null : () => onSelected(device.address),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_unchecked,
+                          size: 17,
+                          color: selected ? scheme.primary : scheme.outline,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                device.name.trim().isEmpty
+                                    ? device.address
+                                    : device.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                device.address,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          key: ValueKey(
+                            'classic-device-status-${device.address}',
+                          ),
+                          width: 48,
+                          child: Center(
+                            child: Text(
+                              device.paired
+                                  ? controller.strings.paired
+                                  : controller.strings.unpaired,
+                              maxLines: 1,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: device.paired
+                                        ? scheme.primary
+                                        : scheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        if (busy)
+                          const SizedBox(
+                            width: 72,
+                            child: Center(
+                              child: SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          SizedBox(
+                            key: ValueKey(
+                              'classic-device-action-${device.address}',
+                            ),
+                            width: 72,
+                            child: TextButton(
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 3,
+                                ),
+                                minimumSize: const Size.fromHeight(36),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () {
+                                onSelected(device.address);
+                                if (device.paired) {
+                                  controller.unpairClassicBluetoothDevice(
+                                    device.address,
+                                  );
+                                } else {
+                                  controller.pairClassicBluetoothDevice(
+                                    device.address,
+                                  );
+                                }
+                              },
+                              child: Text(
+                                device.paired
+                                    ? controller.strings.unpair
+                                    : controller.strings.pair,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

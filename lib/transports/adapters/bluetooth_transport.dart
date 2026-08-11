@@ -11,10 +11,7 @@ Future<List<BluetoothDeviceInfo>> scanBluetoothDevices({
   String? serviceUuid,
   Duration timeout = const Duration(seconds: 8),
 }) {
-  return impl.scanBluetoothDevices(
-    serviceUuid: serviceUuid,
-    timeout: timeout,
-  );
+  return impl.scanBluetoothDevices(serviceUuid: serviceUuid, timeout: timeout);
 }
 
 Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({

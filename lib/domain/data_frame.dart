@@ -1,18 +1,14 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-enum FrameDirection {
-  rx,
-  tx,
-  system,
-}
+enum FrameDirection { rx, tx, system }
 
 extension FrameDirectionLabel on FrameDirection {
   String get label => switch (this) {
-        FrameDirection.rx => 'RX',
-        FrameDirection.tx => 'TX',
-        FrameDirection.system => 'SYS',
-      };
+    FrameDirection.rx => 'RX',
+    FrameDirection.tx => 'TX',
+    FrameDirection.system => 'SYS',
+  };
 }
 
 class DataFrame {

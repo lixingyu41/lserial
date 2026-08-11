@@ -35,8 +35,10 @@ class TcpClientTransportSession implements TransportSession {
 
   @override
   Future<void> connect() async {
-    final socket =
-        await Socket.connect(config.tcpClient.host, config.tcpClient.port);
+    final socket = await Socket.connect(
+      config.tcpClient.host,
+      config.tcpClient.port,
+    );
     socket.setOption(SocketOption.tcpNoDelay, true);
     _socket = socket;
     _subscription = socket.listen(
@@ -104,11 +106,22 @@ class TcpServerTransportSession implements TransportSession {
     final bindAddress = config.tcpServer.bindAddress.trim().isEmpty
         ? InternetAddress.anyIPv4
         : InternetAddress(config.tcpServer.bindAddress.trim());
-    final server = await ServerSocket.bind(bindAddress, config.tcpServer.port,
-        shared: true);
-    _server = server;
-    _serverSubscription =
-        server.listen(_acceptClient, onError: _incoming.addError);
+    final server = await ServerSocket.bind(
+      bindAddress,
+      config.tcpServer.port,
+      shared: false,
+    );
+    try {
+      final subscription = server.listen(
+        _acceptClient,
+        onError: _incoming.addError,
+      );
+      _server = server;
+      _serverSubscription = subscription;
+    } on Object {
+      await server.close();
+      rethrow;
+    }
   }
 
   void _acceptClient(Socket socket) {
@@ -141,20 +154,31 @@ class TcpServerTransportSession implements TransportSession {
 
   @override
   Future<void> disconnect() async {
-    await _serverSubscription?.cancel();
+    final serverSubscription = _serverSubscription;
+    final server = _server;
     _serverSubscription = null;
-    await _server?.close();
     _server = null;
-    for (final subscription in _clientSubscriptions) {
-      await subscription.cancel();
-    }
-    _clientSubscriptions.clear();
-    for (final client in _clients) {
-      client.destroy();
-    }
-    _clients.clear();
-    if (!_incoming.isClosed) {
-      await _incoming.close();
+    try {
+      try {
+        await serverSubscription?.cancel();
+      } finally {
+        await server?.close();
+      }
+    } finally {
+      try {
+        for (final subscription in _clientSubscriptions) {
+          await subscription.cancel();
+        }
+      } finally {
+        _clientSubscriptions.clear();
+        for (final client in _clients) {
+          client.destroy();
+        }
+        _clients.clear();
+        if (!_incoming.isClosed) {
+          await _incoming.close();
+        }
+      }
     }
   }
 }

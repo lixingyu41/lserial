@@ -5,18 +5,14 @@ import 'transport.dart';
 const defaultSerialPacketDelimiter = r'\r\n';
 const defaultSerialPacketIntervalMs = 20;
 
-enum SerialParity {
-  none,
-  odd,
-  even,
-}
+enum SerialParity { none, odd, even }
 
 extension SerialParityLabel on SerialParity {
   String get label => switch (this) {
-        SerialParity.none => 'None',
-        SerialParity.odd => 'Odd',
-        SerialParity.even => 'Even',
-      };
+    SerialParity.none => 'None',
+    SerialParity.odd => 'Odd',
+    SerialParity.even => 'Even',
+  };
 }
 
 class SerialConfig {
@@ -79,11 +75,11 @@ class SerialConfig {
   }
 
   SerialConfig get forwardEndpoint => copyWith(
-        portName: forwardPortName,
-        baudRate: forwardBaudRate,
-        forwardingEnabled: false,
-        forwardPortName: '',
-      );
+    portName: forwardPortName,
+    baudRate: forwardBaudRate,
+    forwardingEnabled: false,
+    forwardPortName: '',
+  );
 }
 
 List<int> parseSerialPacketDelimiter(String value) {
@@ -173,27 +169,18 @@ const _x = 0x78;
 const _zero = 0x30;
 
 class TcpClientConfig {
-  const TcpClientConfig({
-    this.host = '127.0.0.1',
-    this.port = 9000,
-  });
+  const TcpClientConfig({this.host = '127.0.0.1', this.port = 9000});
 
   final String host;
   final int port;
 
   TcpClientConfig copyWith({String? host, int? port}) {
-    return TcpClientConfig(
-      host: host ?? this.host,
-      port: port ?? this.port,
-    );
+    return TcpClientConfig(host: host ?? this.host, port: port ?? this.port);
   }
 }
 
 class TcpServerConfig {
-  const TcpServerConfig({
-    this.bindAddress = '0.0.0.0',
-    this.port = 9000,
-  });
+  const TcpServerConfig({this.bindAddress = '0.0.0.0', this.port = 9000});
 
   final String bindAddress;
   final int port;
@@ -259,8 +246,8 @@ class BluetoothConfig {
 
   String get effectiveNotifyCharacteristicUuid =>
       notifyCharacteristicUuid.isEmpty
-          ? effectiveWriteCharacteristicUuid
-          : notifyCharacteristicUuid;
+      ? effectiveWriteCharacteristicUuid
+      : notifyCharacteristicUuid;
 
   BluetoothConfig copyWith({
     String? deviceId,
@@ -285,6 +272,30 @@ class BluetoothConfig {
   }
 }
 
+class ClassicBluetoothConfig {
+  const ClassicBluetoothConfig({
+    this.address = '',
+    this.deviceName = '',
+    this.rfcommChannel = 0,
+  });
+
+  final String address;
+  final String deviceName;
+  final int rfcommChannel;
+
+  ClassicBluetoothConfig copyWith({
+    String? address,
+    String? deviceName,
+    int? rfcommChannel,
+  }) {
+    return ClassicBluetoothConfig(
+      address: address ?? this.address,
+      deviceName: deviceName ?? this.deviceName,
+      rfcommChannel: rfcommChannel ?? this.rfcommChannel,
+    );
+  }
+}
+
 class ConnectionConfig {
   const ConnectionConfig({
     this.type = TransportType.serial,
@@ -293,6 +304,7 @@ class ConnectionConfig {
     this.tcpServer = const TcpServerConfig(),
     this.udp = const UdpConfig(),
     this.bluetooth = const BluetoothConfig(),
+    this.bluetoothClassic = const ClassicBluetoothConfig(),
   });
 
   final TransportType type;
@@ -301,6 +313,7 @@ class ConnectionConfig {
   final TcpServerConfig tcpServer;
   final UdpConfig udp;
   final BluetoothConfig bluetooth;
+  final ClassicBluetoothConfig bluetoothClassic;
 
   ConnectionConfig copyWith({
     TransportType? type,
@@ -309,6 +322,7 @@ class ConnectionConfig {
     TcpServerConfig? tcpServer,
     UdpConfig? udp,
     BluetoothConfig? bluetooth,
+    ClassicBluetoothConfig? bluetoothClassic,
   }) {
     return ConnectionConfig(
       type: type ?? this.type,
@@ -317,20 +331,27 @@ class ConnectionConfig {
       tcpServer: tcpServer ?? this.tcpServer,
       udp: udp ?? this.udp,
       bluetooth: bluetooth ?? this.bluetooth,
+      bluetoothClassic: bluetoothClassic ?? this.bluetoothClassic,
     );
   }
 
   String get summary => switch (type) {
-        TransportType.serial => serial.portName.isEmpty
-            ? 'Serial: no port selected'
-            : 'Serial ${serial.portName} @ ${serial.baudRate}',
-        TransportType.bluetooth => bluetooth.deviceName.isEmpty
-            ? 'BLE ${bluetooth.deviceId}'
-            : 'BLE ${bluetooth.deviceName}',
-        TransportType.tcpClient => 'TCP ${tcpClient.host}:${tcpClient.port}',
-        TransportType.tcpServer =>
-          'TCP Server ${tcpServer.bindAddress}:${tcpServer.port}',
-        TransportType.udp =>
-          'UDP ${udp.bindAddress}:${udp.localPort} -> ${udp.remoteHost}:${udp.remotePort}',
-      };
+    TransportType.serial =>
+      serial.portName.isEmpty
+          ? 'Serial: no port selected'
+          : 'Serial ${serial.portName} @ ${serial.baudRate}',
+    TransportType.bluetooth =>
+      bluetooth.deviceName.isEmpty
+          ? 'BLE ${bluetooth.deviceId}'
+          : 'BLE ${bluetooth.deviceName}',
+    TransportType.bluetoothClassic =>
+      bluetoothClassic.deviceName.isEmpty
+          ? 'Bluetooth Classic ${bluetoothClassic.address}'
+          : 'Bluetooth Classic ${bluetoothClassic.deviceName}',
+    TransportType.tcpClient => 'TCP ${tcpClient.host}:${tcpClient.port}',
+    TransportType.tcpServer =>
+      'TCP Server ${tcpServer.bindAddress}:${tcpServer.port}',
+    TransportType.udp =>
+      'UDP ${udp.bindAddress}:${udp.localPort} -> ${udp.remoteHost}:${udp.remotePort}',
+  };
 }

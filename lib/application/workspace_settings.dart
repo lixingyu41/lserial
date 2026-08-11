@@ -33,6 +33,7 @@ class WorkspaceSettings {
     this.logFontSize = 12,
     this.language = AppLanguage.zh,
     this.hiddenSources = const <String>{},
+    this.sourceViewModes = const <String, ConsoleViewMode>{},
     this.hiddenToolbarActions = const <WorkspaceToolbarAction>{
       WorkspaceToolbarAction.autoScroll,
     },
@@ -56,6 +57,7 @@ class WorkspaceSettings {
   final double logFontSize;
   final AppLanguage language;
   final Set<String> hiddenSources;
+  final Map<String, ConsoleViewMode> sourceViewModes;
   final Set<WorkspaceToolbarAction> hiddenToolbarActions;
 
   factory WorkspaceSettings.fromJson(Map<String, Object?> json) {
@@ -105,6 +107,7 @@ class WorkspaceSettings {
         defaults.language,
       ),
       hiddenSources: _stringSetValue(json['hiddenSources']),
+      sourceViewModes: _sourceViewModeMapValue(json['sourceViewModes']),
       hiddenToolbarActions: _enumSetValue(
         WorkspaceToolbarAction.values,
         json['hiddenToolbarActions'],
@@ -114,27 +117,31 @@ class WorkspaceSettings {
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'viewMode': viewMode.name,
-        'showTimestamp': showTimestamp,
-        'showDirection': showDirection,
-        'showSource': showSource,
-        'showContent': showContent,
-        'showLineEndingSymbols': showLineEndingSymbols,
-        'autoScroll': autoScroll,
-        'showConnectionPanel': showConnectionPanel,
-        'showSendPanel': showSendPanel,
-        'sendPanelVisibleBeforeTerminal': sendPanelVisibleBeforeTerminal,
-        'showQuickCommandsPanel': showQuickCommandsPanel,
-        'terminalMode': terminalMode,
-        'statsPanelExpanded': statsPanelExpanded,
-        'settingsPanelExpanded': settingsPanelExpanded,
-        'mcpEnabled': mcpEnabled,
-        'logFontSize': logFontSize,
-        'language': language.name,
-        'hiddenSources': hiddenSources.toList()..sort(),
-        'hiddenToolbarActions':
-            hiddenToolbarActions.map((action) => action.name).toList()..sort(),
-      };
+    'viewMode': viewMode.name,
+    'showTimestamp': showTimestamp,
+    'showDirection': showDirection,
+    'showSource': showSource,
+    'showContent': showContent,
+    'showLineEndingSymbols': showLineEndingSymbols,
+    'autoScroll': autoScroll,
+    'showConnectionPanel': showConnectionPanel,
+    'showSendPanel': showSendPanel,
+    'sendPanelVisibleBeforeTerminal': sendPanelVisibleBeforeTerminal,
+    'showQuickCommandsPanel': showQuickCommandsPanel,
+    'terminalMode': terminalMode,
+    'statsPanelExpanded': statsPanelExpanded,
+    'settingsPanelExpanded': settingsPanelExpanded,
+    'mcpEnabled': mcpEnabled,
+    'logFontSize': logFontSize,
+    'language': language.name,
+    'hiddenSources': hiddenSources.toList()..sort(),
+    'sourceViewModes': <String, String>{
+      for (final source in (sourceViewModes.keys.toList()..sort()))
+        source: sourceViewModes[source]!.name,
+    },
+    'hiddenToolbarActions':
+        hiddenToolbarActions.map((action) => action.name).toList()..sort(),
+  };
 }
 
 bool _boolValue(Object? value, bool fallback) {
@@ -168,6 +175,29 @@ Set<String> _stringSetValue(Object? value) {
       .toSet();
 }
 
+Map<String, ConsoleViewMode> _sourceViewModeMapValue(Object? value) {
+  if (value is! Map) {
+    return const <String, ConsoleViewMode>{};
+  }
+  final result = <String, ConsoleViewMode>{};
+  for (final entry in value.entries) {
+    if (entry.key is! String || entry.value is! String) {
+      continue;
+    }
+    final source = (entry.key as String).trim();
+    if (source.isEmpty || source == 'SYS') {
+      continue;
+    }
+    for (final mode in ConsoleViewMode.values) {
+      if (mode.name == entry.value) {
+        result[source] = mode;
+        break;
+      }
+    }
+  }
+  return result;
+}
+
 Set<T> _enumSetValue<T extends Enum>(
   List<T> values,
   Object? names,
@@ -176,9 +206,7 @@ Set<T> _enumSetValue<T extends Enum>(
   if (names is! List) {
     return Set<T>.of(fallback);
   }
-  final byName = <String, T>{
-    for (final value in values) value.name: value,
-  };
+  final byName = <String, T>{for (final value in values) value.name: value};
   return names
       .whereType<String>()
       .map((name) => byName[name])

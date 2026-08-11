@@ -5,12 +5,23 @@ import '../application/session_controller.dart';
 import '../application/workspace_controller.dart';
 import '../core/encoding/data_format.dart';
 import '../domain/connection_config.dart';
+import '../domain/classic_bluetooth_device_info.dart';
 import '../domain/data_frame.dart';
 import '../domain/quick_command.dart';
 import '../domain/send_request.dart';
 import '../domain/transport.dart';
 
 const mcpAiSource = 'AI[1]';
+
+class LSerialMcpOperationException implements Exception {
+  const LSerialMcpOperationException(this.message, this.details);
+
+  final String message;
+  final Map<String, Object?> details;
+
+  @override
+  String toString() => message;
+}
 
 class LSerialMcpApi {
   LSerialMcpApi(this.workspace);
@@ -96,6 +107,97 @@ class LSerialMcpApi {
     };
   });
 
+  Future<Map<String, Object?>> scanClassicBluetooth(String? id) =>
+      _mutate(() async {
+        final session = requireSession(id);
+        if (session.isConnected) {
+          throw StateError(
+            'Disconnect the session before scanning Bluetooth Classic.',
+          );
+        }
+        _audit(session, '扫描经典蓝牙');
+        final scanned = await session.scanClassicBluetoothDevices();
+        if (!scanned) {
+          throw _classicBluetoothFailure(session);
+        }
+        return <String, Object?>{
+          'session_id': sessionId(session),
+          'devices': session.classicBluetoothDevices
+              .map(_classicBluetoothDeviceState)
+              .toList(),
+        };
+      });
+
+  Future<Map<String, Object?>> pairClassicBluetooth(
+    String? id,
+    String address,
+  ) => _mutate(() async {
+    final session = requireSession(id);
+    final normalizedAddress = _normalizeBluetoothAddress(address);
+    _audit(session, '请求配对经典蓝牙：$normalizedAddress');
+    final paired = await session.pairClassicBluetoothDevice(normalizedAddress);
+    if (!paired) {
+      throw _classicBluetoothFailure(session);
+    }
+    final device = session.classicBluetoothDevices.firstWhere(
+      (item) => item.address == normalizedAddress,
+    );
+    return <String, Object?>{
+      'session_id': sessionId(session),
+      'device': _classicBluetoothDeviceState(device),
+    };
+  });
+
+  Future<Map<String, Object?>> unpairClassicBluetooth(
+    String? id,
+    String address,
+  ) => _mutate(() async {
+    final session = requireSession(id);
+    final normalizedAddress = _normalizeBluetoothAddress(address);
+    _audit(session, '请求解除经典蓝牙配对：$normalizedAddress');
+    final unpaired = await session.unpairClassicBluetoothDevice(
+      normalizedAddress,
+    );
+    if (!unpaired) {
+      throw _classicBluetoothFailure(session);
+    }
+    return <String, Object?>{
+      'session_id': sessionId(session),
+      'address': normalizedAddress,
+      'paired': false,
+    };
+  });
+
+  Map<String, Object?> readClassicBluetoothDiagnostics(
+    String? id, {
+    int afterId = 0,
+    int limit = 100,
+  }) {
+    final session = requireSession(id);
+    final safeLimit = limit.clamp(1, 200);
+    final diagnostics = session.classicBluetoothDiagnostics
+        .where((item) => item.id > afterId)
+        .take(safeLimit)
+        .toList(growable: false);
+    return <String, Object?>{
+      'session_id': sessionId(session),
+      'diagnostics': diagnostics.map((item) => item.toJson()).toList(),
+      'next_id': diagnostics.isEmpty ? afterId : diagnostics.last.id,
+      'retained_count': session.classicBluetoothDiagnostics.length,
+    };
+  }
+
+  Future<Map<String, Object?>> clearClassicBluetoothDiagnostics(String? id) =>
+      _mutate(() async {
+        final session = requireSession(id);
+        session.clearClassicBluetoothDiagnostics();
+        _audit(session, '清空经典蓝牙诊断记录');
+        return <String, Object?>{
+          'session_id': sessionId(session),
+          'cleared': true,
+        };
+      });
+
   Future<Map<String, Object?>> configure(
     String? id,
     Map<String, dynamic> values,
@@ -149,10 +251,26 @@ class LSerialMcpApi {
           _bool(values, 'write_without_response') ??
           current.bluetooth.writeWithoutResponse,
     );
+    final classicBluetooth = current.bluetoothClassic.copyWith(
+      address:
+          _string(values, 'bluetooth_address') ??
+          _string(values, 'address') ??
+          current.bluetoothClassic.address,
+      deviceName:
+          _string(values, 'classic_device_name') ??
+          (type == TransportType.bluetoothClassic
+              ? _string(values, 'device_name')
+              : null) ??
+          current.bluetoothClassic.deviceName,
+      rfcommChannel:
+          _int(values, 'rfcomm_channel') ??
+          current.bluetoothClassic.rfcommChannel,
+    );
     final next = current.copyWith(
       type: type,
       serial: serial,
       bluetooth: bluetooth,
+      bluetoothClassic: classicBluetooth,
       tcpClient: current.tcpClient.copyWith(
         host: _string(values, 'host') ?? current.tcpClient.host,
         port: _int(values, 'port') ?? current.tcpClient.port,
@@ -180,6 +298,9 @@ class LSerialMcpApi {
     _audit(session, '请求连接：${session.config.summary}');
     await session.connect();
     if (!session.isConnected) {
+      if (session.config.type == TransportType.bluetoothClassic) {
+        throw _classicBluetoothFailure(session);
+      }
       throw StateError(session.statusMessage);
     }
     return sessionState(session);
@@ -331,7 +452,7 @@ class LSerialMcpApi {
         ? _lineEnding(values['line_ending'] as String)
         : null;
     if (viewMode != null) {
-      workspace.setViewMode(viewMode);
+      workspace.setSourceViewMode(session.sourceLabel, viewMode);
       session.setViewMode(viewMode);
     }
     if (sendFormat != null) {
@@ -351,7 +472,12 @@ class LSerialMcpApi {
       session.setPauseDisplay(pauseDisplay);
     }
     _audit(session, '更新显示与发送选项');
-    return <String, Object?>{'options': _optionsState(session)};
+    return <String, Object?>{
+      'options': _optionsState(
+        session,
+        viewMode: workspace.viewModeForSource(session.sourceLabel),
+      ),
+    };
   });
 
   Map<String, Object?> listQuickCommands(String? id) {
@@ -497,8 +623,17 @@ class LSerialMcpApi {
             },
         },
         'config': _configState(session.config),
-        'options': _optionsState(session),
+        'options': _optionsState(
+          session,
+          viewMode: workspace.viewModeForSource(session.sourceLabel),
+        ),
         'auto_sending': session.isAutoSending,
+        'classic_bluetooth_diagnostics': <String, Object?>{
+          'retained_count': session.classicBluetoothDiagnostics.length,
+          'latest': session.classicBluetoothDiagnostics.isEmpty
+              ? null
+              : session.classicBluetoothDiagnostics.last.toJson(),
+        },
       };
 
   SessionController requireSession(String? id) {
@@ -540,6 +675,21 @@ class LSerialMcpApi {
   void _audit(SessionController session, String action) {
     session.appendSystemMessage('MCP：$action');
   }
+
+  LSerialMcpOperationException _classicBluetoothFailure(
+    SessionController session,
+  ) {
+    final latest = session.classicBluetoothDiagnostics.isEmpty
+        ? null
+        : session.classicBluetoothDiagnostics.last;
+    return LSerialMcpOperationException(
+      session.statusMessage,
+      <String, Object?>{
+        'session_id': sessionId(session),
+        if (latest != null) 'bluetooth_diagnostic': latest.toJson(),
+      },
+    );
+  }
 }
 
 Map<String, Object?> _frameState(DataFrame frame) => <String, Object?>{
@@ -555,14 +705,16 @@ Map<String, Object?> _frameState(DataFrame frame) => <String, Object?>{
   'base64': base64Encode(frame.bytes),
 };
 
-Map<String, Object?> _optionsState(SessionController session) =>
-    <String, Object?>{
-      'view_mode': session.viewMode.name,
-      'send_format': session.sendFormat.name,
-      'line_ending': session.lineEnding.name,
-      'auto_scroll': session.autoScroll,
-      'pause_display': session.pauseDisplay,
-    };
+Map<String, Object?> _optionsState(
+  SessionController session, {
+  ConsoleViewMode? viewMode,
+}) => <String, Object?>{
+  'view_mode': (viewMode ?? session.viewMode).name,
+  'send_format': session.sendFormat.name,
+  'line_ending': session.lineEnding.name,
+  'auto_scroll': session.autoScroll,
+  'pause_display': session.pauseDisplay,
+};
 
 Map<String, Object?> _quickCommandState(QuickCommand command) =>
     <String, Object?>{
@@ -594,6 +746,11 @@ Map<String, Object?> _configState(ConnectionConfig config) => <String, Object?>{
     'notify_characteristic_uuid': config.bluetooth.notifyCharacteristicUuid,
     'write_without_response': config.bluetooth.writeWithoutResponse,
   },
+  'bluetooth_classic': <String, Object?>{
+    'address': config.bluetoothClassic.address,
+    'device_name': config.bluetoothClassic.deviceName,
+    'rfcomm_channel': config.bluetoothClassic.rfcommChannel,
+  },
   'tcp_client': <String, Object?>{
     'host': config.tcpClient.host,
     'port': config.tcpClient.port,
@@ -613,6 +770,10 @@ Map<String, Object?> _configState(ConnectionConfig config) => <String, Object?>{
 TransportType? _transportType(Object? value) => switch (value) {
   'serial' => TransportType.serial,
   'bluetooth' || 'ble' => TransportType.bluetooth,
+  'bluetoothClassic' ||
+  'bluetooth_classic' ||
+  'classic' ||
+  'spp' => TransportType.bluetoothClassic,
   'tcpClient' || 'tcp_client' => TransportType.tcpClient,
   'tcpServer' || 'tcp_server' => TransportType.tcpServer,
   'udp' => TransportType.udp,
@@ -690,4 +851,38 @@ void _validate(ConnectionConfig config) {
   if (ports.any((port) => port < 1 || port > 65535)) {
     throw RangeError('Network ports must be between 1 and 65535.');
   }
+  if (config.type == TransportType.bluetoothClassic) {
+    final compact = config.bluetoothClassic.address.replaceAll(
+      RegExp(r'[^0-9A-Fa-f]'),
+      '',
+    );
+    if (compact.length != 12) {
+      throw const FormatException(
+        'bluetooth_address must contain 12 hexadecimal digits.',
+      );
+    }
+  }
+}
+
+Map<String, Object?> _classicBluetoothDeviceState(
+  ClassicBluetoothDeviceInfo device,
+) => <String, Object?>{
+  'address': device.address,
+  'name': device.name,
+  'paired': device.paired,
+  'connected': device.connected,
+  'remembered': device.remembered,
+};
+
+String _normalizeBluetoothAddress(String value) {
+  final compact = value.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '').toUpperCase();
+  if (compact.length != 12) {
+    throw const FormatException(
+      'Bluetooth address must contain 12 hexadecimal digits.',
+    );
+  }
+  return <String>[
+    for (var index = 0; index < compact.length; index += 2)
+      compact.substring(index, index + 2),
+  ].join(':');
 }

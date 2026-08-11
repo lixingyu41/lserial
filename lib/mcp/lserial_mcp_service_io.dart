@@ -196,8 +196,57 @@ class _IoLSerialMcpService extends LSerialMcpService {
     );
     _tool(
       server,
+      'lserial_scan_bluetooth_classic',
+      'Scan nearby and remembered Bluetooth Classic devices on Windows.',
+      _sessionSchema(),
+      (args) => api.scanClassicBluetooth(args['session_id'] as String?),
+    );
+    _tool(
+      server,
+      'lserial_pair_bluetooth_classic',
+      'Pair a Bluetooth Classic device. Windows may display a security confirmation dialog.',
+      _classicBluetoothDeviceSchema,
+      (args) => api.pairClassicBluetooth(
+        args['session_id'] as String?,
+        args['address'] as String,
+      ),
+    );
+    _tool(
+      server,
+      'lserial_unpair_bluetooth_classic',
+      'Remove the saved Bluetooth Classic pairing for a device.',
+      _classicBluetoothDeviceSchema,
+      (args) => api.unpairClassicBluetooth(
+        args['session_id'] as String?,
+        args['address'] as String,
+      ),
+      destructive: true,
+    );
+    _tool(
+      server,
+      'lserial_read_bluetooth_diagnostics',
+      'Read structured Bluetooth Classic scan, pairing, RFCOMM connection, send, receive, and disconnect diagnostics incrementally.',
+      _classicBluetoothDiagnosticsSchema,
+      (args) async => api.readClassicBluetoothDiagnostics(
+        args['session_id'] as String?,
+        afterId: (args['after_id'] as num?)?.toInt() ?? 0,
+        limit: (args['limit'] as num?)?.toInt() ?? 100,
+      ),
+      readOnly: true,
+    );
+    _tool(
+      server,
+      'lserial_clear_bluetooth_diagnostics',
+      'Clear retained structured Bluetooth Classic diagnostics for one session.',
+      _sessionSchema(),
+      (args) =>
+          api.clearClassicBluetoothDiagnostics(args['session_id'] as String?),
+      destructive: true,
+    );
+    _tool(
+      server,
       'lserial_configure_connection',
-      'Select serial, Bluetooth, TCP client/server, or UDP and update its settings. Omitted fields remain unchanged.',
+      'Select serial, BLE, Bluetooth Classic SPP, TCP client/server, or UDP and update its settings. Omitted fields remain unchanged.',
       _configureSchema,
       (args) => api.configure(args['session_id'] as String?, args),
     );
@@ -507,12 +556,16 @@ class _IoLSerialMcpService extends LSerialMcpService {
             ...result,
           });
         } on Object catch (error) {
+          final details = error is LSerialMcpOperationException
+              ? error.details
+              : const <String, Object?>{};
           return CallToolResult(
             content: <Content>[TextContent(text: error.toString())],
             isError: true,
             structuredContent: <String, dynamic>{
               'ok': false,
               'error': error.toString(),
+              ...details,
             },
           );
         }
@@ -551,6 +604,7 @@ final JsonObject _configureSchema = JsonSchema.object(
       enumValues: const <String>[
         'serial',
         'bluetooth',
+        'bluetooth_classic',
         'tcp_client',
         'tcp_server',
         'udp',
@@ -575,12 +629,41 @@ final JsonObject _configureSchema = JsonSchema.object(
     'write_characteristic_uuid': JsonSchema.string(),
     'notify_characteristic_uuid': JsonSchema.string(),
     'write_without_response': JsonSchema.boolean(),
+    'bluetooth_address': JsonSchema.string(
+      description:
+          'Bluetooth Classic MAC address, for example 01:23:45:67:89:AB.',
+    ),
+    'classic_device_name': JsonSchema.string(),
+    'rfcomm_channel': JsonSchema.integer(
+      minimum: 0,
+      maximum: 30,
+      description:
+          'Optional fixed RFCOMM channel. Use 0 for SDP auto-discovery.',
+    ),
     'host': JsonSchema.string(),
     'port': JsonSchema.integer(minimum: 1, maximum: 65535),
     'bind_address': JsonSchema.string(),
     'local_port': JsonSchema.integer(minimum: 1, maximum: 65535),
     'remote_host': JsonSchema.string(),
     'remote_port': JsonSchema.integer(minimum: 1, maximum: 65535),
+  },
+);
+
+final JsonObject _classicBluetoothDeviceSchema = JsonSchema.object(
+  properties: <String, JsonSchema>{
+    ..._sessionProperties,
+    'address': JsonSchema.string(
+      description: 'Bluetooth Classic MAC address returned by the scan tool.',
+    ),
+  },
+  required: const <String>['address'],
+);
+
+final JsonObject _classicBluetoothDiagnosticsSchema = JsonSchema.object(
+  properties: <String, JsonSchema>{
+    ..._sessionProperties,
+    'after_id': JsonSchema.integer(minimum: 0, defaultValue: 0),
+    'limit': JsonSchema.integer(minimum: 1, maximum: 200, defaultValue: 100),
   },
 );
 
@@ -611,7 +694,7 @@ final JsonObject _quickCommandIdSchema = JsonSchema.object(
 const String lserialMcpGuide = '''
 # LSerial MCP operation guide
 
-Use `lserial_list_sessions` first and keep its `session_id`. Scan before selecting a serial port or BLE device. Change configuration only while disconnected, then call `lserial_connect`. Use `lserial_send` for TX and poll `lserial_read_log` with the returned `next_sequence`; use `lserial_read_statistics` for counters and rates. Disconnect before deleting or reconfiguring a session.
+Use `lserial_list_sessions` first and keep its `session_id`. Scan before selecting a serial port, BLE device, or Bluetooth Classic device. For Bluetooth Classic SPP on Windows, call `lserial_scan_bluetooth_classic`, pair an unpaired device with `lserial_pair_bluetooth_classic`, configure `type=bluetooth_classic` with its `bluetooth_address`, and then connect. Windows may show a security confirmation while pairing; do not pair or unpair a device without explicit user intent. After any Bluetooth Classic failure, call `lserial_read_bluetooth_diagnostics`; preserve its operation, stage, native code, elapsed time, message, and suggestion when reporting the cause. Change configuration only while disconnected, then call `lserial_connect`. Use `lserial_send` for TX and poll `lserial_read_log` with the returned `next_sequence`; use `lserial_read_statistics` for counters and rates. Disconnect before deleting or reconfiguring a session.
 
 MCP service and control operations are system logs (`SYS`). Only bytes sent by MCP use TX source `AI[1]`. MCP listens only on the desktop loopback address and does not provide remote network access.
 ''';

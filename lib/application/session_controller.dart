@@ -7,6 +7,8 @@ import '../app/localization.dart';
 import '../core/buffer/byte_ring_buffer.dart';
 import '../core/encoding/data_format.dart';
 import '../domain/bluetooth_device_info.dart';
+import '../domain/classic_bluetooth_diagnostic.dart';
+import '../domain/classic_bluetooth_device_info.dart';
 import '../domain/connection_config.dart';
 import '../domain/data_frame.dart';
 import '../domain/quick_command.dart';
@@ -99,6 +101,8 @@ class SessionController extends ChangeNotifier {
   bool _connectInFlight = false;
   bool _serialReconnectRequested = false;
   bool _disposed = false;
+  bool _shutdownRequested = false;
+  Future<void>? _shutdownFuture;
   int _sequence = 0;
   int _displayRevision = 0;
   DataFrame? _packetPreview;
@@ -110,6 +114,7 @@ class SessionController extends ChangeNotifier {
   DateTime? _lastRateAt;
   int _lastRateRxBytes = 0;
   int _lastRateTxBytes = 0;
+  int _nextClassicBluetoothDiagnosticId = 1;
 
   ConnectionConfig config = const ConnectionConfig();
   TransportStatus status = TransportStatus.disconnected;
@@ -117,6 +122,10 @@ class SessionController extends ChangeNotifier {
   List<TransportCapability> capabilities = const <TransportCapability>[];
   List<String> serialPorts = const <String>[];
   List<BluetoothDeviceInfo> bluetoothDevices = const <BluetoothDeviceInfo>[];
+  List<ClassicBluetoothDeviceInfo> classicBluetoothDevices =
+      const <ClassicBluetoothDeviceInfo>[];
+  final List<ClassicBluetoothDiagnostic> classicBluetoothDiagnostics =
+      <ClassicBluetoothDiagnostic>[];
   ConsoleViewMode viewMode = ConsoleViewMode.ascii;
   PayloadFormat sendFormat = PayloadFormat.ascii;
   LineEnding lineEnding = LineEnding.lf;
@@ -126,6 +135,8 @@ class SessionController extends ChangeNotifier {
   bool autoScroll = true;
   bool pauseDisplay = false;
   bool isScanningBluetooth = false;
+  bool isScanningClassicBluetooth = false;
+  String? classicBluetoothBusyAddress;
   SendShortcutMode sendShortcutMode = SendShortcutMode.enter;
   String sendDraftText = '';
   String autoSendIntervalText = '1000';
@@ -163,6 +174,8 @@ class SessionController extends ChangeNotifier {
           : config.bluetooth.deviceName,
       'BLE',
     ),
+    TransportType.bluetoothClassic =>
+      'BT ${_titleValue(config.bluetoothClassic.deviceName.isEmpty ? config.bluetoothClassic.address : config.bluetoothClassic.deviceName, 'Classic')}',
     TransportType.tcpClient =>
       'TCP ${_titleValue(config.tcpClient.host, 'Client')}:${config.tcpClient.port}',
     TransportType.tcpServer =>
@@ -186,6 +199,8 @@ class SessionController extends ChangeNotifier {
           : 'LSerial-$serialDisplayName-${config.serial.baudRate}',
     TransportType.bluetooth =>
       'LSerial-BLE-${_titleValue(config.bluetooth.deviceName.isEmpty ? config.bluetooth.deviceId : config.bluetooth.deviceName, 'Device')}',
+    TransportType.bluetoothClassic =>
+      'LSerial-BT-${_titleValue(config.bluetoothClassic.deviceName.isEmpty ? config.bluetoothClassic.address : config.bluetoothClassic.deviceName, 'Device')}',
     TransportType.tcpClient =>
       'LSerial-TCP-${_titleValue(config.tcpClient.host, 'Client')}',
     TransportType.tcpServer =>
@@ -531,7 +546,8 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> connect() async {
-    if (_connectInFlight ||
+    if (_shutdownRequested ||
+        _connectInFlight ||
         isConnected ||
         status == TransportStatus.connecting) {
       return;
@@ -563,6 +579,15 @@ class SessionController extends ChangeNotifier {
     statusMessage = strings.connectingTo(
       strings.connectionSummary(config, serialDisplayName),
     );
+    if (config.type == TransportType.bluetoothClassic) {
+      _recordClassicBluetoothStep(
+        operation: 'connect',
+        stage: 'request',
+        level: 'info',
+        address: config.bluetoothClassic.address,
+        message: '开始建立经典蓝牙 SPP/RFCOMM 连接。',
+      );
+    }
     notifyListeners();
 
     try {
@@ -582,6 +607,13 @@ class SessionController extends ChangeNotifier {
           await session.disconnect();
           rethrow;
         }
+      }
+      if (_shutdownRequested) {
+        await forwardSession?.disconnect();
+        await session.disconnect();
+        status = TransportStatus.disconnected;
+        statusMessage = strings.disconnected;
+        return;
       }
       _session = session;
       _forwardSession = forwardSession;
@@ -611,14 +643,33 @@ class SessionController extends ChangeNotifier {
       }
       status = TransportStatus.connected;
       statusMessage = strings.connectedTo(sourceLabel);
+      if (config.type == TransportType.bluetoothClassic) {
+        _recordClassicBluetoothStep(
+          operation: 'connect',
+          stage: 'completed',
+          level: 'success',
+          address: config.bluetoothClassic.address,
+          message: 'SPP/RFCOMM 连接已建立。',
+        );
+      }
       _sessionStartedAt = DateTime.now();
       _startStatsTicker();
       _appendSystem(statusMessage);
       notifyListeners();
     } on Object catch (error) {
+      final isClassicBluetooth = config.type == TransportType.bluetoothClassic;
+      if (isClassicBluetooth) {
+        _recordClassicBluetoothFailure(
+          error,
+          operation: 'connect',
+          address: config.bluetoothClassic.address,
+        );
+      }
       status = TransportStatus.error;
       statusMessage = strings.connectFailed(_formatError(error));
-      _appendSystem(statusMessage);
+      if (!isClassicBluetooth) {
+        _appendSystem(statusMessage);
+      }
       notifyListeners();
     }
   }
@@ -654,6 +705,263 @@ class SessionController extends ChangeNotifier {
     _stopStatsTicker();
     _appendSystem(statusMessage);
     notifyListeners();
+  }
+
+  Future<bool> scanClassicBluetoothDevices() async {
+    if (isConnected || isScanningClassicBluetooth) {
+      return false;
+    }
+    isScanningClassicBluetooth = true;
+    _setStatusMessage(strings.scanningClassicBluetooth);
+    _recordClassicBluetoothStep(
+      operation: 'scan',
+      stage: 'request',
+      level: 'info',
+      message: '开始扫描附近及系统已记住的经典蓝牙设备。',
+    );
+    notifyListeners();
+    try {
+      classicBluetoothDevices = await registry.classicBluetoothDevices();
+      _setStatusMessage(
+        classicBluetoothDevices.isEmpty
+            ? strings.noClassicBluetoothDevices
+            : strings.foundClassicBluetoothDevices(
+                classicBluetoothDevices.length,
+              ),
+      );
+      _recordClassicBluetoothStep(
+        operation: 'scan',
+        stage: 'completed',
+        level: 'success',
+        message: '经典蓝牙扫描完成，发现 ${classicBluetoothDevices.length} 个设备。',
+      );
+      return true;
+    } on Object catch (error) {
+      classicBluetoothDevices = const <ClassicBluetoothDeviceInfo>[];
+      _recordClassicBluetoothFailure(error, operation: 'scan');
+      _setStatusMessage(strings.classicBluetoothScanFailed(error));
+      return false;
+    } finally {
+      isScanningClassicBluetooth = false;
+      notifyListeners();
+    }
+  }
+
+  void selectClassicBluetoothDevice(String address) {
+    final matched = classicBluetoothDevices.where(
+      (device) => device.address == address,
+    );
+    final device = matched.isEmpty ? null : matched.first;
+    config = config.copyWith(
+      bluetoothClassic: config.bluetoothClassic.copyWith(
+        address: address,
+        deviceName: device?.name ?? config.bluetoothClassic.deviceName,
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<bool> pairClassicBluetoothDevice(String address) async {
+    if (isConnected || classicBluetoothBusyAddress != null) {
+      return false;
+    }
+    classicBluetoothBusyAddress = address;
+    _setStatusMessage(strings.pairingClassicBluetooth(address));
+    _recordClassicBluetoothStep(
+      operation: 'pair',
+      stage: 'request',
+      level: 'info',
+      address: address,
+      message: '开始查找设备并请求 Windows 完成经典蓝牙认证。',
+    );
+    notifyListeners();
+    try {
+      final device = await registry.pairClassicBluetoothDevice(address);
+      final scannedDevice = classicBluetoothDevices
+          .where((candidate) => candidate.address == device.address)
+          .firstOrNull;
+      final retainedName = scannedDevice?.name.trim().isNotEmpty == true
+          ? scannedDevice!.name
+          : config.bluetoothClassic.deviceName;
+      final mergedDevice = device.name.trim().isEmpty
+          ? ClassicBluetoothDeviceInfo(
+              address: device.address,
+              name: retainedName,
+              paired: device.paired,
+              connected: device.connected,
+              remembered: device.remembered,
+            )
+          : device;
+      _replaceClassicBluetoothDevice(mergedDevice);
+      selectClassicBluetoothDevice(mergedDevice.address);
+      _setStatusMessage(strings.classicBluetoothPaired(mergedDevice.name));
+      _recordClassicBluetoothStep(
+        operation: 'pair',
+        stage: 'completed',
+        level: 'success',
+        address: mergedDevice.address,
+        message: 'Windows 已确认设备配对状态。',
+      );
+      return true;
+    } on Object catch (error) {
+      _recordClassicBluetoothFailure(
+        error,
+        operation: 'pair',
+        address: address,
+      );
+      _setStatusMessage(strings.classicBluetoothPairFailed(error));
+      return false;
+    } finally {
+      classicBluetoothBusyAddress = null;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> unpairClassicBluetoothDevice(String address) async {
+    if (isConnected || classicBluetoothBusyAddress != null) {
+      return false;
+    }
+    classicBluetoothBusyAddress = address;
+    _setStatusMessage(strings.unpairingClassicBluetooth(address));
+    _recordClassicBluetoothStep(
+      operation: 'unpair',
+      stage: 'request',
+      level: 'info',
+      address: address,
+      message: '请求 Windows 删除经典蓝牙配对记录。',
+    );
+    notifyListeners();
+    try {
+      await registry.unpairClassicBluetoothDevice(address);
+      classicBluetoothDevices = classicBluetoothDevices
+          .map(
+            (device) => device.address == address
+                ? ClassicBluetoothDeviceInfo(
+                    address: device.address,
+                    name: device.name,
+                    paired: false,
+                    connected: false,
+                    remembered: false,
+                  )
+                : device,
+          )
+          .toList(growable: false);
+      _setStatusMessage(strings.classicBluetoothUnpaired);
+      _recordClassicBluetoothStep(
+        operation: 'unpair',
+        stage: 'completed',
+        level: 'success',
+        address: address,
+        message: '经典蓝牙配对记录已删除。',
+      );
+      return true;
+    } on Object catch (error) {
+      _recordClassicBluetoothFailure(
+        error,
+        operation: 'unpair',
+        address: address,
+      );
+      _setStatusMessage(strings.classicBluetoothUnpairFailed(error));
+      return false;
+    } finally {
+      classicBluetoothBusyAddress = null;
+      notifyListeners();
+    }
+  }
+
+  void _replaceClassicBluetoothDevice(ClassicBluetoothDeviceInfo next) {
+    final devices =
+        <ClassicBluetoothDeviceInfo>[
+          for (final device in classicBluetoothDevices)
+            if (device.address != next.address) device,
+          next,
+        ]..sort((a, b) {
+          if (a.paired != b.paired) {
+            return a.paired ? -1 : 1;
+          }
+          return a.name.compareTo(b.name);
+        });
+    classicBluetoothDevices = List.unmodifiable(devices);
+  }
+
+  void clearClassicBluetoothDiagnostics() {
+    classicBluetoothDiagnostics.clear();
+    notifyListeners();
+  }
+
+  void _recordClassicBluetoothFailure(
+    Object error, {
+    required String operation,
+    String? address,
+  }) {
+    final diagnostic = error is ClassicBluetoothOperationException
+        ? error.diagnostic
+        : ClassicBluetoothDiagnostic(
+            id: 0,
+            timestamp: DateTime.now(),
+            operation: operation,
+            stage: 'request',
+            level: 'error',
+            address: address,
+            message: _formatError(error),
+          );
+    _recordClassicBluetoothDiagnostic(diagnostic);
+  }
+
+  void _recordClassicBluetoothStep({
+    required String operation,
+    required String stage,
+    required String level,
+    required String message,
+    String? address,
+  }) {
+    _recordClassicBluetoothDiagnostic(
+      ClassicBluetoothDiagnostic(
+        id: 0,
+        timestamp: DateTime.now(),
+        operation: operation,
+        stage: stage,
+        level: level,
+        address: address,
+        message: message,
+      ),
+    );
+  }
+
+  void _recordClassicBluetoothDiagnostic(
+    ClassicBluetoothDiagnostic diagnostic,
+  ) {
+    final stored = diagnostic.copyWith(
+      id: _nextClassicBluetoothDiagnosticId++,
+      timestamp: DateTime.now(),
+    );
+    classicBluetoothDiagnostics.add(stored);
+    if (classicBluetoothDiagnostics.length > 200) {
+      classicBluetoothDiagnostics.removeRange(
+        0,
+        classicBluetoothDiagnostics.length - 200,
+      );
+    }
+    _appendSystem(stored.toLogText());
+  }
+
+  Future<void> shutdown() {
+    _shutdownRequested = true;
+    return _shutdownFuture ??= _shutdown();
+  }
+
+  Future<void> _shutdown() async {
+    _manualDisconnect = true;
+    _serialReconnectRequested = false;
+    _autoSendTimer?.cancel();
+    _autoSendTimer = null;
+    _serialReconnectTimer?.cancel();
+    _serialReconnectTimer = null;
+    _statsTimer?.cancel();
+    _statsTimer = null;
+    await _closeTransportSessions();
+    status = TransportStatus.disconnected;
+    statusMessage = strings.disconnected;
   }
 
   Future<void> sendText(String text) async {
@@ -752,7 +1060,17 @@ class SessionController extends ChangeNotifier {
         _rememberHistory(historyText, historyFormat);
       }
     } on Object catch (error) {
-      _appendSystem(strings.sendFailed(_formatError(error)));
+      final isClassicBluetooth = config.type == TransportType.bluetoothClassic;
+      if (isClassicBluetooth) {
+        _recordClassicBluetoothFailure(
+          error,
+          operation: 'send',
+          address: config.bluetoothClassic.address,
+        );
+      }
+      if (!isClassicBluetooth) {
+        _appendSystem(strings.sendFailed(_formatError(error)));
+      }
     }
   }
 
@@ -1205,7 +1523,17 @@ class SessionController extends ChangeNotifier {
   }
 
   void _handleReceiveError(Object error) {
-    _appendSystem(strings.receiveError(_formatError(error)));
+    final isClassicBluetooth = config.type == TransportType.bluetoothClassic;
+    if (isClassicBluetooth) {
+      _recordClassicBluetoothFailure(
+        error,
+        operation: 'receive',
+        address: config.bluetoothClassic.address,
+      );
+    }
+    if (!isClassicBluetooth) {
+      _appendSystem(strings.receiveError(_formatError(error)));
+    }
     _handleUnexpectedDisconnect();
   }
 
@@ -1346,6 +1674,7 @@ class SessionController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _shutdownRequested = true;
     _manualDisconnect = true;
     _serialReconnectRequested = false;
     _autoSendTimer?.cancel();

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../../domain/quick_command.dart';
 import '../../domain/send_history_entry.dart';
 import '../../storage/quick_command_text_codec.dart';
 import '../../storage/text_file_transfer.dart';
+import '../../storage/workspace_preferences.dart';
 
 enum _QuickCommandFileAction { importReplace, importAppend, export }
 
@@ -19,10 +21,21 @@ enum _QuickCommandHeaderAction { restoreSavedOrder }
 
 enum _QuickCommandRowAction { edit, delete }
 
+const _quickCommandBubbleHeight = 36.0;
+const _quickCommandBubbleExpandedWidth = 108.0;
+
 class QuickCommandsPanel extends StatefulWidget {
-  const QuickCommandsPanel({super.key, required this.controller});
+  const QuickCommandsPanel({
+    super.key,
+    required this.controller,
+    this.loadBubblePosition = readQuickCommandBubblePosition,
+    this.saveBubblePosition = writeQuickCommandBubblePosition,
+  });
 
   final SessionController controller;
+  final Future<QuickCommandBubblePosition?> Function() loadBubblePosition;
+  final Future<void> Function(QuickCommandBubblePosition position)
+      saveBubblePosition;
 
   @override
   State<QuickCommandsPanel> createState() => _QuickCommandsPanelState();
@@ -33,8 +46,16 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
   _QuickCommandSortColumn? _sortColumn;
   bool _sortAscending = true;
   _QuickCommandColumnWidths _columnWidths = const _QuickCommandColumnWidths();
+  Offset _bubblePosition = Offset.zero;
+  bool _bubbleExpanded = false;
 
   SessionController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreBubblePosition());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,125 +63,133 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
       animation: controller,
       builder: (context, _) {
         final hasHistory = controller.sendHistory.isNotEmpty;
-        final strings = controller.strings;
-        return Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    strings.quickCommands,
+        if (!hasHistory) {
+          return _buildQuickCommandPane(context);
+        }
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final quickHeight = _quickHeight(constraints.maxHeight);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: quickHeight,
+                  child: _buildQuickCommandPane(context),
+                ),
+                _HistorySplitDivider(
+                  onDrag: (delta) =>
+                      _resizeHistorySplit(delta, constraints.maxHeight),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 8),
+                  child: Text(
+                    controller.strings.sendHistory,
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: strings.addCommand,
-                    onPressed: () => _openEditor(context, null),
-                    icon: const Icon(Icons.add, size: 20),
-                  ),
-                  PopupMenuButton<_QuickCommandFileAction>(
-                    tooltip: strings.quickCommandImportExport,
-                    icon: const Icon(Icons.import_export, size: 20),
-                    onSelected: _handleFileAction,
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: _QuickCommandFileAction.importReplace,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.file_download_outlined),
-                            const SizedBox(width: 10),
-                            Text(strings.importReplaceCurrent),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: _QuickCommandFileAction.importAppend,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.playlist_add),
-                            const SizedBox(width: 10),
-                            Text(strings.importInsertCurrent),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: _QuickCommandFileAction.export,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.file_upload_outlined),
-                            const SizedBox(width: 10),
-                            Text(strings.exportQuickCommands),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (!hasHistory)
-                Expanded(
-                  child: _QuickCommandList(
-                    controller: controller,
-                    onEdit: (command) => _openEditor(context, command),
-                    onAdd: () => _openEditor(context, null),
-                    sortColumn: _sortColumn,
-                    sortAscending: _sortAscending,
-                    onSort: _sortQuickCommands,
-                    columnWidths: _columnWidths,
-                    onResizeColumn: _resizeQuickCommandColumn,
-                    onRestoreSavedOrder: _restoreSavedOrder,
-                  ),
-                )
-              else
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final quickHeight = _quickHeight(constraints.maxHeight);
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(
-                            height: quickHeight,
-                            child: _QuickCommandList(
-                              controller: controller,
-                              onEdit: (command) =>
-                                  _openEditor(context, command),
-                              onAdd: () => _openEditor(context, null),
-                              sortColumn: _sortColumn,
-                              sortAscending: _sortAscending,
-                              onSort: _sortQuickCommands,
-                              columnWidths: _columnWidths,
-                              onResizeColumn: _resizeQuickCommandColumn,
-                              onRestoreSavedOrder: _restoreSavedOrder,
-                            ),
-                          ),
-                          _HistorySplitDivider(
-                            onDrag: (delta) => _resizeHistorySplit(
-                              delta,
-                              constraints.maxHeight,
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8, bottom: 8),
-                            child: Text(
-                              strings.sendHistory,
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                          ),
-                          Expanded(child: _HistoryList(controller: controller)),
-                        ],
-                      );
-                    },
-                  ),
                 ),
-            ],
-          ),
+                Expanded(child: _HistoryList(controller: controller)),
+              ],
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildQuickCommandPane(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const collapsedSize = _quickCommandBubbleHeight;
+        final bubbleWidth = _bubbleExpanded
+            ? _quickCommandBubbleExpandedWidth
+            : collapsedSize;
+        final positionLimit = Offset(
+          math.max(0, constraints.maxWidth - collapsedSize),
+          math.max(0, constraints.maxHeight - collapsedSize),
+        );
+        final basePosition = Offset(
+          _bubblePosition.dx * positionLimit.dx,
+          _bubblePosition.dy * positionLimit.dy,
+        );
+        final displayLimit = Offset(
+          math.max(0, constraints.maxWidth - bubbleWidth),
+          positionLimit.dy,
+        );
+        final displayPosition = Offset(
+          basePosition.dx.clamp(0, displayLimit.dx).toDouble(),
+          basePosition.dy.clamp(0, displayLimit.dy).toDouble(),
+        );
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: _QuickCommandList(
+                controller: controller,
+                onEdit: (command) => _openEditor(context, command),
+                onAdd: () => _openEditor(context, null),
+                sortColumn: _sortColumn,
+                sortAscending: _sortAscending,
+                onSort: _sortQuickCommands,
+                columnWidths: _columnWidths,
+                onResizeColumn: _resizeQuickCommandColumn,
+                onRestoreSavedOrder: _restoreSavedOrder,
+              ),
+            ),
+            Positioned(
+              left: displayPosition.dx,
+              top: displayPosition.dy,
+              child: _QuickCommandActionBubble(
+                expanded: _bubbleExpanded,
+                controller: controller,
+                onToggle: () {
+                  setState(() => _bubbleExpanded = !_bubbleExpanded);
+                },
+                onAdd: () => _openEditor(context, null),
+                onFileAction: _handleFileAction,
+                onDragUpdate: (delta) {
+                  final next = Offset(
+                    (displayPosition.dx + delta.dx)
+                        .clamp(0, displayLimit.dx)
+                        .toDouble(),
+                    (displayPosition.dy + delta.dy)
+                        .clamp(0, displayLimit.dy)
+                        .toDouble(),
+                  );
+                  setState(() {
+                    _bubblePosition = Offset(
+                      positionLimit.dx == 0 ? 0 : next.dx / positionLimit.dx,
+                      positionLimit.dy == 0 ? 0 : next.dy / positionLimit.dy,
+                    );
+                  });
+                },
+                onDragEnd: _persistBubblePosition,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _restoreBubblePosition() async {
+    final position = await widget.loadBubblePosition();
+    if (!mounted || position == null) {
+      return;
+    }
+    if (!position.x.isFinite || !position.y.isFinite) {
+      return;
+    }
+    setState(() {
+      _bubblePosition = Offset(
+        position.x.clamp(0, 1).toDouble(),
+        position.y.clamp(0, 1).toDouble(),
+      );
+    });
+  }
+
+  void _persistBubblePosition() {
+    unawaited(
+      widget.saveBubblePosition((x: _bubblePosition.dx, y: _bubblePosition.dy)),
     );
   }
 
@@ -380,6 +409,123 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
   }
 }
 
+class _QuickCommandActionBubble extends StatelessWidget {
+  const _QuickCommandActionBubble({
+    required this.expanded,
+    required this.controller,
+    required this.onToggle,
+    required this.onAdd,
+    required this.onFileAction,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+  });
+
+  final bool expanded;
+  final SessionController controller;
+  final VoidCallback onToggle;
+  final VoidCallback onAdd;
+  final ValueChanged<_QuickCommandFileAction> onFileAction;
+  final ValueChanged<Offset> onDragUpdate;
+  final VoidCallback onDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = controller.strings;
+    final buttons = <Widget>[
+      SizedBox.square(
+        dimension: _quickCommandBubbleHeight,
+        child: IconButton(
+          key: const ValueKey<String>('quick-command-bubble-toggle'),
+          tooltip: strings.quickCommands,
+          onPressed: onToggle,
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          icon: Icon(expanded ? Icons.close : Icons.add, size: 19),
+        ),
+      ),
+      if (expanded)
+        SizedBox.square(
+          dimension: _quickCommandBubbleHeight,
+          child: IconButton(
+            tooltip: strings.addCommand,
+            onPressed: onAdd,
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.add, size: 19),
+          ),
+        ),
+      if (expanded)
+        SizedBox.square(
+          dimension: _quickCommandBubbleHeight,
+          child: PopupMenuButton<_QuickCommandFileAction>(
+            tooltip: strings.quickCommandImportExport,
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.import_export, size: 19),
+            onSelected: onFileAction,
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: _QuickCommandFileAction.importReplace,
+                child: Row(
+                  children: [
+                    const Icon(Icons.file_download_outlined),
+                    const SizedBox(width: 10),
+                    Text(strings.importReplaceCurrent),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: _QuickCommandFileAction.importAppend,
+                child: Row(
+                  children: [
+                    const Icon(Icons.playlist_add),
+                    const SizedBox(width: 10),
+                    Text(strings.importInsertCurrent),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: _QuickCommandFileAction.export,
+                child: Row(
+                  children: [
+                    const Icon(Icons.file_upload_outlined),
+                    const SizedBox(width: 10),
+                    Text(strings.exportQuickCommands),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanUpdate: (details) => onDragUpdate(details.delta),
+      onPanEnd: (_) => onDragEnd(),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 140),
+        alignment: Alignment.centerLeft,
+        curve: Curves.easeOutCubic,
+        child: Material(
+          key: const ValueKey<String>('quick-command-action-bubble'),
+          elevation: 6,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: expanded
+                ? _quickCommandBubbleExpandedWidth
+                : _quickCommandBubbleHeight,
+            height: _quickCommandBubbleHeight,
+            child: Row(children: buttons),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HistorySplitDivider extends StatelessWidget {
   const _HistorySplitDivider({required this.onDrag});
 
@@ -469,6 +615,7 @@ class _QuickCommandList extends StatelessWidget {
               Expanded(
                 child: sortColumn == null
                     ? ReorderableListView.builder(
+                        padding: EdgeInsets.zero,
                         buildDefaultDragHandles: false,
                         itemCount: commands.length + 1,
                         onReorderItem: controller.reorderQuickCommand,
@@ -481,6 +628,7 @@ class _QuickCommandList extends StatelessWidget {
                         ),
                       )
                     : ListView.builder(
+                        padding: EdgeInsets.zero,
                         itemCount: commands.length + 1,
                         itemBuilder: (context, index) => _buildListItem(
                           context,
@@ -847,6 +995,7 @@ class _HistoryList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
+      padding: EdgeInsets.zero,
       itemCount: controller.sendHistory.length,
       separatorBuilder: (context, index) => const Divider(height: 1),
       itemBuilder: (context, index) {

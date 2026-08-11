@@ -34,8 +34,10 @@ class UdpTransportSession implements TransportSession {
     final bindAddress = config.udp.bindAddress.trim().isEmpty
         ? InternetAddress.anyIPv4
         : InternetAddress(config.udp.bindAddress.trim());
-    final socket =
-        await RawDatagramSocket.bind(bindAddress, config.udp.localPort);
+    final socket = await RawDatagramSocket.bind(
+      bindAddress,
+      config.udp.localPort,
+    );
     _socket = socket;
     _subscription = socket.listen((event) {
       if (event != RawSocketEvent.read) {

@@ -15,20 +15,6 @@ InputDecoration _compactDecoration(String label) {
   );
 }
 
-InputDecoration _framelessDecoration(String label) {
-  return InputDecoration(
-    labelText: label,
-    floatingLabelBehavior: FloatingLabelBehavior.always,
-    isDense: true,
-    border: InputBorder.none,
-    enabledBorder: InputBorder.none,
-    focusedBorder: InputBorder.none,
-    disabledBorder: InputBorder.none,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-    constraints: const BoxConstraints.tightFor(height: 40),
-  );
-}
-
 InputDecoration _defaultDecoration(String label) {
   return InputDecoration(labelText: label);
 }
@@ -67,6 +53,15 @@ class SendTargetField extends StatelessWidget {
     final selectedValue = connectedIndexes.contains(controller.sendTargetIndex)
         ? controller.sendTargetIndex
         : null;
+    if (frameless) {
+      return _FramelessSendTargetMenu(
+        controller: controller,
+        width: width,
+        connectedIndexes: connectedIndexes,
+        selectedValue: selectedValue,
+        onChanged: onChanged,
+      );
+    }
     return SizedBox(
       width: width,
       child: WheelStepper(
@@ -81,11 +76,9 @@ class SendTargetField extends StatelessWidget {
           ),
           initialValue: selectedValue,
           isExpanded: true,
-          decoration: frameless
-              ? _framelessDecoration(controller.strings.sendTo)
-              : compact
-                  ? _compactDecoration(controller.strings.sendTo)
-                  : _defaultDecoration(controller.strings.sendTo),
+          decoration: compact
+              ? _compactDecoration(controller.strings.sendTo)
+              : _defaultDecoration(controller.strings.sendTo),
           hint: Text(controller.strings.noConnectedTarget),
           items: [
             for (final i in connectedIndexes)
@@ -105,6 +98,97 @@ class SendTargetField extends StatelessWidget {
                     onChanged?.call(index);
                   }
                 },
+        ),
+      ),
+    );
+  }
+}
+
+class _FramelessSendTargetMenu extends StatelessWidget {
+  const _FramelessSendTargetMenu({
+    required this.controller,
+    required this.width,
+    required this.connectedIndexes,
+    required this.selectedValue,
+    required this.onChanged,
+  });
+
+  final WorkspaceController controller;
+  final double width;
+  final List<int> connectedIndexes;
+  final int? selectedValue;
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final selectedLabel = selectedValue == null
+        ? controller.strings.noConnectedTarget
+        : controller.sessionLabel(selectedValue!);
+    return SizedBox(
+      width: width,
+      height: 40,
+      child: WheelStepper(
+        enabled: connectedIndexes.length > 1,
+        onStep: (step) {
+          controller.stepSendTarget(step);
+          onChanged?.call(controller.sendTargetIndex);
+        },
+        child: MenuAnchor(
+          crossAxisUnconstrained: false,
+          style: MenuStyle(
+            padding: const WidgetStatePropertyAll<EdgeInsetsGeometry>(
+              EdgeInsets.symmetric(vertical: 4),
+            ),
+            shape: WidgetStatePropertyAll<OutlinedBorder>(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            ),
+          ),
+          menuChildren: [
+            for (final index in connectedIndexes)
+              MenuItemButton(
+                onPressed: () {
+                  controller.setSendTargetIndex(index);
+                  onChanged?.call(index);
+                },
+                leadingIcon: index == selectedValue
+                    ? Icon(Icons.check, size: 18, color: scheme.primary)
+                    : const SizedBox(width: 18),
+                child: Text(
+                  controller.sessionLabel(index),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          builder: (context, menuController, _) {
+            return InkWell(
+              onTap: connectedIndexes.isEmpty
+                  ? null
+                  : () {
+                      if (menuController.isOpen) {
+                        menuController.close();
+                      } else {
+                        menuController.open();
+                      }
+                    },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${controller.strings.sendTo}: $selectedLabel',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down, size: 20),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

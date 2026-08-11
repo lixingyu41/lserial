@@ -133,6 +133,14 @@ class AppStrings {
       isZh ? '通知 Characteristic UUID' : 'Notify Characteristic UUID';
   String get writeWithoutResponse => isZh ? '无响应写入' : 'Write without response';
   String get unknownBleDevice => isZh ? '未知 BLE 设备' : 'Unknown BLE device';
+  String get classicBluetoothInfo => isZh
+      ? '扫描附近及已配对的经典蓝牙设备；仅支持提供 SPP 串口服务的设备。'
+      : 'Scans nearby and paired Classic Bluetooth devices. The device must expose an SPP serial service.';
+  String get bluetoothAddress => isZh ? '蓝牙地址' : 'Bluetooth address';
+  String get paired => isZh ? '已配对' : 'Paired';
+  String get unpaired => isZh ? '未配对' : 'Not paired';
+  String get pair => isZh ? '配对' : 'Pair';
+  String get unpair => isZh ? '解除配对' : 'Unpair';
 
   String get stats => isZh ? '统计' : 'Stats';
   String get chooseStats => isZh ? '选择统计项' : 'Choose stats';
@@ -192,7 +200,9 @@ class AppStrings {
 
   String transportType(TransportType type) => switch (type) {
     TransportType.serial => isZh ? '串口' : 'Serial',
-    TransportType.bluetooth => isZh ? '蓝牙' : 'Bluetooth',
+    TransportType.bluetooth => isZh ? '低功耗蓝牙（BLE）' : 'Bluetooth LE',
+    TransportType.bluetoothClassic =>
+      isZh ? '经典蓝牙（SPP）' : 'Bluetooth Classic (SPP)',
     TransportType.tcpClient => isZh ? 'TCP 客户端' : 'TCP Client',
     TransportType.tcpServer => isZh ? 'TCP 服务端' : 'TCP Server',
     TransportType.udp => 'UDP',
@@ -270,6 +280,30 @@ class AppStrings {
   String get bleScanStopped => isZh ? 'BLE 扫描已停止' : 'BLE scan stopped.';
   String bleScanStoppedWithCount(int count) =>
       isZh ? 'BLE 扫描已停止：$count 个设备' : 'BLE scan stopped: $count device(s).';
+  String get scanningClassicBluetooth =>
+      isZh ? '正在扫描经典蓝牙设备...' : 'Scanning Classic Bluetooth devices...';
+  String get noClassicBluetoothDevices =>
+      isZh ? '未发现经典蓝牙设备' : 'No Classic Bluetooth devices found.';
+  String foundClassicBluetoothDevices(int count) =>
+      isZh ? '发现 $count 个经典蓝牙设备' : 'Found $count Classic Bluetooth device(s).';
+  String classicBluetoothScanFailed(Object error) => isZh
+      ? '经典蓝牙扫描失败：${errorMessage(error)}'
+      : 'Classic Bluetooth scan failed: $error';
+  String pairingClassicBluetooth(String address) =>
+      isZh ? '正在配对 $address...' : 'Pairing $address...';
+  String classicBluetoothPaired(String name) => isZh
+      ? '已配对 ${name.isEmpty ? '经典蓝牙设备' : name}'
+      : 'Paired ${name.isEmpty ? 'Classic Bluetooth device' : name}.';
+  String classicBluetoothPairFailed(Object error) => isZh
+      ? '经典蓝牙配对失败：${errorMessage(error)}'
+      : 'Classic Bluetooth pairing failed: $error';
+  String unpairingClassicBluetooth(String address) =>
+      isZh ? '正在解除配对 $address...' : 'Unpairing $address...';
+  String get classicBluetoothUnpaired =>
+      isZh ? '已解除经典蓝牙配对' : 'Classic Bluetooth device unpaired.';
+  String classicBluetoothUnpairFailed(Object error) => isZh
+      ? '解除经典蓝牙配对失败：${errorMessage(error)}'
+      : 'Classic Bluetooth unpairing failed: $error';
   String serialScanFailed(Object error) =>
       isZh ? '串口扫描失败：${errorMessage(error)}' : 'Serial scan failed: $error';
   String get webSerialPortSelected =>
@@ -550,6 +584,10 @@ class AppStrings {
       isZh ? '导出失败：${errorMessage(error)}' : 'Export failed: $error';
 
   String? windowsSocketErrorMeaning(int code) => switch (code) {
+    10013 =>
+      isZh
+          ? '访问被拒绝；端口可能被 Windows 保留或被防火墙阻止'
+          : 'access denied; the port may be reserved by Windows or blocked by a firewall',
     10048 => isZh ? '地址已被占用' : 'address already in use',
     10049 => isZh ? '无法分配请求的地址' : 'cannot assign requested address',
     10054 => isZh ? '连接被对端重置' : 'connection reset by peer',
@@ -584,6 +622,10 @@ class AppStrings {
         config.bluetooth.deviceName.isEmpty
             ? 'BLE ${config.bluetooth.deviceId}'
             : 'BLE ${config.bluetooth.deviceName}',
+      TransportType.bluetoothClassic =>
+        config.bluetoothClassic.deviceName.isEmpty
+            ? 'BT ${config.bluetoothClassic.address}'
+            : 'BT ${config.bluetoothClassic.deviceName}',
       TransportType.tcpClient =>
         'TCP ${config.tcpClient.host}:${config.tcpClient.port}',
       TransportType.tcpServer =>

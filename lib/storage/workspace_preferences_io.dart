@@ -10,6 +10,7 @@ import '../domain/quick_command.dart';
 const _workspaceSettingsKey = 'workspaceSettings';
 const _quickCommandsPanelVisibleKey = 'showQuickCommandsPanel';
 const _quickCommandsKey = 'quickCommands';
+const _quickCommandBubblePositionKey = 'quickCommandBubblePosition';
 
 Future<WorkspaceSettings?> readWorkspaceSettings() async {
   try {
@@ -90,6 +91,45 @@ Future<void> writeQuickCommands(List<QuickCommand> commands) async {
     final settings =
         await file.exists() ? await _readSettings(file) : <String, Object?>{};
     settings[_quickCommandsKey] = commands.map(_encodeQuickCommand).toList();
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonEncode(settings), flush: true);
+  } on Object {
+    return;
+  }
+}
+
+Future<({double x, double y})?> readQuickCommandBubblePosition() async {
+  try {
+    final file = await _settingsFile();
+    if (!await file.exists()) {
+      return null;
+    }
+    final value = (await _readSettings(file))[_quickCommandBubblePositionKey];
+    if (value is! Map) {
+      return null;
+    }
+    final x = value['x'];
+    final y = value['y'];
+    if (x is! num || y is! num) {
+      return null;
+    }
+    return (x: x.toDouble(), y: y.toDouble());
+  } on Object {
+    return null;
+  }
+}
+
+Future<void> writeQuickCommandBubblePosition(
+  ({double x, double y}) position,
+) async {
+  try {
+    final file = await _settingsFile();
+    final settings =
+        await file.exists() ? await _readSettings(file) : <String, Object?>{};
+    settings[_quickCommandBubblePositionKey] = <String, double>{
+      'x': position.x,
+      'y': position.y,
+    };
     await file.parent.create(recursive: true);
     await file.writeAsString(jsonEncode(settings), flush: true);
   } on Object {

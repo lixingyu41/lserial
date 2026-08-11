@@ -12,10 +12,7 @@ import '../../storage/log_buffer.dart';
 import '../send_panel/send_controls.dart';
 import 'frame_list_view.dart';
 
-ButtonStyle _toolbarIconStyle(
-  ColorScheme scheme, {
-  bool selected = false,
-}) {
+ButtonStyle _toolbarIconStyle(ColorScheme scheme, {bool selected = false}) {
   return IconButton.styleFrom(
     minimumSize: const Size.square(40),
     fixedSize: const Size.square(40),
@@ -101,13 +98,14 @@ class _WorkspaceConsolePanelState extends State<WorkspaceConsolePanel> {
                           snapshot: snapshot,
                           formatter: widget.controller.formatter,
                           options: widget.controller.formatOptions,
+                          sourceViewModes: widget.controller.sourceViewModes,
                           logFontSize: widget.controller.logFontSize,
                           autoScroll: widget.controller.autoScroll,
                           pauseDisplay: widget.controller.pauseDisplay,
                           filter: search.text,
-                          visibleSources: widget.controller.visibleSources,
-                          bottomPadding:
-                              terminalMode ? _terminalInputHeight : 0,
+                          bottomPadding: terminalMode
+                              ? _terminalInputHeight
+                              : 0,
                         ),
                       ),
                       if (terminalMode)
@@ -238,10 +236,7 @@ class _WorkspaceConsoleToolbarState extends State<_WorkspaceConsoleToolbar> {
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        searchAndView,
-                        const _ToolbarSeparator(),
-                      ],
+                      children: [searchAndView, const _ToolbarSeparator()],
                     ),
                     rightActions,
                   ],
@@ -620,8 +615,9 @@ class _ViewModeToggleButton extends StatelessWidget {
                 );
               },
               icon: const Icon(Icons.visibility),
-              label:
-                  Text(controller.strings.consoleViewMode(controller.viewMode)),
+              label: Text(
+                controller.strings.consoleViewMode(controller.viewMode),
+              ),
             ),
           ),
         );
@@ -675,8 +671,10 @@ class _SearchField extends StatelessWidget {
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           prefixIcon: const Icon(Icons.search, size: 18),
-          prefixIconConstraints:
-              const BoxConstraints.tightFor(width: 40, height: 40),
+          prefixIconConstraints: const BoxConstraints.tightFor(
+            width: 40,
+            height: 40,
+          ),
           hintText: hintText,
           contentPadding: EdgeInsets.zero,
         ),
@@ -793,7 +791,8 @@ class _TerminalInputLineState extends State<_TerminalInputLine> {
       }
     }
 
-    final isEnter = event.logicalKey == LogicalKeyboardKey.enter ||
+    final isEnter =
+        event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (!isEnter) {
       return KeyEventResult.ignored;
@@ -895,16 +894,17 @@ class _TopStatusBubbleViewState extends State<_TopStatusBubbleView>
       right: 16,
       child: IgnorePointer(
         child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, -1.4),
-            end: Offset.zero,
-          ).animate(
-            CurvedAnimation(
-              parent: _controller,
-              curve: Curves.easeOutCubic,
-              reverseCurve: Curves.easeInCubic,
-            ),
-          ),
+          position:
+              Tween<Offset>(
+                begin: const Offset(0, -1.4),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(
+                  parent: _controller,
+                  curve: Curves.easeOutCubic,
+                  reverseCurve: Curves.easeInCubic,
+                ),
+              ),
           child: Align(
             alignment: Alignment.topCenter,
             child: Material(
@@ -912,15 +912,17 @@ class _TopStatusBubbleViewState extends State<_TopStatusBubbleView>
               elevation: 10,
               borderRadius: BorderRadius.circular(8),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 child: Text(
                   widget.message,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onInverseSurface,
-                      ),
+                    color: scheme.onInverseSurface,
+                  ),
                 ),
               ),
             ),
@@ -1091,46 +1093,86 @@ class _LogSettingsPopup extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const Divider(height: 1),
-                  Row(
-                    children: [
-                      Expanded(child: Text(strings.logFontSize)),
-                      Semantics(
-                        label: strings.decreaseLogFontSize,
-                        button: true,
-                        child: IconButton(
-                          onPressed: controller.decreaseLogFontSize,
-                          icon: const Icon(Icons.remove),
-                          style: _toolbarIconStyle(scheme),
+                  const SizedBox(height: 8),
+                  _SettingsSection(
+                    key: const ValueKey<String>('settings-section-display'),
+                    icon: Icons.visibility_outlined,
+                    title: strings.displayItems,
+                    child: _SettingsGroup(
+                      children: [
+                        _SettingsControlRow(
+                          trailingWidth: 132,
+                          leading: Text(strings.logFontSize),
+                          trailing: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Semantics(
+                                label: strings.decreaseLogFontSize,
+                                button: true,
+                                child: IconButton(
+                                  onPressed: controller.decreaseLogFontSize,
+                                  icon: const Icon(Icons.remove),
+                                  style: _compactSettingsIconStyle(scheme),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 36,
+                                child: Text(
+                                  controller.logFontSize.toStringAsFixed(0),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              Semantics(
+                                label: strings.increaseLogFontSize,
+                                button: true,
+                                child: IconButton(
+                                  onPressed: controller.increaseLogFontSize,
+                                  icon: const Icon(Icons.add),
+                                  style: _compactSettingsIconStyle(scheme),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      SizedBox(
-                        width: 44,
-                        child: Text(
-                          controller.logFontSize.toStringAsFixed(0),
-                          textAlign: TextAlign.center,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                          child: _DisplayItems(controller: controller),
                         ),
-                      ),
-                      Semantics(
-                        label: strings.increaseLogFontSize,
-                        button: true,
-                        child: IconButton(
-                          onPressed: controller.increaseLogFontSize,
-                          icon: const Icon(Icons.add),
-                          style: _toolbarIconStyle(scheme),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  _DisplayItems(controller: controller),
-                  const SizedBox(height: 10),
-                  _ToolbarSettings(controller: controller),
-                  const SizedBox(height: 10),
-                  _SourceFilter(controller: controller),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 14),
+                  _SettingsSection(
+                    key: const ValueKey<String>('settings-section-toolbar'),
+                    icon: Icons.tune,
+                    title: strings.logToolbarButtons,
+                    trailing: SizedBox(
+                      width: 132,
+                      child: Text(
+                        strings.settings,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    child: _ToolbarSettings(controller: controller),
+                  ),
+                  const SizedBox(height: 14),
+                  _SettingsSection(
+                    key: const ValueKey<String>('settings-section-sources'),
+                    icon: Icons.filter_alt_outlined,
+                    title: strings.sourceFilter,
+                    trailing: SizedBox(
+                      width: 96,
+                      child: Text(
+                        strings.viewFormat,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    child: _SourceFilter(controller: controller),
+                  ),
+                  const SizedBox(height: 14),
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
+                    child: FilledButton.tonalIcon(
                       onPressed: controller.exportLog,
                       icon: const Icon(Icons.save_alt),
                       label: Text(strings.exportTxt),
@@ -1146,6 +1188,98 @@ class _LogSettingsPopup extends StatelessWidget {
   }
 }
 
+class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.child,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Icon(icon, size: 17, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ),
+              if (trailing != null)
+                DefaultTextStyle.merge(
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  child: trailing!,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 7),
+        child,
+      ],
+    );
+  }
+}
+
+ButtonStyle _compactSettingsIconStyle(ColorScheme scheme) {
+  return IconButton.styleFrom(
+    minimumSize: const Size.square(32),
+    fixedSize: const Size.square(32),
+    padding: EdgeInsets.zero,
+    foregroundColor: scheme.onSurface,
+    backgroundColor: scheme.surfaceContainerHighest,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+}
+
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.42),
+      borderRadius: BorderRadius.circular(6),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var index = 0; index < children.length; index++) ...[
+            children[index],
+            if (index != children.length - 1)
+              Divider(
+                height: 1,
+                indent: 10,
+                endIndent: 10,
+                color: scheme.outlineVariant.withValues(alpha: 0.55),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _ToolbarSettings extends StatelessWidget {
   const _ToolbarSettings({required this.controller});
 
@@ -1155,101 +1289,127 @@ class _ToolbarSettings extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = controller.strings;
     final sendController = controller.sendTarget;
-    final visibilityItems = <(WorkspaceToolbarAction, String)>[
-      (WorkspaceToolbarAction.clearLog, strings.clear),
-      (WorkspaceToolbarAction.terminalMode, strings.terminalMode),
-      (WorkspaceToolbarAction.sendFormat, strings.sendFormatSetting),
-      (WorkspaceToolbarAction.lineEnding, strings.lineEnding),
-      (WorkspaceToolbarAction.sendShortcut, strings.sendShortcut),
-      (WorkspaceToolbarAction.connectionPanel, strings.leftConfigPanel),
-      (WorkspaceToolbarAction.quickCommandsPanel, strings.quickCommands),
-      (WorkspaceToolbarAction.sendPanel, strings.sendData),
-      (WorkspaceToolbarAction.autoScroll, strings.autoScroll),
-    ];
+    Widget visibilityButton(WorkspaceToolbarAction action, String label) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: _SettingsFilterChip(
+          key: ValueKey<String>('toolbar-visibility-${action.name}'),
+          label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          selected: controller.isToolbarActionVisible(action),
+          onSelected: (selected) =>
+              controller.setToolbarActionVisible(action, selected),
+        ),
+      );
+    }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    Widget settingRow(
+      WorkspaceToolbarAction action,
+      String label, [
+      Widget? setting,
+    ]) {
+      return _SettingsControlRow(
+        key: ValueKey<String>('toolbar-setting-row-${action.name}'),
+        trailingWidth: 132,
+        leading: visibilityButton(action, label),
+        trailing: setting,
+      );
+    }
+
+    return _SettingsGroup(
       children: [
-        Text(
-          strings.logToolbarButtons,
-          style: Theme.of(context).textTheme.labelLarge,
+        settingRow(WorkspaceToolbarAction.clearLog, strings.clear),
+        settingRow(
+          WorkspaceToolbarAction.terminalMode,
+          strings.terminalMode,
+          Align(
+            alignment: Alignment.centerRight,
+            child: Switch(
+              key: const ValueKey<String>('toolbar-setting-terminalMode'),
+              value: controller.terminalMode,
+              onChanged: controller.setTerminalMode,
+            ),
+          ),
         ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final item in visibilityItems)
-              _SettingsFilterChip(
-                key: ValueKey<String>(
-                  'toolbar-visibility-${item.$1.name}',
-                ),
-                label: Text(item.$2),
-                selected: controller.isToolbarActionVisible(item.$1),
-                onSelected: (selected) =>
-                    controller.setToolbarActionVisible(item.$1, selected),
-              ),
-          ],
+        settingRow(
+          WorkspaceToolbarAction.sendFormat,
+          strings.sendFormatSetting,
+          _ToolbarDropdown<PayloadFormat>(
+            key: const ValueKey<String>('toolbar-setting-sendFormat'),
+            value: sendController.sendFormat,
+            values: PayloadFormat.values,
+            labelBuilder: strings.payloadFormat,
+            onChanged: sendController.setSendFormat,
+          ),
         ),
-        const SizedBox(height: 8),
-        SwitchListTile(
-          key: const ValueKey<String>('toolbar-setting-terminalMode'),
-          value: controller.terminalMode,
-          onChanged: controller.setTerminalMode,
-          title: Text(strings.terminalMode),
-          contentPadding: EdgeInsets.zero,
+        settingRow(
+          WorkspaceToolbarAction.lineEnding,
+          strings.lineEnding,
+          _ToolbarDropdown<LineEnding>(
+            key: const ValueKey<String>('toolbar-setting-lineEnding'),
+            value: sendController.lineEnding,
+            values: LineEnding.values,
+            labelBuilder: strings.lineEndingLabel,
+            onChanged: sendController.setLineEnding,
+          ),
         ),
-        _ToolbarDropdown<PayloadFormat>(
-          key: const ValueKey<String>('toolbar-setting-sendFormat'),
-          label: strings.sendFormatSetting,
-          value: sendController.sendFormat,
-          values: PayloadFormat.values,
-          labelBuilder: strings.payloadFormat,
-          onChanged: sendController.setSendFormat,
+        settingRow(
+          WorkspaceToolbarAction.sendShortcut,
+          strings.sendShortcut,
+          _ToolbarDropdown<SendShortcutMode>(
+            key: const ValueKey<String>('toolbar-setting-sendShortcut'),
+            value: sendController.sendShortcutMode,
+            values: SendShortcutMode.values,
+            labelBuilder: strings.shortcutModeShort,
+            onChanged: sendController.setSendShortcutMode,
+          ),
         ),
-        _ToolbarDropdown<LineEnding>(
-          key: const ValueKey<String>('toolbar-setting-lineEnding'),
-          label: strings.lineEnding,
-          value: sendController.lineEnding,
-          values: LineEnding.values,
-          labelBuilder: strings.lineEndingLabel,
-          onChanged: sendController.setLineEnding,
+        settingRow(
+          WorkspaceToolbarAction.connectionPanel,
+          strings.leftConfigPanel,
+          Align(
+            alignment: Alignment.centerRight,
+            child: Switch(
+              key: const ValueKey<String>('toolbar-setting-connectionPanel'),
+              value: controller.showConnectionPanel,
+              onChanged: controller.setConnectionPanelVisible,
+            ),
+          ),
         ),
-        _ToolbarDropdown<SendShortcutMode>(
-          key: const ValueKey<String>('toolbar-setting-sendShortcut'),
-          label: strings.sendShortcut,
-          value: sendController.sendShortcutMode,
-          values: SendShortcutMode.values,
-          labelBuilder: strings.shortcutModeShort,
-          onChanged: sendController.setSendShortcutMode,
+        settingRow(
+          WorkspaceToolbarAction.quickCommandsPanel,
+          strings.quickCommands,
+          Align(
+            alignment: Alignment.centerRight,
+            child: Switch(
+              key: const ValueKey<String>('toolbar-setting-quickCommandsPanel'),
+              value: controller.showQuickCommandsPanel,
+              onChanged: controller.setQuickCommandsPanelVisible,
+            ),
+          ),
         ),
-        SwitchListTile(
-          key: const ValueKey<String>('toolbar-setting-connectionPanel'),
-          value: controller.showConnectionPanel,
-          onChanged: controller.setConnectionPanelVisible,
-          title: Text(strings.leftConfigPanel),
-          contentPadding: EdgeInsets.zero,
+        settingRow(
+          WorkspaceToolbarAction.sendPanel,
+          strings.sendData,
+          Align(
+            alignment: Alignment.centerRight,
+            child: Switch(
+              key: const ValueKey<String>('toolbar-setting-sendPanel'),
+              value: controller.showSendPanel,
+              onChanged: controller.setSendPanelVisible,
+            ),
+          ),
         ),
-        SwitchListTile(
-          key: const ValueKey<String>('toolbar-setting-quickCommandsPanel'),
-          value: controller.showQuickCommandsPanel,
-          onChanged: controller.setQuickCommandsPanelVisible,
-          title: Text(strings.quickCommands),
-          contentPadding: EdgeInsets.zero,
-        ),
-        SwitchListTile(
-          key: const ValueKey<String>('toolbar-setting-sendPanel'),
-          value: controller.showSendPanel,
-          onChanged: controller.setSendPanelVisible,
-          title: Text(strings.sendData),
-          contentPadding: EdgeInsets.zero,
-        ),
-        SwitchListTile(
-          key: const ValueKey<String>('toolbar-setting-autoScroll'),
-          value: controller.autoScroll,
-          onChanged: controller.setAutoScroll,
-          title: Text(strings.autoScroll),
-          contentPadding: EdgeInsets.zero,
+        settingRow(
+          WorkspaceToolbarAction.autoScroll,
+          strings.autoScroll,
+          Align(
+            alignment: Alignment.centerRight,
+            child: Switch(
+              key: const ValueKey<String>('toolbar-setting-autoScroll'),
+              value: controller.autoScroll,
+              onChanged: controller.setAutoScroll,
+            ),
+          ),
         ),
       ],
     );
@@ -1259,14 +1419,12 @@ class _ToolbarSettings extends StatelessWidget {
 class _ToolbarDropdown<T> extends StatelessWidget {
   const _ToolbarDropdown({
     super.key,
-    required this.label,
     required this.value,
     required this.values,
     required this.labelBuilder,
     required this.onChanged,
   });
 
-  final String label;
   final T value;
   final List<T> values;
   final String Function(T value) labelBuilder;
@@ -1274,40 +1432,61 @@ class _ToolbarDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 48,
-      child: Row(
-        children: [
-          Expanded(child: Text(label)),
-          SizedBox(
-            width: 132,
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<T>(
-                value: value,
-                isExpanded: true,
-                alignment: Alignment.centerRight,
-                borderRadius: BorderRadius.circular(6),
-                items: [
-                  for (final item in values)
-                    DropdownMenuItem<T>(
-                      value: item,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        labelBuilder(item),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-                onChanged: (next) {
-                  if (next != null) {
-                    onChanged(next);
-                  }
-                },
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<T>(
+        value: value,
+        isExpanded: true,
+        alignment: Alignment.centerRight,
+        borderRadius: BorderRadius.circular(6),
+        items: [
+          for (final item in values)
+            DropdownMenuItem<T>(
+              value: item,
+              alignment: Alignment.centerRight,
+              child: Text(
+                labelBuilder(item),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-          ),
         ],
+        onChanged: (next) {
+          if (next != null) {
+            onChanged(next);
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _SettingsControlRow extends StatelessWidget {
+  const _SettingsControlRow({
+    super.key,
+    required this.leading,
+    required this.trailing,
+    required this.trailingWidth,
+  });
+
+  final Widget leading;
+  final Widget? trailing;
+  final double trailingWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 44),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        child: Row(
+          children: [
+            Expanded(child: leading),
+            SizedBox(
+              width: trailingWidth,
+              child: trailing ?? const SizedBox.shrink(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1321,27 +1500,71 @@ class _SourceFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final labels = controller.sourceLabels;
-    final strings = controller.strings;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return _SettingsGroup(
       children: [
-        Text(strings.sourceFilter,
-            style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final source in labels)
-              _SettingsFilterChip(
-                label: Text(source),
-                selected: controller.isSourceVisible(source),
+        for (var index = 0; index < labels.length; index++)
+          _SettingsControlRow(
+            key: ValueKey<String>('source-setting-row-${labels[index]}'),
+            trailingWidth: 96,
+            leading: Align(
+              alignment: Alignment.centerLeft,
+              child: _SettingsFilterChip(
+                label: Text(
+                  labels[index],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                selected: controller.isSourceVisible(labels[index]),
                 onSelected: (selected) =>
-                    controller.setLogSourceVisible(source, selected),
+                    controller.setLogSourceVisible(labels[index], selected),
               ),
-          ],
+            ),
+            trailing: labels[index] == 'SYS'
+                ? const Text('ASCII', textAlign: TextAlign.center)
+                : _SourceViewModeControl(
+                    source: labels[index],
+                    controller: controller,
+                  ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SourceViewModeControl extends StatelessWidget {
+  const _SourceViewModeControl({
+    required this.source,
+    required this.controller,
+  });
+
+  final String source;
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return SegmentedButton<ConsoleViewMode>(
+      key: ValueKey<String>('source-view-mode-$source'),
+      segments: const <ButtonSegment<ConsoleViewMode>>[
+        ButtonSegment<ConsoleViewMode>(
+          value: ConsoleViewMode.ascii,
+          label: Tooltip(message: 'ASCII', child: Text('A')),
+        ),
+        ButtonSegment<ConsoleViewMode>(
+          value: ConsoleViewMode.hex,
+          label: Tooltip(message: 'HEX', child: Text('H')),
         ),
       ],
+      selected: <ConsoleViewMode>{controller.viewModeForSource(source)},
+      showSelectedIcon: false,
+      style: const ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(EdgeInsets.zero),
+        minimumSize: WidgetStatePropertyAll<Size>(Size(40, 32)),
+      ),
+      onSelectionChanged: (selected) {
+        controller.setSourceViewMode(source, selected.single);
+      },
     );
   }
 }
@@ -1356,9 +1579,6 @@ class _DisplayItems extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(controller.strings.displayItems,
-            style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 6),
         Wrap(
           spacing: 6,
           runSpacing: 6,
@@ -1411,6 +1631,8 @@ class _SettingsFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return FilterChip(
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       showCheckmark: false,
       avatar: SizedBox.square(
         dimension: 16,
@@ -1423,6 +1645,10 @@ class _SettingsFilterChip extends StatelessWidget {
       label: label,
       selected: selected,
       onSelected: onSelected,
+      side: BorderSide.none,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      backgroundColor: Colors.transparent,
+      selectedColor: scheme.primaryContainer,
     );
   }
 }

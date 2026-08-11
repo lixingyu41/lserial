@@ -25,6 +25,11 @@ Future<List<TransportCapability>> loadPlatformCapabilities() async {
           : 'Web Bluetooth is not available in this browser.',
     ),
     const TransportCapability(
+      type: TransportType.bluetoothClassic,
+      supported: false,
+      reason: 'Bluetooth Classic RFCOMM/SPP is unavailable in browsers.',
+    ),
+    const TransportCapability(
       type: TransportType.tcpClient,
       supported: false,
       reason: 'Browsers do not expose raw TCP sockets to static web apps.',

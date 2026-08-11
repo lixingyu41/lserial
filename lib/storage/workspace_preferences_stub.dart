@@ -12,3 +12,9 @@ Future<void> writeQuickCommandsPanelVisible(bool value) async {}
 Future<List<QuickCommand>?> readQuickCommands() async => null;
 
 Future<void> writeQuickCommands(List<QuickCommand> commands) async {}
+
+Future<({double x, double y})?> readQuickCommandBubblePosition() async => null;
+
+Future<void> writeQuickCommandBubblePosition(
+  ({double x, double y}) position,
+) async {}

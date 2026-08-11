@@ -1,7 +1,9 @@
 import '../domain/connection_config.dart';
 import '../domain/bluetooth_device_info.dart';
+import '../domain/classic_bluetooth_device_info.dart';
 import '../domain/transport.dart';
 import 'adapters/bluetooth_transport.dart' as bluetooth;
+import 'adapters/classic_bluetooth_transport.dart' as classic_bluetooth;
 import 'adapters/serial_transport.dart' as serial;
 import 'adapters/tcp_transport.dart';
 import 'adapters/udp_transport.dart';
@@ -13,6 +15,8 @@ class TransportRegistry {
     return switch (config.type) {
       TransportType.serial => serial.createSerialSession(config),
       TransportType.bluetooth => bluetooth.createBluetoothSession(config),
+      TransportType.bluetoothClassic =>
+        classic_bluetooth.createClassicBluetoothSession(config),
       TransportType.tcpClient => createTcpClientSession(config),
       TransportType.tcpServer => createTcpServerSession(config),
       TransportType.udp => createUdpSession(config),
@@ -37,5 +41,21 @@ class TransportRegistry {
     String? serviceUuid,
   }) {
     return bluetooth.scanBluetoothDeviceStream(serviceUuid: serviceUuid);
+  }
+
+  Future<List<ClassicBluetoothDeviceInfo>> classicBluetoothDevices({
+    Duration timeout = const Duration(seconds: 6),
+  }) {
+    return classic_bluetooth.scanClassicBluetoothDevices(timeout: timeout);
+  }
+
+  Future<ClassicBluetoothDeviceInfo> pairClassicBluetoothDevice(
+    String address,
+  ) {
+    return classic_bluetooth.pairClassicBluetoothDevice(address);
+  }
+
+  Future<void> unpairClassicBluetoothDevice(String address) {
+    return classic_bluetooth.unpairClassicBluetoothDevice(address);
   }
 }

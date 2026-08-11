@@ -12,6 +12,7 @@ external JSObject get _localStorage;
 const _workspaceSettingsKey = 'lserial.workspaceSettings';
 const _quickCommandsPanelVisibleKey = 'lserial.showQuickCommandsPanel';
 const _quickCommandsKey = 'lserial.quickCommands';
+const _quickCommandBubblePositionKey = 'lserial.quickCommandBubblePosition';
 
 Future<WorkspaceSettings?> readWorkspaceSettings() async {
   try {
@@ -107,6 +108,46 @@ Future<void> writeQuickCommands(List<QuickCommand> commands) async {
       'setItem'.toJS,
       _quickCommandsKey.toJS,
       value.toJS,
+    );
+  } on Object {
+    return;
+  }
+}
+
+Future<({double x, double y})?> readQuickCommandBubblePosition() async {
+  try {
+    final value = _localStorage
+        .callMethod<JSString?>(
+          'getItem'.toJS,
+          _quickCommandBubblePositionKey.toJS,
+        )
+        ?.toDart;
+    if (value == null) {
+      return null;
+    }
+    final decoded = jsonDecode(value);
+    if (decoded is! Map) {
+      return null;
+    }
+    final x = decoded['x'];
+    final y = decoded['y'];
+    if (x is! num || y is! num) {
+      return null;
+    }
+    return (x: x.toDouble(), y: y.toDouble());
+  } on Object {
+    return null;
+  }
+}
+
+Future<void> writeQuickCommandBubblePosition(
+  ({double x, double y}) position,
+) async {
+  try {
+    _localStorage.callMethod<JSAny?>(
+      'setItem'.toJS,
+      _quickCommandBubblePositionKey.toJS,
+      jsonEncode(<String, double>{'x': position.x, 'y': position.y}).toJS,
     );
   } on Object {
     return;

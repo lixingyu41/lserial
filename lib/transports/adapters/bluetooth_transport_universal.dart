@@ -34,13 +34,12 @@ Future<List<BluetoothDeviceInfo>> scanBluetoothDevices({
   Duration timeout = const Duration(seconds: 8),
 }) async {
   final result = <BluetoothDeviceInfo>[];
-  final subscription = scanBluetoothDeviceStream(
-    serviceUuid: serviceUuid,
-  ).listen((devices) {
-    result
-      ..clear()
-      ..addAll(devices);
-  });
+  final subscription = scanBluetoothDeviceStream(serviceUuid: serviceUuid)
+      .listen((devices) {
+        result
+          ..clear()
+          ..addAll(devices);
+      });
   await Future<void>.delayed(kIsWeb ? const Duration(seconds: 2) : timeout);
   await subscription.cancel();
   return List<BluetoothDeviceInfo>.unmodifiable(result);
@@ -65,21 +64,18 @@ Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({
       }
 
       try {
-        subscription = UniversalBle.scanStream.listen(
-          (device) async {
-            devices[device.deviceId] = _deviceInfoFor(device);
-            // Chrome Web Bluetooth is permission-picker based for this app.
-            // Keep it as a one-shot browser interaction instead of pretending
-            // it supports a desktop-style continuous RSSI scan.
-            if (kIsWeb && !stopping) {
-              publish();
-              stopping = true;
-              await UniversalBle.stopScan().catchError((_) {});
-              await controller.close();
-            }
-          },
-          onError: controller.addError,
-        );
+        subscription = UniversalBle.scanStream.listen((device) async {
+          devices[device.deviceId] = _deviceInfoFor(device);
+          // Chrome Web Bluetooth is permission-picker based for this app.
+          // Keep it as a one-shot browser interaction instead of pretending
+          // it supports a desktop-style continuous RSSI scan.
+          if (kIsWeb && !stopping) {
+            publish();
+            stopping = true;
+            await UniversalBle.stopScan().catchError((_) {});
+            await controller.close();
+          }
+        }, onError: controller.addError);
 
         final scanConfig = _scanConfig(serviceUuid);
         await UniversalBle.requestPermissions();
@@ -112,15 +108,17 @@ Stream<List<BluetoothDeviceInfo>> scanBluetoothDeviceStream({
 
 _ScanConfig _scanConfig(String? serviceUuid) {
   final filterUuid = serviceUuid?.trim();
-  final serviceFilter =
-      filterUuid == null || filterUuid.isEmpty ? null : <String>[filterUuid];
+  final serviceFilter = filterUuid == null || filterUuid.isEmpty
+      ? null
+      : <String>[filterUuid];
   final optionalServices = <String>{
     for (final profile in _knownBleSerialProfiles) profile.serviceUuid,
     if (serviceFilter != null) ...serviceFilter,
   }.toList(growable: false);
   return _ScanConfig(
-    filter:
-        serviceFilter == null ? null : ScanFilter(withServices: serviceFilter),
+    filter: serviceFilter == null
+        ? null
+        : ScanFilter(withServices: serviceFilter),
     platformConfig: PlatformConfig(
       web: WebOptions(optionalServices: optionalServices),
     ),
@@ -130,14 +128,13 @@ _ScanConfig _scanConfig(String? serviceUuid) {
 List<BluetoothDeviceInfo> _sortedDevices(
   Map<String, BluetoothDeviceInfo> devices,
 ) {
-  return devices.values.toList(growable: false)
-    ..sort((a, b) {
-      final signalCompare = (b.rssi ?? -999).compareTo(a.rssi ?? -999);
-      if (signalCompare != 0) {
-        return signalCompare;
-      }
-      return a.name.compareTo(b.name);
-    });
+  return devices.values.toList(growable: false)..sort((a, b) {
+    final signalCompare = (b.rssi ?? -999).compareTo(a.rssi ?? -999);
+    if (signalCompare != 0) {
+      return signalCompare;
+    }
+    return a.name.compareTo(b.name);
+  });
 }
 
 BluetoothDeviceInfo _deviceInfoFor(BleDevice device) {
@@ -192,8 +189,9 @@ class UniversalBleTransportSession implements TransportSession {
     await UniversalBle.connect(deviceId, timeout: const Duration(seconds: 20));
     _connected = true;
 
-    _connectionSubscription =
-        UniversalBle.connectionStream(deviceId).listen((connected) {
+    _connectionSubscription = UniversalBle.connectionStream(deviceId).listen((
+      connected,
+    ) {
       _connected = connected;
       if (!connected && !_incoming.isClosed) {
         unawaited(_incoming.close());
@@ -272,7 +270,9 @@ class UniversalBleTransportSession implements TransportSession {
   }
 
   BleService? _findServiceOrNull(
-      List<BleService> services, String serviceUuid) {
+    List<BleService> services,
+    String serviceUuid,
+  ) {
     for (final service in services) {
       if (BleUuidParser.compareStrings(service.uuid, serviceUuid)) {
         return service;
@@ -339,7 +339,8 @@ class UniversalBleTransportSession implements TransportSession {
         }
       }
       throw StateError(
-          'BLE write characteristic not found: $requestedWriteUuid');
+        'BLE write characteristic not found: $requestedWriteUuid',
+      );
     }
 
     for (final profile in _knownBleSerialProfiles) {
@@ -412,7 +413,8 @@ class UniversalBleTransportSession implements TransportSession {
         : _findCharacteristic(service, requestedWriteUuid);
     if (write == null || !_canWrite(write)) {
       throw StateError(
-          'No writable BLE characteristic found in ${service.uuid}.');
+        'No writable BLE characteristic found in ${service.uuid}.',
+      );
     }
 
     BleCharacteristic? notify;
@@ -480,8 +482,9 @@ class UniversalBleTransportSession implements TransportSession {
   bool _resolveWriteMode(BleCharacteristic characteristic) {
     final properties = characteristic.properties;
     final supportsWrite = properties.contains(CharacteristicProperty.write);
-    final supportsWriteWithoutResponse =
-        properties.contains(CharacteristicProperty.writeWithoutResponse);
+    final supportsWriteWithoutResponse = properties.contains(
+      CharacteristicProperty.writeWithoutResponse,
+    );
     if (!supportsWrite && !supportsWriteWithoutResponse) {
       throw StateError(
         'BLE characteristic ${characteristic.uuid} does not support write.',
@@ -506,14 +509,15 @@ class UniversalBleTransportSession implements TransportSession {
     }
 
     final characteristic = _findCharacteristic(service, characteristicUuid);
-    _valueSubscription = UniversalBle.characteristicValueStream(
-      deviceId,
-      characteristic.uuid,
-    ).listen((value) {
-      if (!_incoming.isClosed) {
-        _incoming.add(value);
-      }
-    });
+    _valueSubscription =
+        UniversalBle.characteristicValueStream(
+          deviceId,
+          characteristic.uuid,
+        ).listen((value) {
+          if (!_incoming.isClosed) {
+            _incoming.add(value);
+          }
+        });
 
     final properties = characteristic.properties;
     if (properties.contains(CharacteristicProperty.notify)) {
@@ -556,10 +560,7 @@ class _KnownBleSerialProfile {
 }
 
 class _ScanConfig {
-  const _ScanConfig({
-    required this.filter,
-    required this.platformConfig,
-  });
+  const _ScanConfig({required this.filter, required this.platformConfig});
 
   final ScanFilter? filter;
   final PlatformConfig platformConfig;

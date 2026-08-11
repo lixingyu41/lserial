@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/app/localization.dart';
 import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/application/workspace_controller.dart';
 import 'package:lserial/application/workspace_settings.dart';
 import 'package:lserial/core/encoding/data_format.dart';
+import 'package:lserial/domain/classic_bluetooth_diagnostic.dart';
+import 'package:lserial/domain/classic_bluetooth_device_info.dart';
 import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/domain/quick_command.dart';
 import 'package:lserial/domain/transport.dart';
@@ -86,6 +90,48 @@ void main() {
 
     expect(controller.sourceLabels, contains('COM1'));
     expect(controller.visibleSources, contains('COM1'));
+  });
+
+  test('source filter only changes display and preserves received history', () {
+    final controller = WorkspaceController(
+      loadWorkspaceSettings: () async => null,
+      saveWorkspaceSettings: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    final session = controller.activeSession;
+    session.status = TransportStatus.connected;
+
+    final first = DataFrame(
+      sequence: 1,
+      timestamp: DateTime(2026),
+      direction: FrameDirection.rx,
+      bytes: <int>[0x41],
+      source: 'COM17',
+    );
+    session.logBuffer.addAll(<DataFrame>[first]);
+    session.displaySnapshot.value = session.logBuffer.snapshot(paused: false);
+
+    controller.setLogSourceVisible('COM17', false);
+    expect(session.status, TransportStatus.connected);
+    expect(controller.displaySnapshot.value.frames, isEmpty);
+
+    final second = DataFrame(
+      sequence: 2,
+      timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+      direction: FrameDirection.rx,
+      bytes: <int>[0x42],
+      source: 'COM17',
+    );
+    session.logBuffer.addAll(<DataFrame>[second]);
+    session.displaySnapshot.value = session.logBuffer.snapshot(paused: false);
+
+    expect(session.status, TransportStatus.connected);
+    expect(session.logBuffer.totalFrames, 2);
+    expect(controller.displaySnapshot.value.totalFrames, 2);
+    expect(controller.displaySnapshot.value.frames, isEmpty);
+
+    controller.setLogSourceVisible('COM17', true);
+    expect(controller.displaySnapshot.value.frames, <DataFrame>[first, second]);
   });
 
   test('known source snapshot updates do not notify whole workspace', () {
@@ -241,6 +287,52 @@ void main() {
     });
   });
 
+  test('source view modes are independent and persist through JSON', () {
+    const settings = WorkspaceSettings(
+      viewMode: ConsoleViewMode.ascii,
+      sourceViewModes: <String, ConsoleViewMode>{
+        'COM17': ConsoleViewMode.ascii,
+        'TCP Server 0.0.0.0:9100': ConsoleViewMode.hex,
+      },
+    );
+
+    final restored = WorkspaceSettings.fromJson(settings.toJson());
+
+    expect(restored.sourceViewModes, settings.sourceViewModes);
+    expect(
+      WorkspaceSettings.fromJson(<String, Object?>{
+        'sourceViewModes': <String, Object?>{
+          'COM17': 'invalid',
+          'SYS': 'hex',
+          'TCP': 'hex',
+        },
+      }).sourceViewModes,
+      <String, ConsoleViewMode>{'TCP': ConsoleViewMode.hex},
+    );
+  });
+
+  test('workspace controls receive format per source', () {
+    final savedSettings = <WorkspaceSettings>[];
+    final controller = WorkspaceController(
+      saveWorkspaceSettings: (settings) async {
+        savedSettings.add(settings);
+      },
+    );
+    addTearDown(controller.dispose);
+
+    controller.setSourceViewMode('COM17', ConsoleViewMode.hex);
+
+    expect(controller.viewModeForSource('COM17'), ConsoleViewMode.hex);
+    expect(controller.viewModeForSource('TCP'), ConsoleViewMode.ascii);
+    expect(savedSettings.last.sourceViewModes['COM17'], ConsoleViewMode.hex);
+
+    controller.setViewMode(ConsoleViewMode.hex);
+
+    expect(controller.viewModeForSource('COM17'), ConsoleViewMode.hex);
+    expect(controller.viewModeForSource('TCP'), ConsoleViewMode.hex);
+    expect(controller.sourceViewModes, isEmpty);
+  });
+
   test('MCP is enabled by default and persists through workspace JSON', () {
     const defaults = WorkspaceSettings();
     expect(defaults.mcpEnabled, isTrue);
@@ -250,6 +342,14 @@ void main() {
     });
     expect(disabled.mcpEnabled, isFalse);
     expect(disabled.toJson()['mcpEnabled'], isFalse);
+  });
+
+  test('Windows socket errors distinguish reserved and occupied ports', () {
+    expect(
+      AppStrings.zh.windowsSocketErrorMeaning(10013),
+      contains('Windows 保留'),
+    );
+    expect(AppStrings.zh.windowsSocketErrorMeaning(10048), contains('被占用'));
   });
 
   test('hiding connection panel restores its toolbar reopen action', () {
@@ -357,6 +457,85 @@ void main() {
     addTearDown(controller.dispose);
 
     expect(controller.lineEnding, LineEnding.lf);
+  });
+
+  test(
+    'classic Bluetooth scan, pair, and unpair update session state',
+    () async {
+      final registry = _ClassicBluetoothRegistry();
+      final controller = SessionController(registry: registry);
+      addTearDown(controller.dispose);
+
+      await controller.scanClassicBluetoothDevices();
+      expect(
+        controller.classicBluetoothDevices.single.address,
+        '01:23:45:67:89:AB',
+      );
+      expect(controller.classicBluetoothDevices.single.paired, isFalse);
+
+      expect(
+        await controller.pairClassicBluetoothDevice('01:23:45:67:89:AB'),
+        isTrue,
+      );
+      expect(controller.config.bluetoothClassic.address, '01:23:45:67:89:AB');
+      expect(controller.config.bluetoothClassic.deviceName, 'SPP fixture');
+      expect(controller.classicBluetoothDevices.single.paired, isTrue);
+
+      expect(
+        await controller.unpairClassicBluetoothDevice('01:23:45:67:89:AB'),
+        isTrue,
+      );
+      expect(controller.classicBluetoothDevices.single.paired, isFalse);
+      expect(registry.unpairedAddress, '01:23:45:67:89:AB');
+    },
+  );
+
+  test(
+    'classic Bluetooth failure is retained and written to SYS log',
+    () async {
+      final controller = SessionController(
+        registry: const _FailingClassicBluetoothRegistry(),
+      );
+      addTearDown(controller.dispose);
+
+      final paired = await controller.pairClassicBluetoothDevice(
+        '01:23:45:67:89:AB',
+      );
+
+      expect(paired, isFalse);
+      expect(controller.classicBluetoothDiagnostics, hasLength(2));
+      expect(controller.classicBluetoothDiagnostics.first.level, 'info');
+      final diagnostic = controller.classicBluetoothDiagnostics.last;
+      expect(diagnostic.operation, 'pair');
+      expect(diagnostic.stage, 'authentication');
+      expect(diagnostic.nativeCodeType, 'win32');
+      expect(diagnostic.nativeCode, 1460);
+      expect(diagnostic.elapsedMs, 30000);
+      expect(diagnostic.suggestion, contains('配对模式'));
+      final systemText = controller.logBuffer
+          .snapshot(paused: false)
+          .frames
+          .map((frame) => utf8.decode(frame.bytes))
+          .join('\n');
+      expect(systemText, contains('[经典蓝牙][配对][Windows设备认证][失败]'));
+      expect(systemText, contains('win32=1460/0x000005B4'));
+    },
+  );
+
+  test('classic Bluetooth pair retains the scanned device name', () async {
+    final controller = SessionController(
+      registry: _ClassicBluetoothRegistry(pairName: ''),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.scanClassicBluetoothDevices();
+    expect(
+      await controller.pairClassicBluetoothDevice('01:23:45:67:89:AB'),
+      isTrue,
+    );
+
+    expect(controller.classicBluetoothDevices.single.name, 'SPP fixture');
+    expect(controller.config.bluetoothClassic.deviceName, 'SPP fixture');
   });
 
   test('quick commands load from preferences during initialization', () async {
@@ -489,4 +668,65 @@ class _NoPortsRegistry extends TransportRegistry {
 
   @override
   Future<List<String>> serialPorts() async => const <String>[];
+}
+
+class _ClassicBluetoothRegistry extends TransportRegistry {
+  _ClassicBluetoothRegistry({this.pairName = 'SPP fixture'});
+
+  final String pairName;
+  String? unpairedAddress;
+
+  @override
+  Future<List<ClassicBluetoothDeviceInfo>> classicBluetoothDevices({
+    Duration timeout = const Duration(seconds: 6),
+  }) async => const <ClassicBluetoothDeviceInfo>[
+    ClassicBluetoothDeviceInfo(
+      address: '01:23:45:67:89:AB',
+      name: 'SPP fixture',
+      paired: false,
+      connected: false,
+      remembered: false,
+    ),
+  ];
+
+  @override
+  Future<ClassicBluetoothDeviceInfo> pairClassicBluetoothDevice(
+    String address,
+  ) async => ClassicBluetoothDeviceInfo(
+    address: address,
+    name: pairName,
+    paired: true,
+    connected: false,
+    remembered: true,
+  );
+
+  @override
+  Future<void> unpairClassicBluetoothDevice(String address) async {
+    unpairedAddress = address;
+  }
+}
+
+class _FailingClassicBluetoothRegistry extends TransportRegistry {
+  const _FailingClassicBluetoothRegistry();
+
+  @override
+  Future<ClassicBluetoothDeviceInfo> pairClassicBluetoothDevice(
+    String address,
+  ) async {
+    throw ClassicBluetoothOperationException(
+      ClassicBluetoothDiagnostic(
+        id: 0,
+        timestamp: DateTime(2026),
+        operation: 'pair',
+        stage: 'authentication',
+        level: 'error',
+        address: address,
+        nativeCodeType: 'win32',
+        nativeCode: 1460,
+        elapsedMs: 30000,
+        message: 'The operation timed out.',
+        suggestion: '确认设备处于配对模式后重试。',
+      ),
+    );
+  }
 }

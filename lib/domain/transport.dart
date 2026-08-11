@@ -1,4 +1,11 @@
-enum TransportType { serial, bluetooth, tcpClient, tcpServer, udp }
+enum TransportType {
+  serial,
+  bluetooth,
+  bluetoothClassic,
+  tcpClient,
+  tcpServer,
+  udp,
+}
 
 enum TransportStatus {
   disconnected,
@@ -45,6 +52,7 @@ extension TransportTypeLabel on TransportType {
   String get label => switch (this) {
     TransportType.serial => 'Serial',
     TransportType.bluetooth => 'Bluetooth',
+    TransportType.bluetoothClassic => 'Bluetooth Classic',
     TransportType.tcpClient => 'TCP Client',
     TransportType.tcpServer => 'TCP Server',
     TransportType.udp => 'UDP',

@@ -26,8 +26,9 @@ Future<String?> requestSerialPort() async {
   if (serial == null) {
     throw UnsupportedError('Web Serial is not available in this browser.');
   }
-  _selectedPort =
-      await serial.callMethod<JSPromise<JSObject>>('requestPort'.toJS).toDart;
+  _selectedPort = await serial
+      .callMethod<JSPromise<JSObject>>('requestPort'.toJS)
+      .toDart;
   return webSerialSelectedPortOption;
 }
 
@@ -67,16 +68,18 @@ class WebSerialTransportSession implements TransportSession {
       throw StateError('Select a Web Serial port first.');
     }
 
-    final options = <String, Object>{
-      'baudRate': config.serial.baudRate,
-      'dataBits': config.serial.dataBits,
-      'stopBits': config.serial.stopBits,
-      'parity': switch (config.serial.parity) {
-        SerialParity.none => 'none',
-        SerialParity.odd => 'odd',
-        SerialParity.even => 'even',
-      },
-    }.jsify() as JSObject;
+    final options =
+        <String, Object>{
+              'baudRate': config.serial.baudRate,
+              'dataBits': config.serial.dataBits,
+              'stopBits': config.serial.stopBits,
+              'parity': switch (config.serial.parity) {
+                SerialParity.none => 'none',
+                SerialParity.odd => 'odd',
+                SerialParity.even => 'even',
+              },
+            }.jsify()
+            as JSObject;
 
     await port.callMethod<JSPromise<JSAny?>>('open'.toJS, options).toDart;
     _port = port;

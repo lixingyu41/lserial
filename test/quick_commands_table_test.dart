@@ -42,7 +42,11 @@ void main() {
           body: SizedBox(
             width: 360,
             height: 320,
-            child: QuickCommandsPanel(controller: controller),
+            child: QuickCommandsPanel(
+              controller: controller,
+              loadBubblePosition: () async => null,
+              saveBubblePosition: (_) async {},
+            ),
           ),
         ),
       ),
@@ -56,7 +60,27 @@ void main() {
     expect(find.byTooltip(controller.strings.send), findsNWidgets(3));
     expect(find.byTooltip(controller.strings.edit), findsNothing);
     expect(find.byTooltip(controller.strings.delete), findsNothing);
+    final bubble = find.byKey(
+      const ValueKey<String>('quick-command-action-bubble'),
+    );
+    final toggle = find.byKey(
+      const ValueKey<String>('quick-command-bubble-toggle'),
+    );
+    expect(tester.getSize(bubble), const Size.square(36));
+    expect(find.text(controller.strings.quickCommands), findsNothing);
+    expect(find.byTooltip(controller.strings.addCommand), findsNothing);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(tester.getSize(bubble), const Size(108, 36));
     expect(find.byTooltip(controller.strings.addCommand), findsOneWidget);
+    expect(
+      find.byTooltip(controller.strings.quickCommandImportExport),
+      findsOneWidget,
+    );
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    await tester.drag(bubble, const Offset(260, 230));
+    await tester.pumpAndSettle();
     expect(find.text('A'), findsNWidgets(2));
     expect(find.text('H'), findsOneWidget);
     expect(find.byType(ReorderableListView), findsOneWidget);
@@ -203,6 +227,68 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(controller.strings.edit), findsOneWidget);
     expect(find.text(controller.strings.delete), findsOneWidget);
+  });
+
+  testWidgets('quick command action bubble persists its dragged position', (
+    tester,
+  ) async {
+    final controller = SessionController();
+    addTearDown(controller.dispose);
+    ({double x, double y})? savedPosition;
+
+    Widget buildPanel(Key key) {
+      return MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 300,
+            height: 240,
+            child: QuickCommandsPanel(
+              key: key,
+              controller: controller,
+              loadBubblePosition: () async => savedPosition,
+              saveBubblePosition: (position) async {
+                savedPosition = position;
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildPanel(const ValueKey<String>('first-panel')));
+    await tester.pumpAndSettle();
+
+    final bubble = find.byKey(
+      const ValueKey<String>('quick-command-action-bubble'),
+    );
+    expect(tester.getTopLeft(bubble), Offset.zero);
+    expect(tester.getSize(bubble), const Size.square(36));
+    expect(
+      tester
+          .widget<ReorderableListView>(find.byType(ReorderableListView))
+          .padding,
+      EdgeInsets.zero,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('quick-command-bubble-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(bubble), const Size(108, 36));
+
+    await tester.drag(bubble, const Offset(120, 80));
+    await tester.pumpAndSettle();
+    final draggedPosition = tester.getTopLeft(bubble);
+    expect(draggedPosition.dx, greaterThan(0));
+    expect(draggedPosition.dy, greaterThan(0));
+    expect(savedPosition, isNotNull);
+
+    await tester.pumpWidget(
+      buildPanel(const ValueKey<String>('restored-panel')),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(bubble), draggedPosition);
+    expect(tester.getSize(bubble), const Size.square(36));
   });
 }
 

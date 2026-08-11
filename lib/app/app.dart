@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../application/workspace_controller.dart';
 import '../mcp/lserial_mcp_service.dart';
@@ -15,10 +17,12 @@ class CommToolApp extends StatefulWidget {
   State<CommToolApp> createState() => _CommToolAppState();
 }
 
-class _CommToolAppState extends State<CommToolApp> {
+class _CommToolAppState extends State<CommToolApp> with WindowListener {
   late final WorkspaceController controller;
   late final LSerialMcpService mcpService;
   late String _title;
+  bool _windowListenerAttached = false;
+  bool _closingWindow = false;
 
   @override
   void initState() {
@@ -29,11 +33,16 @@ class _CommToolAppState extends State<CommToolApp> {
     _title = controller.windowTitle;
     controller.addListener(_syncWindowTitle);
     unawaited(_initialize());
+    unawaited(_initializeWindowLifecycle());
     _syncWindowTitle();
   }
 
   @override
   void dispose() {
+    if (_windowListenerAttached) {
+      windowManager.removeListener(this);
+      unawaited(windowManager.setPreventClose(false));
+    }
     controller.removeListener(_syncWindowTitle);
     mcpService.dispose();
     controller.dispose();
@@ -45,6 +54,52 @@ class _CommToolAppState extends State<CommToolApp> {
   Future<void> _initialize() async {
     await controller.initialize();
     await mcpService.setEnabled(controller.mcpEnabled);
+  }
+
+  Future<void> _initializeWindowLifecycle() async {
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.windows &&
+            defaultTargetPlatform != TargetPlatform.macOS &&
+            defaultTargetPlatform != TargetPlatform.linux)) {
+      return;
+    }
+    try {
+      await windowManager.ensureInitialized();
+      if (!mounted) {
+        return;
+      }
+      windowManager.addListener(this);
+      _windowListenerAttached = true;
+      await windowManager.setPreventClose(true);
+    } on Object {
+      // Native process teardown still releases every socket if unavailable.
+    }
+  }
+
+  @override
+  void onWindowClose() {
+    unawaited(_shutdownAndCloseWindow());
+  }
+
+  Future<void> _shutdownAndCloseWindow() async {
+    if (_closingWindow) {
+      return;
+    }
+    _closingWindow = true;
+    try {
+      await Future.wait<void>([
+        mcpService.stop(),
+        controller.shutdown(),
+      ]).timeout(const Duration(seconds: 2));
+    } on Object {
+      // Destroying the process is the final handle cleanup fallback.
+    }
+    try {
+      await windowManager.setPreventClose(false);
+      await windowManager.destroy();
+    } on Object {
+      _closingWindow = false;
+    }
   }
 
   void _syncWindowTitle() {

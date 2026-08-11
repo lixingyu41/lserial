@@ -1,9 +1,6 @@
 import '../core/encoding/data_format.dart';
 
-enum QuickCommandImportMode {
-  replace,
-  append,
-}
+enum QuickCommandImportMode { replace, append }
 
 class QuickCommand {
   const QuickCommand({

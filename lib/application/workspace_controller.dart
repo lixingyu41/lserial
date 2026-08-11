@@ -36,6 +36,7 @@ class WorkspaceController extends ChangeNotifier {
   final FrameFormatter formatter = const FrameFormatter();
   final ValueNotifier<LogSnapshot> displaySnapshot =
       ValueNotifier<LogSnapshot>(LogSnapshot.empty());
+  LogSnapshot _unfilteredSnapshot = LogSnapshot.empty();
 
   int activeSessionIndex = 0;
   int sendTargetIndex = 0;
@@ -58,6 +59,8 @@ class WorkspaceController extends ChangeNotifier {
   AppLanguage language = AppLanguage.zh;
 
   final Set<String> _hiddenSources = <String>{};
+  final Map<String, ConsoleViewMode> _sourceViewModes =
+      <String, ConsoleViewMode>{};
   final Set<WorkspaceToolbarAction> _hiddenToolbarActions =
       <WorkspaceToolbarAction>{WorkspaceToolbarAction.autoScroll};
   final Set<String> _sourceLabels = <String>{'SYS'};
@@ -65,6 +68,7 @@ class WorkspaceController extends ChangeNotifier {
   int _revision = 0;
   bool _settingsChanged = false;
   LSerialMcpService? _mcpService;
+  Future<void>? _shutdownFuture;
 
   LSerialMcpService? get mcpService => _mcpService;
 
@@ -139,6 +143,20 @@ class WorkspaceController extends ChangeNotifier {
         .where((source) => !_hiddenSources.contains(source))
         .toSet();
   }
+
+  Map<String, ConsoleViewMode> get sourceViewModes =>
+      Map<String, ConsoleViewMode>.unmodifiable(_sourceViewModes);
+
+  ConsoleViewMode viewModeForSource(String source) {
+    final label = source.trim();
+    if (label == 'SYS') {
+      return ConsoleViewMode.ascii;
+    }
+    return _sourceViewModes[label] ?? viewMode;
+  }
+
+  ConsoleFormatOptions formatOptionsForSource(String source) =>
+      formatOptions.copyWith(viewMode: viewModeForSource(source));
 
   List<int> get connectedSessionIndexes {
     final indexes = <int>[];
@@ -336,12 +354,23 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void setViewMode(ConsoleViewMode mode) {
-    if (viewMode == mode) {
+    if (viewMode == mode && _sourceViewModes.isEmpty) {
       return;
     }
     viewMode = mode;
+    _sourceViewModes.clear();
     _persistSettings();
     _publishSnapshot(force: true);
+    notifyListeners();
+  }
+
+  void setSourceViewMode(String source, ConsoleViewMode mode) {
+    final label = source.trim();
+    if (label.isEmpty || label == 'SYS' || viewModeForSource(label) == mode) {
+      return;
+    }
+    _sourceViewModes[label] = mode;
+    _persistSettings();
     notifyListeners();
   }
 
@@ -536,6 +565,7 @@ class WorkspaceController extends ChangeNotifier {
     }
     _persistSettings();
     notifyListeners();
+    _publishVisibleSnapshot();
   }
 
   void toggleLogSource(String source) {
@@ -554,7 +584,12 @@ class WorkspaceController extends ChangeNotifier {
     try {
       final text = displaySnapshot.value.frames
           .where((frame) => visibleSources.contains(_sourceKey(frame)))
-          .map((frame) => formatter.formatFrame(frame, formatOptions))
+          .map(
+            (frame) => formatter.formatFrame(
+              frame,
+              formatOptionsForSource(_sourceKey(frame)),
+            ),
+          )
           .join('\n');
       final result = await exportLogText('$text\n');
       activeSession.appendSystemMessage(strings.exportResult(result));
@@ -586,7 +621,11 @@ class WorkspaceController extends ChangeNotifier {
       return sourcesChanged;
     }
     _revision++;
-    displaySnapshot.value = _buildSnapshot(paused: pauseDisplay);
+    _unfilteredSnapshot = _buildSnapshot(paused: pauseDisplay);
+    displaySnapshot.value = _filterSnapshot(
+      _unfilteredSnapshot,
+      revision: _revision,
+    );
     return sourcesChanged;
   }
 
@@ -631,6 +670,30 @@ class WorkspaceController extends ChangeNotifier {
       droppedFrames: droppedFrames + (overflow > 0 ? overflow : 0),
       droppedBytes: droppedBytes,
       paused: paused,
+    );
+  }
+
+  void _publishVisibleSnapshot() {
+    _revision++;
+    displaySnapshot.value = _filterSnapshot(
+      _unfilteredSnapshot,
+      revision: _revision,
+    );
+  }
+
+  LogSnapshot _filterSnapshot(LogSnapshot snapshot, {required int revision}) {
+    final visibleSourceLabels = visibleSources;
+    final frames = snapshot.frames
+        .where((frame) => visibleSourceLabels.contains(_sourceKey(frame)))
+        .toList(growable: false);
+    return LogSnapshot(
+      revision: revision,
+      frames: List<DataFrame>.unmodifiable(frames),
+      totalFrames: snapshot.totalFrames,
+      totalBytes: snapshot.totalBytes,
+      droppedFrames: snapshot.droppedFrames,
+      droppedBytes: snapshot.droppedBytes,
+      paused: snapshot.paused,
     );
   }
 
@@ -730,6 +793,8 @@ class WorkspaceController extends ChangeNotifier {
         logFontSize: logFontSize,
         language: language,
         hiddenSources: Set<String>.unmodifiable(_hiddenSources),
+        sourceViewModes:
+            Map<String, ConsoleViewMode>.unmodifiable(_sourceViewModes),
         hiddenToolbarActions:
             Set<WorkspaceToolbarAction>.unmodifiable(_hiddenToolbarActions),
       );
@@ -755,6 +820,9 @@ class WorkspaceController extends ChangeNotifier {
     _hiddenSources
       ..clear()
       ..addAll(settings.hiddenSources);
+    _sourceViewModes
+      ..clear()
+      ..addAll(settings.sourceViewModes);
     _hiddenToolbarActions
       ..clear()
       ..addAll(settings.hiddenToolbarActions);
@@ -770,6 +838,12 @@ class WorkspaceController extends ChangeNotifier {
   void _persistSettings() {
     _settingsChanged = true;
     unawaited(_saveWorkspaceSettings(_settingsSnapshot()));
+  }
+
+  Future<void> shutdown() {
+    return _shutdownFuture ??= Future.wait<void>(
+      sessions.map((session) => session.shutdown()),
+    );
   }
 
   @override

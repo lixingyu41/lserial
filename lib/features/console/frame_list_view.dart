@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
+import '../../core/encoding/data_format.dart';
 import '../../domain/data_frame.dart';
 import '../../protocol/frame_formatter.dart';
 import '../../storage/log_buffer.dart';
@@ -16,6 +17,7 @@ class FrameListView extends StatefulWidget {
     required this.autoScroll,
     required this.pauseDisplay,
     required this.filter,
+    this.sourceViewModes = const <String, ConsoleViewMode>{},
     this.visibleSources,
     this.bottomPadding = 0,
   });
@@ -27,6 +29,7 @@ class FrameListView extends StatefulWidget {
   final bool autoScroll;
   final bool pauseDisplay;
   final String filter;
+  final Map<String, ConsoleViewMode> sourceViewModes;
   final Set<String>? visibleSources;
   final double bottomPadding;
 
@@ -48,8 +51,11 @@ class _FrameListViewState extends State<FrameListView> {
   int? _filteredRevision;
   String? _filteredFilter;
   ConsoleFormatOptions? _filteredOptions;
+  Map<String, ConsoleViewMode>? _filteredSourceViewModes;
   Set<String>? _filteredVisibleSources;
   final Set<DataFrame> _renderedFrames = HashSet<DataFrame>.identity();
+  List<DataFrame>? _indexedFrames;
+  Map<DataFrame, int>? _frameIndexes;
   bool _scrollPending = false;
   int _scrollGeneration = 0;
   int _scrollRequest = 0;
@@ -58,6 +64,10 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   void didUpdateWidget(FrameListView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final sourceViewModesChanged = !_sameSourceViewModes(
+      widget.sourceViewModes,
+      oldWidget.sourceViewModes,
+    );
     if (!widget.autoScroll &&
         !widget.pauseDisplay &&
         widget.snapshot.revision != oldWidget.snapshot.revision) {
@@ -66,11 +76,12 @@ class _FrameListViewState extends State<FrameListView> {
     if (widget.snapshot.revision != oldWidget.snapshot.revision) {
       _pruneFrameCaches();
     }
-    if (widget.options != oldWidget.options) {
+    if (widget.options != oldWidget.options || sourceViewModesChanged) {
       _formattedFrameCache.clear();
       _lowerFormattedFrameCache.clear();
     }
-    if (widget.options.viewMode != oldWidget.options.viewMode) {
+    if (widget.options.viewMode != oldWidget.options.viewMode ||
+        sourceViewModesChanged) {
       _payloadCache.clear();
     }
     if ((!widget.autoScroll && oldWidget.autoScroll) ||
@@ -95,11 +106,7 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   Widget build(BuildContext context) {
     final frames = _filteredFrames();
-    final frameIndexes = HashMap<DataFrame, int>.identity();
-    frameIndexes.addAll(<DataFrame, int>{
-      for (var index = 0; index < frames.length; index++) frames[index]: index,
-    });
-    final options = widget.options;
+    final frameIndexes = _indexesFor(frames);
     final formatter = widget.formatter;
     final filter = widget.filter.trim();
     return SelectionArea(
@@ -107,15 +114,18 @@ class _FrameListViewState extends State<FrameListView> {
         controller: scroll,
         padding: EdgeInsets.only(bottom: widget.bottomPadding),
         itemCount: frames.length,
-        findChildIndexCallback: (key) {
-          if (key is GlobalObjectKey<State<StatefulWidget>> &&
-              key.value is DataFrame) {
-            return frameIndexes[key.value as DataFrame];
-          }
-          return null;
-        },
+        findChildIndexCallback: frameIndexes == null
+            ? null
+            : (key) {
+                if (key is GlobalObjectKey<State<StatefulWidget>> &&
+                    key.value is DataFrame) {
+                  return frameIndexes[key.value as DataFrame];
+                }
+                return null;
+              },
         itemBuilder: (context, index) {
           final frame = frames[index];
+          final options = _optionsForFrame(frame, formatter);
           _renderedFrames.add(frame);
           return DecoratedBox(
             key: _frameKey(frame),
@@ -145,10 +155,18 @@ class _FrameListViewState extends State<FrameListView> {
                 softWrap: true,
                 style: TextStyle(
                   fontFamily: 'Consolas',
+                  fontFamilyFallback: const <String>['Noto Sans SC'],
                   fontSize: widget.logFontSize,
                   letterSpacing: 0,
                   height: 1.35,
                   color: _textColor(context, frame),
+                ),
+                strutStyle: StrutStyle(
+                  fontFamily: 'Consolas',
+                  fontFamilyFallback: const <String>['Noto Sans SC'],
+                  fontSize: widget.logFontSize,
+                  height: 1.35,
+                  forceStrutHeight: true,
                 ),
               ),
             ),
@@ -158,6 +176,24 @@ class _FrameListViewState extends State<FrameListView> {
     );
   }
 
+  Map<DataFrame, int>? _indexesFor(List<DataFrame> frames) {
+    if (widget.autoScroll) {
+      _indexedFrames = null;
+      _frameIndexes = null;
+      return null;
+    }
+    if (identical(_indexedFrames, frames) && _frameIndexes != null) {
+      return _frameIndexes;
+    }
+    final indexes = HashMap<DataFrame, int>.identity();
+    for (var index = 0; index < frames.length; index++) {
+      indexes[frames[index]] = index;
+    }
+    _indexedFrames = frames;
+    _frameIndexes = indexes;
+    return indexes;
+  }
+
   List<DataFrame> _filteredFrames() {
     final filter = widget.filter.trim().toLowerCase();
     final visibleSources = widget.visibleSources;
@@ -165,6 +201,10 @@ class _FrameListViewState extends State<FrameListView> {
         _filteredRevision == widget.snapshot.revision &&
         _filteredFilter == filter &&
         _filteredOptions == widget.options &&
+        _sameSourceViewModes(
+          _filteredSourceViewModes,
+          widget.sourceViewModes,
+        ) &&
         _sameSources(_filteredVisibleSources, visibleSources)) {
       return _filteredFramesCache!;
     }
@@ -174,6 +214,9 @@ class _FrameListViewState extends State<FrameListView> {
     _filteredRevision = widget.snapshot.revision;
     _filteredFilter = filter;
     _filteredOptions = widget.options;
+    _filteredSourceViewModes = Map<String, ConsoleViewMode>.unmodifiable(
+      widget.sourceViewModes,
+    );
     _filteredVisibleSources = visibleSources == null
         ? null
         : Set<String>.unmodifiable(visibleSources);
@@ -188,7 +231,6 @@ class _FrameListViewState extends State<FrameListView> {
       return widget.snapshot.frames;
     }
     final formatter = widget.formatter;
-    final options = widget.options;
     return widget.snapshot.frames
         .where((frame) {
           if (visibleSources != null &&
@@ -201,10 +243,19 @@ class _FrameListViewState extends State<FrameListView> {
           return _lowerFormattedFrame(
             frame,
             formatter,
-            options,
+            _optionsForFrame(frame, formatter),
           ).contains(filter);
         })
         .toList(growable: false);
+  }
+
+  ConsoleFormatOptions _optionsForFrame(
+    DataFrame frame,
+    FrameFormatter formatter,
+  ) {
+    final source = formatter.sourceToken(frame);
+    final mode = widget.sourceViewModes[source];
+    return mode == null ? widget.options : widget.options.copyWith(viewMode: mode);
   }
 
   Color _rowColor(BuildContext context, DataFrame frame) {
@@ -244,7 +295,11 @@ class _FrameListViewState extends State<FrameListView> {
         _highlightedTextSpans(
           '${_timestampText(frame, formatter)} ',
           filter,
-          TextStyle(color: tokenColor, fontWeight: FontWeight.w600),
+          TextStyle(
+            color: tokenColor,
+            fontWeight: FontWeight.w600,
+            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+          ),
           highlightStyle,
         ),
       );
@@ -529,6 +584,24 @@ class _FrameListViewState extends State<FrameListView> {
     }
     for (final source in left) {
       if (!right.contains(source)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _sameSourceViewModes(
+    Map<String, ConsoleViewMode>? left,
+    Map<String, ConsoleViewMode>? right,
+  ) {
+    if (left == null || right == null) {
+      return left == right;
+    }
+    if (left.length != right.length) {
+      return false;
+    }
+    for (final entry in left.entries) {
+      if (right[entry.key] != entry.value) {
         return false;
       }
     }
