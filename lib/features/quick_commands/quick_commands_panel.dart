@@ -667,6 +667,7 @@ class _QuickCommandList extends StatelessWidget {
       controller: controller,
       command: command,
       onSend: controller.sendQuickCommand,
+      onFill: controller.fillQuickCommand,
       onEdit: onEdit,
       onRemove: controller.removeQuickCommand,
       columnWidths: effectiveWidths,
@@ -704,9 +705,10 @@ class _QuickCommandList extends StatelessWidget {
 
 const _quickCommandRowHeight = 30.0;
 const _quickCommandFormatWidth = 36.0;
+const _quickCommandFillWidth = 36.0;
 const _quickCommandSendWidth = 36.0;
 const _quickCommandFixedColumnsWidth =
-    _quickCommandFormatWidth + _quickCommandSendWidth;
+    _quickCommandFormatWidth + _quickCommandFillWidth + _quickCommandSendWidth;
 
 class _QuickCommandColumnWidths {
   const _QuickCommandColumnWidths({this.name = 110, this.content = 180});
@@ -717,6 +719,8 @@ class _QuickCommandColumnWidths {
   double get flexibleTotal => name + content;
 
   double get format => _quickCommandFormatWidth;
+
+  double get fill => _quickCommandFillWidth;
 
   double get send => _quickCommandSendWidth;
 
@@ -818,6 +822,11 @@ class _QuickCommandHeader extends StatelessWidget {
                 centered: true,
                 horizontalPadding: 3,
               ),
+            ),
+            SizedBox(
+              key: const ValueKey<String>('quick-command-header-fill'),
+              width: _quickCommandFillWidth,
+              child: _QuickCommandActionHeader(strings.fill),
             ),
             SizedBox(
               key: const ValueKey<String>('quick-command-header-send'),
@@ -1016,6 +1025,7 @@ class _QuickCommandRow extends StatelessWidget {
     required this.controller,
     required this.command,
     required this.onSend,
+    required this.onFill,
     required this.onEdit,
     required this.onRemove,
     required this.columnWidths,
@@ -1024,6 +1034,7 @@ class _QuickCommandRow extends StatelessWidget {
   final SessionController controller;
   final QuickCommand command;
   final Future<void> Function(QuickCommand command) onSend;
+  final ValueChanged<QuickCommand> onFill;
   final void Function(QuickCommand command) onEdit;
   final void Function(int id) onRemove;
   final _QuickCommandColumnWidths columnWidths;
@@ -1084,6 +1095,13 @@ class _QuickCommandRow extends StatelessWidget {
                 ),
               ),
               _QuickCommandActionButton(
+                key: ValueKey<String>('quick-command-fill-${command.id}'),
+                width: columnWidths.fill,
+                tooltip: controller.strings.fillSendData,
+                onPressed: () => onFill(command),
+                icon: Icons.input,
+              ),
+              _QuickCommandActionButton(
                 width: columnWidths.send,
                 tooltip: controller.strings.send,
                 onPressed: () => onSend(command),
@@ -1139,6 +1157,7 @@ class _QuickCommandRow extends StatelessWidget {
 
 class _QuickCommandActionButton extends StatelessWidget {
   const _QuickCommandActionButton({
+    super.key,
     required this.tooltip,
     required this.onPressed,
     required this.icon,

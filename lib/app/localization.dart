@@ -159,6 +159,8 @@ class AppStrings {
 
   String get sendData => isZh ? '发送数据' : 'Send data';
   String get send => isZh ? '发送' : 'Send';
+  String get fill => isZh ? '填入' : 'Fill';
+  String get fillSendData => isZh ? '填入发送框' : 'Fill send box';
   String get inputFormat => isZh ? '输入' : 'Input';
   String get sendFormatSetting => isZh ? '发送格式' : 'Send format';
   String get lineEnding => isZh ? '结尾' : 'Ending';

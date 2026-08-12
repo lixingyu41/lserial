@@ -459,6 +459,12 @@ class SessionController extends ChangeNotifier {
     sendDraftText = value;
   }
 
+  void fillQuickCommand(QuickCommand command) {
+    sendDraftText = command.content;
+    sendFormat = command.format;
+    notifyListeners();
+  }
+
   void saveAutoSendIntervalText(String value) {
     autoSendIntervalText = value;
   }

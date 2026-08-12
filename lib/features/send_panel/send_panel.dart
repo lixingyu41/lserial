@@ -83,6 +83,7 @@ class _SendPanelState extends State<SendPanel> {
         TextEditingController(text: widget.controller.autoSendIntervalText);
     input.addListener(_saveInputDraft);
     interval.addListener(_saveIntervalDraft);
+    widget.controller.addListener(_syncInputDraft);
   }
 
   @override
@@ -91,6 +92,7 @@ class _SendPanelState extends State<SendPanel> {
     if (oldWidget.controller == widget.controller) {
       return;
     }
+    oldWidget.controller.removeListener(_syncInputDraft);
     input
       ..removeListener(_saveInputDraft)
       ..text = widget.controller.sendDraftText
@@ -99,10 +101,12 @@ class _SendPanelState extends State<SendPanel> {
       ..removeListener(_saveIntervalDraft)
       ..text = widget.controller.autoSendIntervalText
       ..addListener(_saveIntervalDraft);
+    widget.controller.addListener(_syncInputDraft);
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_syncInputDraft);
     input.removeListener(_saveInputDraft);
     interval.removeListener(_saveIntervalDraft);
     input.dispose();
@@ -116,6 +120,17 @@ class _SendPanelState extends State<SendPanel> {
 
   void _saveIntervalDraft() {
     widget.controller.saveAutoSendIntervalText(interval.text);
+  }
+
+  void _syncInputDraft() {
+    final draft = widget.controller.sendDraftText;
+    if (input.text == draft) {
+      return;
+    }
+    input.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
   }
 
   @override
@@ -135,6 +150,7 @@ class _SendPanelState extends State<SendPanel> {
                   child: Focus(
                     onKeyEvent: _handleSendKey,
                     child: TextField(
+                      key: const ValueKey<String>('send-data-input'),
                       controller: input,
                       expands: true,
                       minLines: null,

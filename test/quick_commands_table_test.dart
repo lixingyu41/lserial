@@ -5,6 +5,7 @@ import 'package:lserial/application/session_controller.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/quick_command.dart';
 import 'package:lserial/features/quick_commands/quick_commands_panel.dart';
+import 'package:lserial/features/send_panel/send_panel.dart';
 
 void main() {
   const longName = 'Charlie command name that is deliberately too long to fit';
@@ -58,6 +59,7 @@ void main() {
     expect(contentText.maxLines, 1);
     expect(contentText.softWrap, isFalse);
     expect(find.byTooltip(controller.strings.send), findsNWidgets(3));
+    expect(find.byTooltip(controller.strings.fillSendData), findsNWidgets(3));
     expect(find.byTooltip(controller.strings.edit), findsNothing);
     expect(find.byTooltip(controller.strings.delete), findsNothing);
     final bubble = find.byKey(
@@ -161,11 +163,23 @@ void main() {
     final sendHeader = find.byKey(
       const ValueKey<String>('quick-command-header-send'),
     );
+    final fillHeader = find.byKey(
+      const ValueKey<String>('quick-command-header-fill'),
+    );
     final formatRectBeforeResize = tester.getRect(formatHeader);
+    final fillRectBeforeResize = tester.getRect(fillHeader);
     final sendRectBeforeResize = tester.getRect(sendHeader);
-    expect(formatRectBeforeResize.width, 36);
-    expect(sendRectBeforeResize.width, 36);
-    expect(formatRectBeforeResize.right, sendRectBeforeResize.left);
+    expect(formatRectBeforeResize.width, closeTo(36, 0.001));
+    expect(fillRectBeforeResize.width, closeTo(36, 0.001));
+    expect(sendRectBeforeResize.width, closeTo(36, 0.001));
+    expect(
+      formatRectBeforeResize.right,
+      closeTo(fillRectBeforeResize.left, 0.001),
+    );
+    expect(
+      fillRectBeforeResize.right,
+      closeTo(sendRectBeforeResize.left, 0.001),
+    );
 
     final nameHeaderWidth = tester
         .getSize(find.byKey(const ValueKey<String>('quick-command-sort-name')))
@@ -183,8 +197,9 @@ void main() {
           .width,
       greaterThan(nameHeaderWidth),
     );
-    expect(tester.getRect(formatHeader), formatRectBeforeResize);
-    expect(tester.getRect(sendHeader), sendRectBeforeResize);
+    _expectRectClose(tester.getRect(formatHeader), formatRectBeforeResize);
+    _expectRectClose(tester.getRect(fillHeader), fillRectBeforeResize);
+    _expectRectClose(tester.getRect(sendHeader), sendRectBeforeResize);
 
     await tester.tap(
       find.byKey(const ValueKey<String>('quick-command-sort-name')),
@@ -227,6 +242,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(controller.strings.edit), findsOneWidget);
     expect(find.text(controller.strings.delete), findsOneWidget);
+  });
+
+  testWidgets('quick command fills send box and applies its format', (
+    tester,
+  ) async {
+    final controller = SessionController();
+    controller.quickCommands
+      ..clear()
+      ..add(
+        const QuickCommand(
+          id: 7,
+          name: 'Binary command',
+          content: '01 AB FF',
+          format: PayloadFormat.hex,
+        ),
+      );
+    controller.saveSendDraftText('old text');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              Expanded(
+                child: QuickCommandsPanel(
+                  controller: controller,
+                  loadBubblePosition: () async => null,
+                  saveBubblePosition: (_) async {},
+                ),
+              ),
+              SizedBox(height: 150, child: SendPanel(controller: controller)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('quick-command-fill-7')),
+    );
+    await tester.pump();
+
+    expect(controller.sendDraftText, '01 AB FF');
+    expect(controller.sendFormat, PayloadFormat.hex);
+    final input = tester.widget<TextField>(
+      find.byKey(const ValueKey<String>('send-data-input')),
+    );
+    expect(input.controller?.text, '01 AB FF');
+    expect(controller.txByteCount, 0);
   });
 
   testWidgets('quick command action bubble persists its dragged position', (
@@ -302,4 +367,11 @@ List<String> _verticalOrder(WidgetTester tester) {
         .compareTo(tester.getCenter(find.text(right)).dy),
   );
   return names;
+}
+
+void _expectRectClose(Rect actual, Rect expected) {
+  expect(actual.left, closeTo(expected.left, 0.001));
+  expect(actual.top, closeTo(expected.top, 0.001));
+  expect(actual.right, closeTo(expected.right, 0.001));
+  expect(actual.bottom, closeTo(expected.bottom, 0.001));
 }

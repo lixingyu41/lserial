@@ -18,7 +18,10 @@ TransportSession createSerialSession(ConnectionConfig config) {
 }
 
 const int serialMaxReadChunkBytes = 64 * 1024;
-const int _serialWriteTimeoutMs = 250;
+const int serialMaxWriteChunkBytes = 1024;
+const int serialMaxConsecutiveZeroWrites = 1000;
+const Duration serialWriteRetryDelay = Duration(milliseconds: 2);
+const int _windowsOperationAbortedErrorCode = 995;
 
 typedef SerialWriteChunk = int Function(Uint8List bytes);
 
@@ -32,24 +35,70 @@ int serialReadLengthForAvailable(
   return available > maxChunkBytes ? maxChunkBytes : available;
 }
 
-int writeSerialBytesFully(Uint8List bytes, SerialWriteChunk writeChunk) {
+Future<int> writeSerialBytesFully(
+  Uint8List bytes,
+  SerialWriteChunk writeChunk, {
+  int maxChunkBytes = serialMaxWriteChunkBytes,
+  int maxConsecutiveZeroWrites = serialMaxConsecutiveZeroWrites,
+  Duration retryDelay = serialWriteRetryDelay,
+}) async {
+  if (maxChunkBytes <= 0) {
+    throw ArgumentError.value(maxChunkBytes, 'maxChunkBytes');
+  }
+  if (maxConsecutiveZeroWrites < 0) {
+    throw ArgumentError.value(
+      maxConsecutiveZeroWrites,
+      'maxConsecutiveZeroWrites',
+    );
+  }
+
   var offset = 0;
+  var consecutiveZeroWrites = 0;
   while (offset < bytes.length) {
-    final remaining = Uint8List.sublistView(bytes, offset);
-    final written = writeChunk(remaining);
-    if (written <= 0) {
+    final remaining = bytes.length - offset;
+    final chunkLength = remaining > maxChunkBytes ? maxChunkBytes : remaining;
+    final chunk = Uint8List.sublistView(bytes, offset, offset + chunkLength);
+    final written = writeChunk(chunk);
+    if (written < 0) {
       throw StateError(
-        'Serial write stalled: $offset of ${bytes.length} bytes.',
+        'Serial write failed: $offset of ${bytes.length} bytes.',
       );
     }
-    if (written > remaining.length) {
+    if (written == 0) {
+      consecutiveZeroWrites++;
+      if (consecutiveZeroWrites > maxConsecutiveZeroWrites) {
+        throw StateError(
+          'Serial write stalled: $offset of ${bytes.length} bytes after '
+          '$maxConsecutiveZeroWrites zero-byte retries.',
+        );
+      }
+      await Future<void>.delayed(retryDelay);
+      continue;
+    }
+    if (written > chunk.length) {
       throw StateError(
-        'Serial write overflow: $written of ${remaining.length} bytes.',
+        'Serial write overflow: $written of ${chunk.length} bytes.',
       );
     }
     offset += written;
+    consecutiveZeroWrites = 0;
   }
   return offset;
+}
+
+bool serialReadShouldRetry(Object? error) {
+  if (error == null) {
+    return false;
+  }
+  if (error is SerialPortError &&
+      error.errorCode == _windowsOperationAbortedErrorCode) {
+    return true;
+  }
+  final message = error.toString().toLowerCase();
+  return message.contains('errno=995') ||
+      message.contains('errno = 995') ||
+      message.contains('operation aborted') ||
+      message.contains('已中止 i/o 操作');
 }
 
 class DesktopSerialTransportSession implements TransportSession {
@@ -352,38 +401,40 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
       }
     }
 
+    Future<void> handleCommand(dynamic rawCommand) async {
+      if (rawCommand is! Map<Object?, Object?> || closing) {
+        return;
+      }
+      final type = rawCommand['type'];
+      final id = rawCommand['id'] as int?;
+      if (id == null) {
+        return;
+      }
+      try {
+        if (type == 'write') {
+          final bytes = rawCommand['bytes'] as Uint8List;
+          await writeSerialBytesFully(bytes, activePort.write);
+          activePort.drain();
+          mainPort.send(_responseEvent(id, true));
+        } else if (type == 'disconnect') {
+          closing = true;
+          disconnectRequestId = id;
+          if (!done.isCompleted) {
+            done.complete();
+          }
+        }
+      } on Object catch (error) {
+        mainPort.send(_responseEvent(id, false, error.toString()));
+        if (type != 'write') {
+          finishUnexpectedly(error);
+        }
+      }
+    }
+
+    var commandTail = Future<void>.value();
     commandSubscription = commands.listen(
       (dynamic rawCommand) {
-        if (rawCommand is! Map<Object?, Object?> || closing) {
-          return;
-        }
-        final type = rawCommand['type'];
-        final id = rawCommand['id'] as int?;
-        if (id == null) {
-          return;
-        }
-        try {
-          if (type == 'write') {
-            final bytes = rawCommand['bytes'] as Uint8List;
-            writeSerialBytesFully(
-              bytes,
-              (remaining) =>
-                  activePort.write(remaining, timeout: _serialWriteTimeoutMs),
-            );
-            mainPort.send(_responseEvent(id, true));
-          } else if (type == 'disconnect') {
-            closing = true;
-            disconnectRequestId = id;
-            if (!done.isCompleted) {
-              done.complete();
-            }
-          }
-        } on Object catch (error) {
-          mainPort.send(_responseEvent(id, false, error.toString()));
-          if (type != 'write') {
-            finishUnexpectedly(error);
-          }
-        }
+        commandTail = commandTail.then((_) => handleCommand(rawCommand));
       },
       onError: finishUnexpectedly,
       onDone: () {
@@ -400,9 +451,12 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
       try {
         final available = activePort.bytesAvailable;
         if (available < 0) {
-          finishUnexpectedly(
-            SerialPort.lastError ?? StateError('Serial device disconnected.'),
-          );
+          final error =
+              SerialPort.lastError ?? StateError('Serial device disconnected.');
+          if (serialReadShouldRetry(error)) {
+            return;
+          }
+          finishUnexpectedly(error);
           return;
         }
         final readLength = serialReadLengthForAvailable(available);
@@ -417,8 +471,14 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
         if (error.toString().contains('length must be in the range')) {
           return;
         }
+        if (serialReadShouldRetry(error)) {
+          return;
+        }
         finishUnexpectedly(error);
       } on Object catch (error) {
+        if (serialReadShouldRetry(error)) {
+          return;
+        }
         finishUnexpectedly(error);
       }
     });

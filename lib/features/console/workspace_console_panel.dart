@@ -708,6 +708,7 @@ class _TerminalInputLineState extends State<_TerminalInputLine> {
     input = TextEditingController(text: widget.controller.sendDraftText);
     focusNode = FocusNode(onKeyEvent: _handleSendKey);
     input.addListener(_saveInputDraft);
+    widget.controller.addListener(_syncInputDraft);
   }
 
   @override
@@ -716,14 +717,17 @@ class _TerminalInputLineState extends State<_TerminalInputLine> {
     if (oldWidget.controller == widget.controller) {
       return;
     }
+    oldWidget.controller.removeListener(_syncInputDraft);
     input
       ..removeListener(_saveInputDraft)
       ..text = widget.controller.sendDraftText
       ..addListener(_saveInputDraft);
+    widget.controller.addListener(_syncInputDraft);
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_syncInputDraft);
     input.removeListener(_saveInputDraft);
     input.dispose();
     focusNode.dispose();
@@ -732,6 +736,17 @@ class _TerminalInputLineState extends State<_TerminalInputLine> {
 
   void _saveInputDraft() {
     widget.controller.saveSendDraftText(input.text);
+  }
+
+  void _syncInputDraft() {
+    final draft = widget.controller.sendDraftText;
+    if (input.text == draft) {
+      return;
+    }
+    input.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
   }
 
   @override
