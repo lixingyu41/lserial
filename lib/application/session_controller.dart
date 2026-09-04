@@ -43,6 +43,12 @@ const List<QuickCommand> _defaultQuickCommands = <QuickCommand>[
   ),
 ];
 
+const Duration defaultSerialReconnectInterval = Duration(milliseconds: 100);
+
+Duration normalizeSerialReconnectInterval(Duration value) {
+  return Duration(milliseconds: value.inMilliseconds.clamp(1, 500));
+}
+
 class SessionController extends ChangeNotifier {
   SessionController({
     TransportRegistry? registry,
@@ -50,11 +56,13 @@ class SessionController extends ChangeNotifier {
     int maxCacheBytes = 16 * 1024 * 1024,
     this.serialAliasNumber = 1,
     this.language = AppLanguage.zh,
-    Duration serialReconnectInterval = const Duration(seconds: 1),
+    Duration serialReconnectInterval = defaultSerialReconnectInterval,
     Future<List<QuickCommand>?> Function()? loadQuickCommands,
     Future<void> Function(List<QuickCommand> commands)? saveQuickCommands,
   }) : registry = registry ?? const TransportRegistry(),
-       _serialReconnectInterval = serialReconnectInterval,
+       _serialReconnectInterval = normalizeSerialReconnectInterval(
+         serialReconnectInterval,
+       ),
        _loadQuickCommands = loadQuickCommands ?? readQuickCommands,
        _saveQuickCommands = saveQuickCommands ?? writeQuickCommands,
        rawBuffer = ByteRingBuffer(maxCacheBytes),
@@ -92,8 +100,10 @@ class SessionController extends ChangeNotifier {
   StreamSubscription<List<BluetoothDeviceInfo>>? _bluetoothScanSubscription;
   TransportSession? _session;
   TransportSession? _forwardSession;
+  SessionController? _externalForwardPeer;
   Future<void> _primaryWriteTail = Future<void>.value();
   Future<void> _forwardWriteTail = Future<void>.value();
+  Future<void> _serialConfigTail = Future<void>.value();
   Timer? _autoSendTimer;
   Timer? _statsTimer;
   Timer? _serialReconnectTimer;
@@ -160,6 +170,8 @@ class SessionController extends ChangeNotifier {
   bool get isConnected => status == TransportStatus.connected;
 
   bool get isAutoSending => _autoSendTimer != null;
+
+  SessionController? get externalForwardPeer => _externalForwardPeer;
 
   Listenable get statsListenable => _statsNotifier;
 
@@ -379,9 +391,20 @@ class SessionController extends ChangeNotifier {
   }
 
   void updateConfig(ConnectionConfig next) {
+    final previous = config;
     config = next;
     _syncReceivePacketOptions();
+    if (isConnected &&
+        previous.type == TransportType.serial &&
+        next.type == TransportType.serial &&
+        _serialHardwareSettingsChanged(previous.serial, next.serial)) {
+      _queueSerialReconfigure(_session, next.serial);
+    }
     notifyListeners();
+  }
+
+  void setExternalForwardPeer(SessionController? peer) {
+    _externalForwardPeer = identical(peer, this) ? null : peer;
   }
 
   Future<void> selectSerialPort(String value) async {
@@ -603,7 +626,8 @@ class SessionController extends ChangeNotifier {
       await session.connect();
       TransportSession? forwardSession;
       if (config.type == TransportType.serial &&
-          config.serial.forwardingEnabled) {
+          config.serial.forwardingEnabled &&
+          _externalForwardPeer == null) {
         try {
           forwardSession = await registry.create(
             config.copyWith(serial: config.serial.forwardEndpoint),
@@ -628,9 +652,7 @@ class SessionController extends ChangeNotifier {
       _serialReconnectTimer?.cancel();
       _serialReconnectTimer = null;
       _incomingSubscription = session.incoming.listen(
-        forwardSession == null
-            ? (bytes) => _pipeline.addBytes(bytes, source: sourceLabel)
-            : _forwardFromPrimary,
+        _handlePrimaryIncoming,
         onError: (Object error, StackTrace stackTrace) {
           _handleReceiveError(error);
         },
@@ -1460,6 +1482,41 @@ class SessionController extends ChangeNotifier {
     );
   }
 
+  bool _serialHardwareSettingsChanged(SerialConfig before, SerialConfig after) {
+    return before.baudRate != after.baudRate ||
+        before.dataBits != after.dataBits ||
+        before.stopBits != after.stopBits ||
+        before.parity != after.parity;
+  }
+
+  void _queueSerialReconfigure(
+    TransportSession? transport,
+    SerialConfig serial,
+  ) {
+    if (transport is! SerialReconfigurableTransportSession) {
+      return;
+    }
+    final target = transport as SerialReconfigurableTransportSession;
+    _serialConfigTail = _serialConfigTail
+        .then<void>((_) {}, onError: (Object _, StackTrace __) {})
+        .then((_) async {
+          try {
+            await target.reconfigureSerial(
+              baudRate: serial.baudRate,
+              dataBits: serial.dataBits,
+              stopBits: serial.stopBits,
+              parity: serial.parity.name,
+            );
+          } on Object catch (error) {
+            if (identical(transport, _session)) {
+              _appendSystem(
+                strings.serialConfigurationFailed(_formatError(error)),
+              );
+            }
+          }
+        });
+  }
+
   void _validateSerialForwarding() {
     if (config.type != TransportType.serial ||
         !config.serial.forwardingEnabled) {
@@ -1476,6 +1533,24 @@ class SessionController extends ChangeNotifier {
     if (primary.toLowerCase() == peer.toLowerCase()) {
       throw StateError('Forwarding serial ports must be different.');
     }
+  }
+
+  void _handlePrimaryIncoming(List<int> bytes) {
+    if (_forwardSession != null) {
+      _forwardFromPrimary(bytes);
+      return;
+    }
+    final peer = _externalForwardPeer;
+    if (peer != null) {
+      final source =
+          '${config.serial.portName} → ${peer.config.serial.portName}';
+      _pipeline.addBytes(bytes, source: source, direction: FrameDirection.tx);
+      if (peer.isConnected) {
+        unawaited(peer.sendRawBytesFrom(bytes, source: source));
+      }
+      return;
+    }
+    _pipeline.addBytes(bytes, source: sourceLabel);
   }
 
   void _forwardFromPrimary(List<int> bytes) {
@@ -1631,7 +1706,9 @@ class SessionController extends ChangeNotifier {
     if (!contains(serial.portName)) {
       return false;
     }
-    return !serial.forwardingEnabled || contains(serial.forwardPortName);
+    return !serial.forwardingEnabled ||
+        _externalForwardPeer != null ||
+        contains(serial.forwardPortName);
   }
 
   Future<void> _closeTransportSessions() async {

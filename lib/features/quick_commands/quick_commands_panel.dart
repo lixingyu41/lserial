@@ -35,7 +35,7 @@ class QuickCommandsPanel extends StatefulWidget {
   final SessionController controller;
   final Future<QuickCommandBubblePosition?> Function() loadBubblePosition;
   final Future<void> Function(QuickCommandBubblePosition position)
-      saveBubblePosition;
+  saveBubblePosition;
 
   @override
   State<QuickCommandsPanel> createState() => _QuickCommandsPanelState();
@@ -46,7 +46,9 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
   _QuickCommandSortColumn? _sortColumn;
   bool _sortAscending = true;
   _QuickCommandColumnWidths _columnWidths = const _QuickCommandColumnWidths();
+  final GlobalKey _quickCommandPaneKey = GlobalKey();
   Offset _bubblePosition = Offset.zero;
+  Offset? _bubbleDragGrabOffset;
   bool _bubbleExpanded = false;
 
   SessionController get controller => widget.controller;
@@ -121,6 +123,7 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
         );
 
         return Stack(
+          key: _quickCommandPaneKey,
           children: [
             Positioned.fill(
               child: _QuickCommandList(
@@ -146,12 +149,33 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                 },
                 onAdd: () => _openEditor(context, null),
                 onFileAction: _handleFileAction,
-                onDragUpdate: (delta) {
+                onDragDown: (details) {
+                  final pane =
+                      _quickCommandPaneKey.currentContext?.findRenderObject()
+                          as RenderBox?;
+                  if (pane == null) {
+                    return;
+                  }
+                  _bubbleDragGrabOffset =
+                      pane.globalToLocal(details.globalPosition) -
+                      displayPosition;
+                },
+                onDragUpdate: (details) {
+                  final pane =
+                      _quickCommandPaneKey.currentContext?.findRenderObject()
+                          as RenderBox?;
+                  final grabOffset = _bubbleDragGrabOffset;
+                  if (pane == null || grabOffset == null) {
+                    return;
+                  }
+                  final pointerPosition = pane.globalToLocal(
+                    details.globalPosition,
+                  );
                   final next = Offset(
-                    (displayPosition.dx + delta.dx)
+                    (pointerPosition.dx - grabOffset.dx)
                         .clamp(0, displayLimit.dx)
                         .toDouble(),
-                    (displayPosition.dy + delta.dy)
+                    (pointerPosition.dy - grabOffset.dy)
                         .clamp(0, displayLimit.dy)
                         .toDouble(),
                   );
@@ -162,7 +186,10 @@ class _QuickCommandsPanelState extends State<QuickCommandsPanel> {
                     );
                   });
                 },
-                onDragEnd: _persistBubblePosition,
+                onDragEnd: () {
+                  _bubbleDragGrabOffset = null;
+                  _persistBubblePosition();
+                },
               ),
             ),
           ],
@@ -416,6 +443,7 @@ class _QuickCommandActionBubble extends StatelessWidget {
     required this.onToggle,
     required this.onAdd,
     required this.onFileAction,
+    required this.onDragDown,
     required this.onDragUpdate,
     required this.onDragEnd,
   });
@@ -425,7 +453,8 @@ class _QuickCommandActionBubble extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback onAdd;
   final ValueChanged<_QuickCommandFileAction> onFileAction;
-  final ValueChanged<Offset> onDragUpdate;
+  final GestureDragDownCallback onDragDown;
+  final GestureDragUpdateCallback onDragUpdate;
   final VoidCallback onDragEnd;
 
   @override
@@ -501,7 +530,9 @@ class _QuickCommandActionBubble extends StatelessWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onPanUpdate: (details) => onDragUpdate(details.delta),
+      onPanDown: onDragDown,
+      onPanUpdate: onDragUpdate,
+      onPanCancel: onDragEnd,
       onPanEnd: (_) => onDragEnd(),
       child: AnimatedSize(
         duration: const Duration(milliseconds: 140),

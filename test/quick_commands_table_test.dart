@@ -341,11 +341,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(bubble), const Size(108, 36));
 
-    await tester.drag(bubble, const Offset(120, 80));
+    final gesture = await tester.startGesture(tester.getCenter(bubble));
+    await gesture.moveTo(const Offset(420, 300));
+    await tester.pump();
+    await gesture.moveTo(const Offset(154, 98));
+    await tester.pump();
+    await gesture.up();
     await tester.pumpAndSettle();
     final draggedPosition = tester.getTopLeft(bubble);
-    expect(draggedPosition.dx, greaterThan(0));
-    expect(draggedPosition.dy, greaterThan(0));
+    expect(draggedPosition, const Offset(100, 80));
     expect(savedPosition, isNotNull);
 
     await tester.pumpWidget(

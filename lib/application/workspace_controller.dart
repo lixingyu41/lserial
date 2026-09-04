@@ -216,6 +216,7 @@ class WorkspaceController extends ChangeNotifier {
     if (index < 0 || session.isConnected || sessions.length <= 1) {
       return false;
     }
+    _detachSerialForwarding(session);
     session.removeListener(_handleSessionChanged);
     session.displaySnapshot.removeListener(_handleSessionSnapshotChanged);
     sessions.removeAt(index);
@@ -288,6 +289,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     final removed = sessions.removeAt(activeSessionIndex);
+    _detachSerialForwarding(removed);
     removed.removeListener(_handleSessionChanged);
     removed.displaySnapshot.removeListener(_handleSessionSnapshotChanged);
     removed.dispose();
@@ -351,6 +353,47 @@ class WorkspaceController extends ChangeNotifier {
       }
     }
     return ports;
+  }
+
+  List<SessionController> connectedSerialSessionsExcept(
+    SessionController current,
+  ) {
+    return sessions
+        .where(
+          (session) =>
+              !identical(session, current) &&
+              session.isConnected &&
+              session.config.type == TransportType.serial &&
+              (session.externalForwardPeer == null ||
+                  identical(session.externalForwardPeer, current)),
+        )
+        .toList(growable: false);
+  }
+
+  void synchronizeSerialForwarding(SessionController current) {
+    _detachSerialForwarding(current);
+    if (current.config.type != TransportType.serial ||
+        !current.config.serial.forwardingEnabled) {
+      return;
+    }
+    final targetPort = current.config.serial.forwardPortName
+        .trim()
+        .toLowerCase();
+    for (final peer in connectedSerialSessionsExcept(current)) {
+      if (peer.config.serial.portName.trim().toLowerCase() == targetPort) {
+        current.setExternalForwardPeer(peer);
+        peer.setExternalForwardPeer(current);
+        return;
+      }
+    }
+  }
+
+  void _detachSerialForwarding(SessionController session) {
+    final peer = session.externalForwardPeer;
+    session.setExternalForwardPeer(null);
+    if (peer != null && identical(peer.externalForwardPeer, session)) {
+      peer.setExternalForwardPeer(null);
+    }
   }
 
   void setViewMode(ConsoleViewMode mode) {

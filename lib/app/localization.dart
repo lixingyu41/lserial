@@ -253,6 +253,9 @@ class AppStrings {
   String settingChanged(String label, String value) =>
       isZh ? '$label：$value' : '$label: $value';
 
+  String serialConfigurationFailed(String error) =>
+      isZh ? '串口设置应用失败：$error' : 'Failed to apply serial settings: $error';
+
   String sessionStat(SessionStat stat) => switch (stat) {
     SessionStat.rxCount => rxCount,
     SessionStat.txCount => txCount,

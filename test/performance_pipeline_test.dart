@@ -14,6 +14,21 @@ import 'package:lserial/storage/log_buffer.dart';
 import 'package:lserial/transports/transport_registry.dart';
 
 void main() {
+  test('serial reconnect interval is clamped to 1 through 500 ms', () {
+    expect(
+      normalizeSerialReconnectInterval(Duration.zero),
+      const Duration(milliseconds: 1),
+    );
+    expect(
+      normalizeSerialReconnectInterval(const Duration(milliseconds: 250)),
+      const Duration(milliseconds: 250),
+    );
+    expect(
+      normalizeSerialReconnectInterval(const Duration(seconds: 2)),
+      const Duration(milliseconds: 500),
+    );
+  });
+
   test('ByteRingBuffer keeps recent bytes and tracks dropped bytes', () {
     final buffer = ByteRingBuffer(4);
 
@@ -304,6 +319,104 @@ void main() {
       expect(snapshotNotifications, greaterThan(0));
       expect(statsNotifications, greaterThan(0));
       expect(controllerNotifications, 0);
+    },
+  );
+
+  test(
+    'SessionController applies connected serial settings in order',
+    () async {
+      final transport = _FakeTransportSession();
+      final controller = SessionController(
+        registry: _FakeTransportRegistry(transport),
+      );
+      addTearDown(controller.dispose);
+      controller.capabilities = const <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
+        ),
+      ];
+      controller.updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(portName: 'COM1'),
+        ),
+      );
+      await controller.connect();
+
+      controller.updateConfig(
+        controller.config.copyWith(
+          serial: controller.config.serial.copyWith(
+            baudRate: 230400,
+            dataBits: 7,
+            stopBits: 2,
+            parity: SerialParity.even,
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(transport.serialConfigurations, <String>['230400/7/2/even']);
+      controller.updateConfig(
+        controller.config.copyWith(
+          serial: controller.config.serial.copyWith(packetIntervalMs: 25),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(transport.serialConfigurations, hasLength(1));
+    },
+  );
+
+  test(
+    'connected serial sessions forward bytes through an external peer',
+    () async {
+      final firstTransport = _FakeTransportSession(label: 'COM1');
+      final secondTransport = _FakeTransportSession(label: 'COM2');
+      final first = SessionController(
+        registry: _FakeTransportRegistry(firstTransport),
+      );
+      final second = SessionController(
+        registry: _FakeTransportRegistry(secondTransport),
+      );
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      const capabilities = <TransportCapability>[
+        TransportCapability(
+          type: TransportType.serial,
+          supported: true,
+          reason: '',
+        ),
+      ];
+      first.capabilities = capabilities;
+      second.capabilities = capabilities;
+      second.updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(portName: 'COM2'),
+        ),
+      );
+      await second.connect();
+      first.setExternalForwardPeer(second);
+      second.setExternalForwardPeer(first);
+      first.updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(
+            portName: 'COM1',
+            forwardingEnabled: true,
+            forwardPortName: 'COM2',
+          ),
+        ),
+      );
+      await first.connect();
+
+      firstTransport.addIncoming(<int>[1, 2, 3]);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(secondTransport.sentBytes, <List<int>>[
+        <int>[1, 2, 3],
+      ]);
     },
   );
 
@@ -913,7 +1026,8 @@ class _ReconnectTransportRegistry extends TransportRegistry {
   Future<List<String>> serialPorts() async => List<String>.of(ports);
 }
 
-class _FakeTransportSession implements TransportSession {
+class _FakeTransportSession
+    implements TransportSession, SerialReconfigurableTransportSession {
   _FakeTransportSession({
     this.label = 'COM1',
     this.connectDelay = Duration.zero,
@@ -929,6 +1043,7 @@ class _FakeTransportSession implements TransportSession {
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
   final List<List<int>> sentBytes = <List<int>>[];
+  final List<String> serialConfigurations = <String>[];
   int maxConcurrentSends = 0;
   int _activeSends = 0;
   int connectCalls = 0;
@@ -978,6 +1093,16 @@ class _FakeTransportSession implements TransportSession {
     } finally {
       _activeSends--;
     }
+  }
+
+  @override
+  Future<void> reconfigureSerial({
+    required int baudRate,
+    required int dataBits,
+    required int stopBits,
+    required String parity,
+  }) async {
+    serialConfigurations.add('$baudRate/$dataBits/$stopBits/$parity');
   }
 
   void addIncoming(List<int> bytes) {

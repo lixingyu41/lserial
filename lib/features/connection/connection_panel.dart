@@ -409,6 +409,10 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
     }
 
     final occupiedPorts = widget.occupiedSerialPorts;
+    final connectedSerialPeers = widget.workspaceController
+        .connectedSerialSessionsExcept(controller);
+    final canOfferForwarding =
+        !controller.isConnected && connectedSerialPeers.isNotEmpty;
     final blockedPrimaryPorts = <String>{
       ...occupiedPorts,
       if (config.serial.forwardingEnabled &&
@@ -428,13 +432,9 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             !blockedPrimaryPorts.contains(config.serial.portName)
         ? config.serial.portName
         : null;
-    final forwardPorts = controller.serialPorts
-        .where(
-          (portName) =>
-              !occupiedPorts.contains(portName) &&
-              portName != config.serial.portName &&
-              !isSerialPickerOption(portName),
-        )
+    final forwardPorts = connectedSerialPeers
+        .map((session) => session.config.serial.portName)
+        .where((portName) => portName.isNotEmpty)
         .toList(growable: false);
     final selectedForwardPort =
         forwardPorts.contains(config.serial.forwardPortName)
@@ -442,41 +442,34 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         : null;
     return Column(
       children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          title: Text(controller.strings.serialForwarding),
-          subtitle: Text(controller.strings.serialForwardingDescription),
-          value: config.serial.forwardingEnabled,
-          onChanged: controller.isConnected
-              ? null
-              : (enabled) {
-                  final current = controller.config;
-                  final availablePeers = controller.serialPorts
-                      .where(
-                        (portName) =>
-                            !occupiedPorts.contains(portName) &&
-                            portName != current.serial.portName &&
-                            !isSerialPickerOption(portName),
-                      )
-                      .toList(growable: false);
-                  final availablePeer = availablePeers.isEmpty
-                      ? null
-                      : availablePeers.first;
-                  controller.updateConfig(
-                    current.copyWith(
-                      serial: current.serial.copyWith(
-                        forwardingEnabled: enabled,
-                        forwardPortName:
-                            current.serial.forwardPortName.isNotEmpty
-                            ? current.serial.forwardPortName
-                            : availablePeer ?? '',
-                      ),
-                    ),
-                  );
-                },
-        ),
-        const Divider(height: 1),
+        if (canOfferForwarding) ...[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(controller.strings.serialForwarding),
+            subtitle: Text(controller.strings.serialForwardingDescription),
+            value: config.serial.forwardingEnabled,
+            onChanged: (enabled) {
+              final current = controller.config;
+              final selectedPeer =
+                  forwardPorts.contains(current.serial.forwardPortName)
+                  ? current.serial.forwardPortName
+                  : forwardPorts.first;
+              controller.updateConfig(
+                current.copyWith(
+                  serial: current.serial.copyWith(
+                    forwardingEnabled: enabled,
+                    forwardPortName: selectedPeer,
+                  ),
+                ),
+              );
+              widget.workspaceController.synchronizeSerialForwarding(
+                controller,
+              );
+            },
+          ),
+          const Divider(height: 1),
+        ],
         WheelStepper(
           enabled: !controller.isConnected && wheelPorts.length > 1,
           onStep: (step) => _stepSerialPort(wheelPorts, step),
@@ -519,7 +512,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         ),
         const Divider(height: 1),
         WheelStepper(
-          enabled: !controller.isConnected && _baudRateOptions.length > 1,
+          enabled: _baudRateOptions.length > 1,
           onStep: _stepBaudRate,
           child: DropdownButtonFormField<int>(
             key: ValueKey(
@@ -541,21 +534,19 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                   ),
                 )
                 .toList(),
-            onChanged: controller.isConnected
-                ? null
-                : (value) {
-                    if (value != null) {
-                      baudRate.text = '$value';
-                      controller.updateConfig(
-                        config.copyWith(
-                          serial: config.serial.copyWith(baudRate: value),
-                        ),
-                      );
-                    }
-                  },
+            onChanged: (value) {
+              if (value != null) {
+                baudRate.text = '$value';
+                controller.updateConfig(
+                  controller.config.copyWith(
+                    serial: controller.config.serial.copyWith(baudRate: value),
+                  ),
+                );
+              }
+            },
           ),
         ),
-        if (config.serial.forwardingEnabled) ...[
+        if (canOfferForwarding && config.serial.forwardingEnabled) ...[
           const Divider(height: 1),
           DropdownButtonFormField<String>(
             key: ValueKey(
@@ -565,132 +556,88 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
             decoration: InputDecoration(
               labelText: controller.strings.serialPortB,
             ),
-            items: controller.serialPorts.map((portName) {
-              final blocked =
-                  occupiedPorts.contains(portName) ||
-                  portName == config.serial.portName ||
-                  isSerialPickerOption(portName);
-              return DropdownMenuItem(
-                value: portName,
-                enabled: !blocked,
-                child: Text(
-                  serialPortOptionLabel(
-                    portName,
-                    pickLabel: controller.strings.chooseWebSerialPort,
-                    selectedLabel: controller.strings.webSerialSelectedPort,
-                  ),
-                  style: blocked
-                      ? TextStyle(color: Theme.of(context).disabledColor)
-                      : null,
-                ),
-              );
-            }).toList(),
-            onChanged: controller.isConnected
-                ? null
-                : (value) {
-                    if (value != null) {
-                      final current = controller.config;
-                      controller.updateConfig(
-                        current.copyWith(
-                          serial: current.serial.copyWith(
-                            forwardPortName: value,
-                          ),
-                        ),
-                      );
-                    }
-                  },
-          ),
-          const Divider(height: 1),
-          DropdownButtonFormField<int>(
-            key: ValueKey(
-              'forward-baud-${identityHashCode(controller)}-${config.serial.forwardBaudRate}',
-            ),
-            initialValue: config.serial.forwardBaudRate,
-            isExpanded: true,
-            menuMaxHeight: 260,
-            decoration: InputDecoration(
-              labelText: controller.strings.baudRateB,
-            ),
-            items: _baudOptionsFor(config.serial.forwardBaudRate)
+            items: forwardPorts
                 .map(
-                  (value) => DropdownMenuItem<int>(
-                    value: value,
-                    child: Text('$value'),
-                  ),
+                  (portName) =>
+                      DropdownMenuItem(value: portName, child: Text(portName)),
                 )
                 .toList(),
-            onChanged: controller.isConnected
-                ? null
-                : (value) {
-                    if (value != null) {
-                      forwardBaudRate.text = '$value';
-                      final current = controller.config;
-                      controller.updateConfig(
-                        current.copyWith(
-                          serial: current.serial.copyWith(
-                            forwardBaudRate: value,
-                          ),
-                        ),
-                      );
-                    }
-                  },
+            onChanged: (value) {
+              if (value != null) {
+                final current = controller.config;
+                controller.updateConfig(
+                  current.copyWith(
+                    serial: current.serial.copyWith(forwardPortName: value),
+                  ),
+                );
+                widget.workspaceController.synchronizeSerialForwarding(
+                  controller,
+                );
+              }
+            },
           ),
         ],
         const Divider(height: 1),
-        TextField(
-          controller: packetInterval,
-          enabled: !controller.isConnected,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: controller.strings.packetIntervalMs,
-          ),
-          onChanged: (value) {
-            final intervalMs = int.tryParse(value.trim());
-            if (intervalMs == null) {
-              return;
-            }
-            final current = controller.config;
-            controller.updateConfig(
-              current.copyWith(
-                serial: current.serial.copyWith(
-                  packetIntervalMs: _nonNegative(intervalMs),
+        Row(
+          children: [
+            SizedBox(
+              width: 116,
+              child: TextField(
+                controller: packetInterval,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: controller.strings.packetIntervalMs,
                 ),
+                onChanged: (value) {
+                  final intervalMs = int.tryParse(value.trim());
+                  if (intervalMs == null) {
+                    return;
+                  }
+                  final current = controller.config;
+                  controller.updateConfig(
+                    current.copyWith(
+                      serial: current.serial.copyWith(
+                        packetIntervalMs: _nonNegative(intervalMs),
+                      ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
-        const Divider(height: 1),
-        TextField(
-          controller: packetDelimiter,
-          enabled: !controller.isConnected,
-          decoration: InputDecoration(
-            labelText: controller.strings.packetDelimiter,
-            suffixIcon: PopupMenuButton<String>(
-              tooltip: controller.strings.packetDelimiterPresets,
-              initialValue: _delimiterPresetValue(packetDelimiter.text),
-              enabled: !controller.isConnected,
-              icon: const Icon(Icons.arrow_drop_down),
-              onSelected: (value) {
-                packetDelimiter.text = value;
-                _setPacketDelimiter(value);
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: '',
-                  child: Text(controller.strings.packetDelimiterNone),
-                ),
-                for (final value in const <String>[
-                  r'\r',
-                  r'\n',
-                  r'\r\n',
-                  '/R/N',
-                  r'\x00',
-                ])
-                  PopupMenuItem(value: value, child: Text(value)),
-              ],
             ),
-          ),
-          onChanged: _setPacketDelimiter,
+            const _ConnectionSeparator(),
+            Expanded(
+              child: TextField(
+                controller: packetDelimiter,
+                decoration: InputDecoration(
+                  labelText: controller.strings.packetDelimiter,
+                  suffixIcon: PopupMenuButton<String>(
+                    tooltip: controller.strings.packetDelimiterPresets,
+                    initialValue: _delimiterPresetValue(packetDelimiter.text),
+                    icon: const Icon(Icons.arrow_drop_down),
+                    onSelected: (value) {
+                      packetDelimiter.text = value;
+                      _setPacketDelimiter(value);
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: '',
+                        child: Text(controller.strings.packetDelimiterNone),
+                      ),
+                      for (final value in const <String>[
+                        r'\r',
+                        r'\n',
+                        r'\r\n',
+                        '/R/N',
+                        r'\x00',
+                      ])
+                        PopupMenuItem(value: value, child: Text(value)),
+                    ],
+                  ),
+                ),
+                onChanged: _setPacketDelimiter,
+              ),
+            ),
+          ],
         ),
         const Divider(height: 1),
         Row(
@@ -712,17 +659,15 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                           DropdownMenuItem(value: bits, child: Text('$bits')),
                     )
                     .toList(),
-                onChanged: controller.isConnected
-                    ? null
-                    : (value) {
-                        if (value != null) {
-                          controller.updateConfig(
-                            config.copyWith(
-                              serial: config.serial.copyWith(dataBits: value),
-                            ),
-                          );
-                        }
-                      },
+                onChanged: (value) {
+                  if (value != null) {
+                    controller.updateConfig(
+                      config.copyWith(
+                        serial: config.serial.copyWith(dataBits: value),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
             const _ConnectionSeparator(),
@@ -743,17 +688,15 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                           DropdownMenuItem(value: bits, child: Text('$bits')),
                     )
                     .toList(),
-                onChanged: controller.isConnected
-                    ? null
-                    : (value) {
-                        if (value != null) {
-                          controller.updateConfig(
-                            config.copyWith(
-                              serial: config.serial.copyWith(stopBits: value),
-                            ),
-                          );
-                        }
-                      },
+                onChanged: (value) {
+                  if (value != null) {
+                    controller.updateConfig(
+                      config.copyWith(
+                        serial: config.serial.copyWith(stopBits: value),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
             const _ConnectionSeparator(),
@@ -775,17 +718,15 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
                       ),
                     )
                     .toList(),
-                onChanged: controller.isConnected
-                    ? null
-                    : (value) {
-                        if (value != null) {
-                          controller.updateConfig(
-                            config.copyWith(
-                              serial: config.serial.copyWith(parity: value),
-                            ),
-                          );
-                        }
-                      },
+                onChanged: (value) {
+                  if (value != null) {
+                    controller.updateConfig(
+                      config.copyWith(
+                        serial: config.serial.copyWith(parity: value),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
           ],
@@ -1303,6 +1244,7 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
         ),
       ),
     );
+    widget.workspaceController.synchronizeSerialForwarding(controller);
     await controller.connect();
   }
 
@@ -1331,9 +1273,6 @@ class _ConnectionPanelState extends State<ConnectionPanel> {
   }
 
   void _stepBaudRate(int step) {
-    if (controller.isConnected) {
-      return;
-    }
     final current = controller.config;
     final currentBaud = int.tryParse(baudRate.text) ?? current.serial.baudRate;
     final next = _nextBaudRate(currentBaud, step);

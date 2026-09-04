@@ -101,7 +101,8 @@ bool serialReadShouldRetry(Object? error) {
       message.contains('已中止 i/o 操作');
 }
 
-class DesktopSerialTransportSession implements TransportSession {
+class DesktopSerialTransportSession
+    implements TransportSession, SerialReconfigurableTransportSession {
   DesktopSerialTransportSession(this.config);
 
   final ConnectionConfig config;
@@ -170,7 +171,27 @@ class DesktopSerialTransportSession implements TransportSession {
     if (!_connected) {
       throw StateError('Serial port is not open.');
     }
-    await _sendRequest('write', Uint8List.fromList(bytes));
+    await _sendRequest('write', <String, Object?>{
+      'bytes': Uint8List.fromList(bytes),
+    });
+  }
+
+  @override
+  Future<void> reconfigureSerial({
+    required int baudRate,
+    required int dataBits,
+    required int stopBits,
+    required String parity,
+  }) async {
+    if (!_connected) {
+      throw StateError('Serial port is not open.');
+    }
+    await _sendRequest('configure', <String, Object?>{
+      'baudRate': baudRate,
+      'dataBits': dataBits,
+      'stopBits': stopBits,
+      'parity': parity,
+    });
   }
 
   @override
@@ -239,7 +260,10 @@ class DesktopSerialTransportSession implements TransportSession {
     }
   }
 
-  Future<void> _sendRequest(String type, [Uint8List? bytes]) {
+  Future<void> _sendRequest(
+    String type, [
+    Map<String, Object?> fields = const <String, Object?>{},
+  ]) {
     final commands = _workerCommands;
     if (commands == null) {
       throw StateError('Serial port worker is not available.');
@@ -247,11 +271,7 @@ class DesktopSerialTransportSession implements TransportSession {
     final id = ++_nextRequestId;
     final completer = Completer<void>();
     _pendingRequests[id] = completer;
-    commands.send(<String, Object?>{
-      'type': type,
-      'id': id,
-      if (bytes != null) 'bytes': bytes,
-    });
+    commands.send(<String, Object?>{'type': type, 'id': id, ...fields});
     return completer.future;
   }
 
@@ -366,18 +386,7 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
     portOpened = true;
 
     try {
-      final portConfig = SerialPortConfig()
-        ..baudRate = settings['baudRate'] as int
-        ..bits = settings['dataBits'] as int
-        ..stopBits = settings['stopBits'] as int
-        ..parity = switch (settings['parity']) {
-          'odd' => SerialPortParity.odd,
-          'even' => SerialPortParity.even,
-          _ => SerialPortParity.none,
-        };
-      portConfig.setFlowControl(SerialPortFlowControl.none);
-      // SerialPort owns an assigned config and releases it with the port.
-      port.config = portConfig;
+      _applySerialSettings(port, settings);
     } on Object {
       final error = SerialPort.lastError;
       mainPort.send(_connectErrorEvent(portName, 'configure', error));
@@ -416,6 +425,9 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
           await writeSerialBytesFully(bytes, activePort.write);
           activePort.drain();
           mainPort.send(_responseEvent(id, true));
+        } else if (type == 'configure') {
+          _applySerialSettings(activePort, rawCommand);
+          mainPort.send(_responseEvent(id, true));
         } else if (type == 'disconnect') {
           closing = true;
           disconnectRequestId = id;
@@ -425,7 +437,7 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
         }
       } on Object catch (error) {
         mainPort.send(_responseEvent(id, false, error.toString()));
-        if (type != 'write') {
+        if (type != 'write' && type != 'configure') {
           finishUnexpectedly(error);
         }
       }
@@ -528,6 +540,21 @@ Future<void> _serialWorkerMain(List<Object?> startup) async {
       mainPort.send(const <String, Object?>{'type': 'streamDone'});
     }
   }
+}
+
+void _applySerialSettings(SerialPort port, Map<Object?, Object?> settings) {
+  final portConfig = SerialPortConfig()
+    ..baudRate = settings['baudRate'] as int
+    ..bits = settings['dataBits'] as int
+    ..stopBits = settings['stopBits'] as int
+    ..parity = switch (settings['parity']) {
+      'odd' => SerialPortParity.odd,
+      'even' => SerialPortParity.even,
+      _ => SerialPortParity.none,
+    };
+  portConfig.setFlowControl(SerialPortFlowControl.none);
+  // SerialPort owns an assigned config and releases it with the port.
+  port.config = portConfig;
 }
 
 Map<String, Object?> _connectErrorEvent(

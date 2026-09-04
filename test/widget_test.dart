@@ -10,6 +10,7 @@ import 'package:lserial/application/workspace_controller.dart';
 import 'package:lserial/application/workspace_settings.dart';
 import 'package:lserial/core/encoding/data_format.dart';
 import 'package:lserial/domain/classic_bluetooth_device_info.dart';
+import 'package:lserial/domain/connection_config.dart';
 import 'package:lserial/domain/data_frame.dart';
 import 'package:lserial/domain/transport.dart';
 import 'package:lserial/features/console/frame_list_view.dart';
@@ -76,6 +77,45 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(session.config.serial.baudRate, 921600);
+  });
+
+  testWidgets('serial forwarding is offered only for a new serial session', (
+    tester,
+  ) async {
+    final workspace = WorkspaceController();
+    addTearDown(workspace.dispose);
+    workspace.activeSession
+      ..status = TransportStatus.connected
+      ..updateConfig(
+        const ConnectionConfig(
+          type: TransportType.serial,
+          serial: SerialConfig(portName: 'COM1'),
+        ),
+      );
+    await workspace.addSession();
+    final newSession = workspace.activeSession;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            height: 700,
+            child: ConnectionPanel(
+              workspaceController: workspace,
+              controller: newSession,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.zh.serialForwarding), findsOneWidget);
+
+    newSession.status = TransportStatus.connected;
+    newSession.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.zh.serialForwarding), findsNothing);
   });
 
   testWidgets('classic Bluetooth status and actions use aligned columns', (

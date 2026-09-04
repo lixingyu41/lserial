@@ -176,9 +176,11 @@ class _FramelessSendTargetMenu extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
                   children: [
+                    const Icon(Icons.arrow_forward, size: 18),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '${controller.strings.sendTo}: $selectedLabel',
+                        selectedLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),

@@ -97,6 +97,15 @@ abstract interface class TransportSession {
   Future<void> disconnect();
 }
 
+abstract interface class SerialReconfigurableTransportSession {
+  Future<void> reconfigureSerial({
+    required int baudRate,
+    required int dataBits,
+    required int stopBits,
+    required String parity,
+  });
+}
+
 class UnsupportedTransportSession implements TransportSession {
   UnsupportedTransportSession({required this.type, required this.reason});
 

@@ -256,7 +256,7 @@ class _RightActions extends StatelessWidget {
     required this.panelsStackVertically,
   });
 
-  static const double _targetWidth = 190;
+  static const double _targetWidth = 136;
   static const double _formatWidth = 86;
   static const double _lineEndingWidth = 64;
   static const double _shortcutWidth = 94;
@@ -326,7 +326,10 @@ class _RightActions extends StatelessWidget {
         )) {
           add(_TerminalModeButton(controller: controller));
         }
-        if (connectedIndexes.length > 1) {
+        if (connectedIndexes.length > 1 &&
+            controller.isToolbarActionVisible(
+              WorkspaceToolbarAction.sendTarget,
+            )) {
           add(
             SendTargetField(
               controller: controller,
@@ -1342,6 +1345,19 @@ class _ToolbarSettings extends StatelessWidget {
               key: const ValueKey<String>('toolbar-setting-terminalMode'),
               value: controller.terminalMode,
               onChanged: controller.setTerminalMode,
+            ),
+          ),
+        ),
+        settingRow(
+          WorkspaceToolbarAction.sendTarget,
+          strings.sendTo,
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              controller.sessionLabel(controller.sendTargetIndex),
+              key: const ValueKey<String>('toolbar-setting-sendTarget'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),

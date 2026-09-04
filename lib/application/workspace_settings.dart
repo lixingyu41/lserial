@@ -4,6 +4,7 @@ import '../core/encoding/data_format.dart';
 enum WorkspaceToolbarAction {
   clearLog,
   terminalMode,
+  sendTarget,
   sendFormat,
   lineEnding,
   sendShortcut,
