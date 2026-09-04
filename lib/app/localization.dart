@@ -73,6 +73,22 @@ class AppStrings {
   String get leftConfigPanel => isZh ? '左侧配置' : 'Left config';
   String get languageSetting => isZh ? '语言' : 'Language';
   String get downloadClient => isZh ? '下载客户端' : 'Download client';
+  String get updateClient => isZh ? '更新客户端' : 'Update client';
+  String get checkingUpdates => isZh ? '正在检查更新' : 'Checking for updates';
+  String latestVersion(String version) =>
+      isZh ? '已是最新版本 v$version' : 'You are using the latest version v$version';
+  String updateAvailable(String version) =>
+      isZh ? '发现新版本 v$version' : 'Version v$version is available';
+  String downloadAndInstall(String version) =>
+      isZh ? '下载并安装 v$version' : 'Download and install v$version';
+  String downloadingUpdate(int percent) =>
+      isZh ? '正在下载更新 $percent%' : 'Downloading update $percent%';
+  String get preparingUpdateInstall =>
+      isZh ? '正在准备安装' : 'Preparing installation';
+  String updateCheckFailed(Object error) =>
+      isZh ? '检查更新失败：$error' : 'Update check failed: $error';
+  String updateInstallFailed(Object error) =>
+      isZh ? '更新失败：$error' : 'Update failed: $error';
   String get mcpService => isZh ? 'MCP 服务' : 'MCP service';
   String get mcpDesktopOnly =>
       isZh ? 'MCP 仅桌面客户端可用' : 'MCP is available in the desktop client only';

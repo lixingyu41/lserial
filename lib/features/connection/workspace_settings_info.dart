@@ -1,19 +1,28 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../app/localization.dart';
 import '../../application/workspace_controller.dart';
 import '../../mcp/lserial_mcp_service_base.dart';
 import '../../platform/external_link.dart';
+import '../../update/app_update_service.dart';
 
 const _settingsRowHeight = 40.0;
 const _settingsTextPadding = EdgeInsets.symmetric(horizontal: 16);
 
 class WorkspaceSettingsInfo extends StatelessWidget {
-  const WorkspaceSettingsInfo({super.key, required this.controller});
+  const WorkspaceSettingsInfo({
+    super.key,
+    required this.controller,
+    this.updateService,
+    this.onInstallScheduled,
+  });
 
   final WorkspaceController controller;
+  final AppUpdateService? updateService;
+  final Future<void> Function()? onInstallScheduled;
 
   @override
   Widget build(BuildContext context) {
@@ -27,10 +36,167 @@ class WorkspaceSettingsInfo extends StatelessWidget {
         const _AppVersionText(),
         const Divider(height: 1),
         _DownloadClientButton(controller: controller),
+        _UpdateClientSection(
+          controller: controller,
+          service: updateService,
+          onInstallScheduled: onInstallScheduled,
+        ),
         const Divider(height: 1),
         const _CopyrightLink(),
       ],
     );
+  }
+}
+
+class _UpdateClientSection extends StatefulWidget {
+  const _UpdateClientSection({
+    required this.controller,
+    required this.service,
+    required this.onInstallScheduled,
+  });
+
+  final WorkspaceController controller;
+  final AppUpdateService? service;
+  final Future<void> Function()? onInstallScheduled;
+
+  @override
+  State<_UpdateClientSection> createState() => _UpdateClientSectionState();
+}
+
+class _UpdateClientSectionState extends State<_UpdateClientSection> {
+  late final AppUpdateService _service =
+      widget.service ?? createAppUpdateService();
+  AppUpdateRelease? _release;
+  bool _checking = false;
+  bool _downloading = false;
+  bool _installing = false;
+  int _progressPercent = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_service.supported) {
+      return const SizedBox.shrink();
+    }
+    final strings = widget.controller.strings;
+    final label = switch ((_checking, _downloading, _installing, _release)) {
+      (true, _, _, _) => strings.checkingUpdates,
+      (_, true, _, _) => strings.downloadingUpdate(_progressPercent),
+      (_, _, true, _) => strings.preparingUpdateInstall,
+      (_, _, _, final release?) => strings.downloadAndInstall(release.version),
+      _ => strings.updateClient,
+    };
+    final busy = _checking || _downloading || _installing;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 1),
+        SizedBox(
+          height: _settingsRowHeight,
+          child: TextButton(
+            key: const ValueKey<String>('update-client-button'),
+            style: _settingsButtonStyle(context),
+            onPressed: busy ? null : _handlePressed,
+            child: Row(
+              children: [
+                Expanded(child: _SettingsButtonText(label)),
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 16),
+                    child: SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handlePressed() async {
+    final release = _release;
+    if (release == null) {
+      await _checkForUpdate();
+      return;
+    }
+    await _downloadAndInstall(release);
+  }
+
+  Future<void> _checkForUpdate() async {
+    setState(() => _checking = true);
+    try {
+      final result = await _service.checkForUpdate();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _checking = false;
+        _release = result.release;
+      });
+      final message = result.release == null
+          ? widget.controller.strings.latestVersion(result.currentVersion)
+          : widget.controller.strings.updateAvailable(result.release!.version);
+      _showMessage(message);
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _checking = false);
+      _showMessage(widget.controller.strings.updateCheckFailed(error));
+    }
+  }
+
+  Future<void> _downloadAndInstall(AppUpdateRelease release) async {
+    setState(() {
+      _downloading = true;
+      _progressPercent = 0;
+    });
+    try {
+      await _service.downloadAndScheduleInstall(
+        release,
+        onProgress: (progress) {
+          if (!mounted) {
+            return;
+          }
+          final percent = (progress * 100).round().clamp(0, 100);
+          if (percent != _progressPercent) {
+            setState(() => _progressPercent = percent);
+          }
+        },
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _downloading = false;
+        _installing = true;
+      });
+      final closeApplication = widget.onInstallScheduled ?? windowManager.close;
+      await closeApplication();
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _downloading = false;
+        _installing = false;
+      });
+      _showMessage(widget.controller.strings.updateInstallFailed(error));
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
   }
 }
 
@@ -256,21 +422,21 @@ class _DownloadClientButton extends StatelessWidget {
       label: 'macOS',
       icon: Icons.laptop_mac,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.19/LSerial-v1.0.19-macOS.dmg',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.20/LSerial-v1.0.20-macOS.dmg',
       ),
     ),
     _DownloadTarget(
       label: 'Linux',
       icon: Icons.terminal,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.19/LSerial-v1.0.19-Linux-x64.tar.gz',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.20/LSerial-v1.0.20-Linux-x64.tar.gz',
       ),
     ),
     _DownloadTarget(
       label: 'Windows',
       icon: Icons.desktop_windows,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.19/LSerial-v1.0.19-Windows-x64-Setup.exe',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.20/LSerial-v1.0.20-Windows-x64-Setup.exe',
       ),
     ),
   ];

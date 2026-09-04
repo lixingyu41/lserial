@@ -2,12 +2,13 @@ name: lserial
 description: "High-throughput cross-platform communication debug tool."
 publish_to: 'none'
 
-version: 1.0.19+20
+version: 1.0.20+21
 
 environment:
   sdk: ^3.9.0
 
 dependencies:
+  crypto: ^3.0.7
   file_selector: ^1.1.0
   flutter:
     sdk: flutter
