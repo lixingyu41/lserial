@@ -11,7 +11,14 @@ import '../platform/window_title.dart';
 import 'app_shell.dart';
 
 class CommToolApp extends StatefulWidget {
-  const CommToolApp({super.key});
+  const CommToolApp({
+    super.key,
+    @visibleForTesting this.controller,
+    @visibleForTesting this.mcpService,
+  });
+
+  final WorkspaceController? controller;
+  final LSerialMcpService? mcpService;
 
   @override
   State<CommToolApp> createState() => _CommToolAppState();
@@ -27,8 +34,8 @@ class _CommToolAppState extends State<CommToolApp> with WindowListener {
   @override
   void initState() {
     super.initState();
-    controller = WorkspaceController();
-    mcpService = createLSerialMcpService(controller);
+    controller = widget.controller ?? WorkspaceController();
+    mcpService = widget.mcpService ?? createLSerialMcpService(controller);
     controller.attachMcpService(mcpService);
     _title = controller.windowTitle;
     controller.addListener(_syncWindowTitle);
@@ -53,6 +60,9 @@ class _CommToolAppState extends State<CommToolApp> with WindowListener {
 
   Future<void> _initialize() async {
     await controller.initialize();
+    if (!mounted || _closingWindow) {
+      return;
+    }
     await mcpService.setEnabled(controller.mcpEnabled);
   }
 
@@ -86,6 +96,13 @@ class _CommToolAppState extends State<CommToolApp> with WindowListener {
       return;
     }
     _closingWindow = true;
+    try {
+      // A driver or service may need time to release its handles. A close
+      // request should still remove the window immediately.
+      await windowManager.hide();
+    } on Object {
+      // Continue closing if this platform cannot hide the window.
+    }
     try {
       await Future.wait<void>([
         mcpService.stop(),

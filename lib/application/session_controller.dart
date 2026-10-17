@@ -594,6 +594,9 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _connect() async {
+    if (_disposed || _shutdownRequested || _manualDisconnect) {
+      return;
+    }
     if (!isTypeSupported(config.type)) {
       _setStatusMessage(
         strings.transportDisabled(config.type, unsupportedReason(config.type)),
@@ -602,6 +605,9 @@ class SessionController extends ChangeNotifier {
     }
     if (config.type == TransportType.bluetooth) {
       await stopBluetoothScan();
+      if (_disposed || _shutdownRequested || _manualDisconnect) {
+        return;
+      }
     }
 
     status = TransportStatus.connecting;
@@ -623,22 +629,31 @@ class SessionController extends ChangeNotifier {
       _syncReceivePacketOptions();
       _validateSerialForwarding();
       final session = await registry.create(config);
+      _session = session;
+      if (_shutdownRequested || _manualDisconnect) {
+        await _closeTransportSessions();
+        return;
+      }
       await session.connect();
+      if (_shutdownRequested || _manualDisconnect) {
+        await session.disconnect();
+        return;
+      }
       TransportSession? forwardSession;
       if (config.type == TransportType.serial &&
           config.serial.forwardingEnabled &&
           _externalForwardPeer == null) {
-        try {
-          forwardSession = await registry.create(
-            config.copyWith(serial: config.serial.forwardEndpoint),
-          );
-          await forwardSession.connect();
-        } on Object {
-          await session.disconnect();
-          rethrow;
+        forwardSession = await registry.create(
+          config.copyWith(serial: config.serial.forwardEndpoint),
+        );
+        _forwardSession = forwardSession;
+        if (_shutdownRequested || _manualDisconnect) {
+          await _closeTransportSessions();
+          return;
         }
+        await forwardSession.connect();
       }
-      if (_shutdownRequested) {
+      if (_shutdownRequested || _manualDisconnect) {
         await forwardSession?.disconnect();
         await session.disconnect();
         status = TransportStatus.disconnected;
@@ -685,6 +700,17 @@ class SessionController extends ChangeNotifier {
       _appendSystem(statusMessage);
       notifyListeners();
     } on Object catch (error) {
+      if (_shutdownRequested || _manualDisconnect) {
+        return;
+      }
+      try {
+        await _closeTransportSessions();
+      } on Object {
+        // Preserve the original connection failure if native cleanup fails.
+      }
+      if (_disposed || _shutdownRequested || _manualDisconnect) {
+        return;
+      }
       final isClassicBluetooth = config.type == TransportType.bluetoothClassic;
       if (isClassicBluetooth) {
         _recordClassicBluetoothFailure(
@@ -1673,6 +1699,12 @@ class SessionController extends ChangeNotifier {
 
     try {
       final ports = await registry.serialPorts();
+      if (_disposed ||
+          _shutdownRequested ||
+          _manualDisconnect ||
+          !_serialReconnectRequested) {
+        return;
+      }
       serialPorts = ports;
       notifyListeners();
       if (!_serialEndpointsAvailable(ports)) {
@@ -1722,8 +1754,10 @@ class SessionController extends ChangeNotifier {
     _forwardSession = null;
     await primarySubscription?.cancel();
     await forwardSubscription?.cancel();
-    await forwardSession?.disconnect();
-    await primarySession?.disconnect();
+    await Future.wait<void>([
+      if (forwardSession != null) forwardSession.disconnect(),
+      if (primarySession != null) primarySession.disconnect(),
+    ]);
     _primaryWriteTail = Future<void>.value();
     _forwardWriteTail = Future<void>.value();
     _pipeline.flush();

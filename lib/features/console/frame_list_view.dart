@@ -59,7 +59,18 @@ class _FrameListViewState extends State<FrameListView> {
   bool _scrollPending = false;
   int _scrollGeneration = 0;
   int _scrollRequest = 0;
-  int _anchorGeneration = 0;
+  final Key _centerKey = UniqueKey();
+  DataFrame? _centerFrame;
+  int _centerIndex = 0;
+  int _anchorRevision = 0;
+  bool _adjustingScroll = false;
+
+  @override
+  void initState() {
+    super.initState();
+    scroll.addListener(_handleScroll);
+    _scheduleScrollToBottom();
+  }
 
   @override
   void didUpdateWidget(FrameListView oldWidget) {
@@ -68,10 +79,15 @@ class _FrameListViewState extends State<FrameListView> {
       widget.sourceViewModes,
       oldWidget.sourceViewModes,
     );
-    if (!widget.autoScroll &&
-        !widget.pauseDisplay &&
-        widget.snapshot.revision != oldWidget.snapshot.revision) {
-      _scheduleAnchorCorrection();
+    if (!widget.autoScroll) {
+      _updateAnchor(oldWidget);
+    } else if (_centerFrame != null) {
+      _centerFrame = null;
+      _centerIndex = 0;
+      _anchorRevision++;
+      if (scroll.hasClients) {
+        scroll.position.correctBy(-scroll.offset);
+      }
     }
     if (widget.snapshot.revision != oldWidget.snapshot.revision) {
       _pruneFrameCaches();
@@ -90,7 +106,14 @@ class _FrameListViewState extends State<FrameListView> {
     }
     if (widget.autoScroll &&
         !widget.pauseDisplay &&
-        widget.snapshot.revision != oldWidget.snapshot.revision) {
+        (widget.snapshot.revision != oldWidget.snapshot.revision ||
+            !oldWidget.autoScroll ||
+            oldWidget.pauseDisplay ||
+            widget.options != oldWidget.options ||
+            sourceViewModesChanged ||
+            widget.filter != oldWidget.filter ||
+            widget.logFontSize != oldWidget.logFontSize ||
+            widget.bottomPadding != oldWidget.bottomPadding)) {
       _scheduleScrollToBottom();
     }
   }
@@ -98,7 +121,7 @@ class _FrameListViewState extends State<FrameListView> {
   @override
   void dispose() {
     _scrollGeneration++;
-    _anchorGeneration++;
+    scroll.removeListener(_handleScroll);
     scroll.dispose();
     super.dispose();
   }
@@ -109,69 +132,101 @@ class _FrameListViewState extends State<FrameListView> {
     final frameIndexes = _indexesFor(frames);
     final formatter = widget.formatter;
     final filter = widget.filter.trim();
-    return SelectionArea(
-      child: ListView.builder(
-        controller: scroll,
-        padding: EdgeInsets.only(bottom: widget.bottomPadding),
-        itemCount: frames.length,
-        findChildIndexCallback: frameIndexes == null
-            ? null
-            : (key) {
-                if (key is GlobalObjectKey<State<StatefulWidget>> &&
-                    key.value is DataFrame) {
-                  return frameIndexes[key.value as DataFrame];
-                }
-                return null;
-              },
-        itemBuilder: (context, index) {
-          final frame = frames[index];
-          final options = _optionsForFrame(frame, formatter);
-          _renderedFrames.add(frame);
-          return DecoratedBox(
-            key: _frameKey(frame),
-            decoration: BoxDecoration(
-              color: _rowColor(context, frame),
-              border: frame.direction == FrameDirection.system
-                  ? Border(
-                      left: BorderSide(
-                        color: Theme.of(context).colorScheme.tertiary,
-                        width: 3,
-                      ),
-                    )
-                  : null,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: Text.rich(
-                TextSpan(
-                  children: _spansFor(
-                    context,
-                    frame,
-                    formatter,
-                    options,
-                    filter,
+    int? childIndex(Key key, {required bool beforeCenter}) {
+      if (key is! GlobalObjectKey<State<StatefulWidget>> ||
+          key.value is! DataFrame) {
+        return null;
+      }
+      final index = frameIndexes?[key.value as DataFrame];
+      if (index == null) {
+        return null;
+      }
+      return beforeCenter
+          ? (index < _centerIndex ? _centerIndex - index - 1 : null)
+          : (index >= _centerIndex ? index - _centerIndex : null);
+    }
+
+    Widget row(BuildContext context, int index) {
+      final frame = frames[index];
+      final options = _optionsForFrame(frame, formatter);
+      _renderedFrames.add(frame);
+      return DecoratedBox(
+        key: _frameKey(frame),
+        decoration: BoxDecoration(
+          color: _rowColor(context, frame),
+          border: frame.direction == FrameDirection.system
+              ? Border(
+                  left: BorderSide(
+                    color: Theme.of(context).colorScheme.tertiary,
+                    width: 3,
                   ),
-                ),
-                softWrap: true,
-                style: TextStyle(
-                  fontFamily: 'Consolas',
-                  fontFamilyFallback: const <String>['Noto Sans SC'],
-                  fontSize: widget.logFontSize,
-                  letterSpacing: 0,
-                  height: 1.35,
-                  color: _textColor(context, frame),
-                ),
-                strutStyle: StrutStyle(
-                  fontFamily: 'Consolas',
-                  fontFamilyFallback: const <String>['Noto Sans SC'],
-                  fontSize: widget.logFontSize,
-                  height: 1.35,
-                  forceStrutHeight: true,
-                ),
+                )
+              : null,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          child: Text.rich(
+            TextSpan(
+              children: _spansFor(context, frame, formatter, options, filter),
+            ),
+            softWrap: true,
+            style: TextStyle(
+              fontFamily: 'Consolas',
+              fontFamilyFallback: const <String>['Noto Sans SC'],
+              fontSize: widget.logFontSize,
+              letterSpacing: 0,
+              height: 1.35,
+              color: _textColor(context, frame),
+            ),
+            strutStyle: StrutStyle(
+              fontFamily: 'Consolas',
+              fontFamilyFallback: const <String>['Noto Sans SC'],
+              fontSize: widget.logFontSize,
+              height: 1.35,
+              forceStrutHeight: true,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SelectionArea(
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: (_) {
+          _scheduleScrollToBottom();
+          return false;
+        },
+        child: CustomScrollView(
+          controller: scroll,
+          center: _centerKey,
+          physics: widget.autoScroll && !widget.pauseDisplay
+              ? const NeverScrollableScrollPhysics()
+              : null,
+          slivers: [
+            SliverList.builder(
+              key: ValueKey('before-$_anchorRevision'),
+              itemCount: _centerIndex,
+              findChildIndexCallback: frameIndexes == null
+                  ? null
+                  : (key) => childIndex(key, beforeCenter: true),
+              itemBuilder: (context, index) =>
+                  row(context, _centerIndex - index - 1),
+            ),
+            SliverPadding(
+              key: _centerKey,
+              padding: EdgeInsets.only(bottom: widget.bottomPadding),
+              sliver: SliverList.builder(
+                key: ValueKey('after-$_anchorRevision'),
+                itemCount: frames.length - _centerIndex,
+                findChildIndexCallback: frameIndexes == null
+                    ? null
+                    : (key) => childIndex(key, beforeCenter: false),
+                itemBuilder: (context, index) =>
+                    row(context, _centerIndex + index),
               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -255,7 +310,9 @@ class _FrameListViewState extends State<FrameListView> {
   ) {
     final source = formatter.sourceToken(frame);
     final mode = widget.sourceViewModes[source];
-    return mode == null ? widget.options : widget.options.copyWith(viewMode: mode);
+    return mode == null
+        ? widget.options
+        : widget.options.copyWith(viewMode: mode);
   }
 
   Color _rowColor(BuildContext context, DataFrame frame) {
@@ -409,6 +466,7 @@ class _FrameListViewState extends State<FrameListView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _settleScrollToBottom(generation);
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   void _settleScrollToBottom(int generation) {
@@ -424,7 +482,12 @@ class _FrameListViewState extends State<FrameListView> {
     final request = _scrollRequest;
     final extentBefore = scroll.position.maxScrollExtent;
     if ((scroll.position.pixels - extentBefore).abs() > 0.5) {
-      scroll.jumpTo(extentBefore);
+      _adjustingScroll = true;
+      try {
+        scroll.jumpTo(extentBefore);
+      } finally {
+        _adjustingScroll = false;
+      }
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -445,6 +508,13 @@ class _FrameListViewState extends State<FrameListView> {
       }
       _finishScrollRequest(generation);
     });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _handleScroll() {
+    if (!_adjustingScroll) {
+      _scheduleScrollToBottom();
+    }
   }
 
   bool _canAutoScroll(int generation) {
@@ -465,12 +535,21 @@ class _FrameListViewState extends State<FrameListView> {
     }
   }
 
-  void _scheduleAnchorCorrection() {
-    if (!scroll.hasClients) {
+  void _updateAnchor(FrameListView oldWidget) {
+    final frames = _filteredFrames();
+    final indexes = _indexesFor(frames)!;
+    final centerIndex = indexes[_centerFrame];
+    if (!oldWidget.autoScroll && centerIndex != null) {
+      _centerIndex = centerIndex;
       return;
     }
+
+    // Keep a retained visible row at the viewport origin. Slivers on either
+    // side can then grow or be trimmed without remapping its pixel offset.
     final viewport = context.findRenderObject();
-    if (viewport is! RenderBox || !viewport.attached) {
+    if (!scroll.hasClients || viewport is! RenderBox || !viewport.attached) {
+      _centerFrame = frames.firstOrNull;
+      _centerIndex = 0;
       return;
     }
 
@@ -489,6 +568,9 @@ class _FrameListViewState extends State<FrameListView> {
         staleFrames.add(frame);
         continue;
       }
+      if (!indexes.containsKey(frame)) {
+        continue;
+      }
       final top = renderObject.localToGlobal(Offset.zero).dy;
       final bottom = top + renderObject.size.height;
       if (bottom <= viewportTop || top >= viewportBottom) {
@@ -502,37 +584,11 @@ class _FrameListViewState extends State<FrameListView> {
       }
     }
     _renderedFrames.removeAll(staleFrames);
-    if (anchor == null || anchorTop == null) {
-      return;
-    }
-
-    final generation = ++_anchorGeneration;
-    final offsetBefore = scroll.offset;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          generation != _anchorGeneration ||
-          widget.autoScroll ||
-          widget.pauseDisplay ||
-          !scroll.hasClients ||
-          (scroll.offset - offsetBefore).abs() > 0.5) {
-        return;
-      }
-      final anchorContext = _frameKey(anchor!).currentContext;
-      final renderObject = anchorContext?.findRenderObject();
-      if (renderObject is! RenderBox || !renderObject.attached) {
-        return;
-      }
-      final nextTop = renderObject.localToGlobal(Offset.zero).dy;
-      final delta = nextTop - anchorTop!;
-      if (delta.abs() <= 0.5) {
-        return;
-      }
-      final target = (scroll.offset + delta).clamp(
-        scroll.position.minScrollExtent,
-        scroll.position.maxScrollExtent,
-      );
-      scroll.jumpTo(target);
-    });
+    _centerFrame = anchor ?? frames.firstOrNull;
+    _centerIndex = indexes[_centerFrame] ?? 0;
+    _anchorRevision++;
+    final target = anchorTop == null ? 0.0 : viewportTop - anchorTop;
+    scroll.position.correctBy(target - scroll.offset);
   }
 
   String _timestampText(DataFrame frame, FrameFormatter formatter) {

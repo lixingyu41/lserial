@@ -7,6 +7,217 @@ import 'package:lserial/protocol/frame_formatter.dart';
 import 'package:lserial/storage/log_buffer.dart';
 
 void main() {
+  testWidgets('enabling auto scroll follows existing frames immediately', (
+    tester,
+  ) async {
+    final key = GlobalKey<_FrameListHarnessState>();
+    await tester.pumpWidget(_FrameListHarness(key: key));
+    key.currentState!.update(
+      frames: _frames(0, 300),
+      revision: 1,
+      autoScroll: false,
+    );
+    await tester.pumpAndSettle();
+
+    key.currentState!.update(autoScroll: true);
+    await tester.pumpAndSettle();
+
+    final position = _scrollPosition(tester);
+    expect(position.pixels, closeTo(position.maxScrollExtent, 0.5));
+  });
+
+  testWidgets('auto scroll keeps following after a manual scroll attempt', (
+    tester,
+  ) async {
+    final key = GlobalKey<_FrameListHarnessState>();
+    await tester.pumpWidget(_FrameListHarness(key: key));
+    key.currentState!.update(frames: _frames(0, 300), revision: 1);
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(FrameListView), const Offset(0, 180));
+    await tester.pumpAndSettle();
+
+    final position = _scrollPosition(tester);
+    expect(position.pixels, closeTo(position.maxScrollExtent, 0.5));
+  });
+
+  testWidgets('auto scroll follows repeated bursts and can be re-enabled', (
+    tester,
+  ) async {
+    final key = GlobalKey<_FrameListHarnessState>();
+    await tester.pumpWidget(_FrameListHarness(key: key));
+    for (var batch = 0; batch < 12; batch++) {
+      key.currentState!.update(
+        frames: _frames(
+          batch * 100,
+          500,
+          payloadLength: batch.isEven ? 8 : 180,
+        ),
+        revision: batch + 1,
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+    var position = _scrollPosition(tester);
+    expect(position.pixels, closeTo(position.maxScrollExtent, 0.5));
+    final latestRow = _frameFinder(key.currentState!.frames.last);
+    expect(latestRow, findsOneWidget);
+    expect(
+      tester.getTopLeft(latestRow).dy,
+      lessThan(tester.getBottomLeft(find.byType(FrameListView)).dy),
+    );
+
+    key.currentState!.update(autoScroll: false);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(FrameListView), const Offset(0, 180));
+    await tester.pumpAndSettle();
+    position = _scrollPosition(tester);
+    expect(position.pixels, lessThan(position.maxScrollExtent - 1));
+    key.currentState!.update(autoScroll: true);
+    await tester.pumpAndSettle();
+    position = _scrollPosition(tester);
+    expect(position.pixels, closeTo(position.maxScrollExtent, 0.5));
+    expect(latestRow, findsOneWidget);
+  });
+
+  testWidgets('off preserves the visible rows when a previous anchor expires', (
+    tester,
+  ) async {
+    final key = GlobalKey<_FrameListHarnessState>();
+    await tester.pumpWidget(_FrameListHarness(key: key));
+    final frames = _frames(0, 600, payloadLength: 8);
+    key.currentState!.update(frames: frames, revision: 1);
+    await tester.pumpAndSettle();
+    key.currentState!.update(autoScroll: false);
+    await tester.pumpAndSettle();
+
+    final position = _scrollPosition(tester);
+    position.jumpTo(position.minScrollExtent / 2);
+    await tester.pumpAndSettle();
+    final anchor = _middleVisibleFrame(tester, frames);
+    final anchorY = tester.getTopLeft(_frameFinder(anchor)).dy;
+    key.currentState!.update(
+      frames: <DataFrame>[
+        ...frames.skip(anchor.sequence - 20),
+        ..._frames(600, anchor.sequence - 20, payloadLength: 100),
+      ],
+      revision: 2,
+    );
+    await tester.pumpAndSettle();
+    expect(_frameFinder(anchor), findsOneWidget);
+    expect(tester.getTopLeft(_frameFinder(anchor)).dy, closeTo(anchorY, 0.5));
+  });
+
+  testWidgets('disabling auto scroll cancels an unsettled burst', (
+    tester,
+  ) async {
+    final key = GlobalKey<_FrameListHarnessState>();
+    await tester.pumpWidget(_FrameListHarness(key: key));
+    key.currentState!.update(
+      frames: _frames(0, 500, payloadLength: 240),
+      revision: 1,
+    );
+    await tester.pump();
+    key.currentState!.update(autoScroll: false);
+    await tester.pump();
+    final position = _scrollPosition(tester);
+    position.jumpTo(position.maxScrollExtent / 3);
+    await tester.pump();
+    final manualOffset = position.pixels;
+    final retained = key.currentState!.frames;
+    for (var batch = 0; batch < 5; batch++) {
+      key.currentState!.update(
+        frames: <DataFrame>[
+          ...retained,
+          ..._frames(500, (batch + 1) * 300, payloadLength: 8),
+        ],
+        revision: batch + 2,
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+    expect(position.pixels, closeTo(manualOffset, 0.5));
+  });
+
+  testWidgets('a high rate rolling buffer preserves retained visible frames', (
+    tester,
+  ) async {
+    final key = GlobalKey<_FrameListHarnessState>();
+    await tester.pumpWidget(_FrameListHarness(key: key));
+    var frames = _frames(0, 600, payloadLength: 8);
+    key.currentState!.update(frames: frames, revision: 1, autoScroll: false);
+    await tester.pumpAndSettle();
+    final position = _scrollPosition(tester);
+    position.jumpTo(position.maxScrollExtent / 2);
+    await tester.pumpAndSettle();
+    final anchor = _middleVisibleFrame(tester, frames);
+    final anchorY = tester.getTopLeft(_frameFinder(anchor)).dy;
+
+    for (var batch = 0; batch < 5; batch++) {
+      frames = <DataFrame>[
+        ...frames.skip(30),
+        ..._frames(600 + batch * 30, 30, payloadLength: 160),
+      ];
+      key.currentState!.update(frames: frames, revision: batch + 2);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+    expect(_frameFinder(anchor), findsOneWidget);
+    expect(tester.getTopLeft(_frameFinder(anchor)).dy, closeTo(anchorY, 0.5));
+  });
+
+  testWidgets(
+    'evicting all visible frames returns to the oldest retained row',
+    (tester) async {
+      final key = GlobalKey<_FrameListHarnessState>();
+      await tester.pumpWidget(_FrameListHarness(key: key));
+      final frames = _frames(0, 600, payloadLength: 8);
+      key.currentState!.update(frames: frames, revision: 1, autoScroll: false);
+      await tester.pumpAndSettle();
+      final position = _scrollPosition(tester);
+      position.jumpTo(position.maxScrollExtent / 2);
+      await tester.pumpAndSettle();
+      final before = _middleVisibleFrame(tester, frames);
+
+      key.currentState!.update(
+        frames: <DataFrame>[...frames.skip(400), ..._frames(600, 400)],
+        revision: 2,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        position.pixels,
+        closeTo(position.minScrollExtent, 0.5),
+        reason: 'previous visible row=${before.sequence}',
+      );
+      expect(_frameFinder(frames[400]), findsOneWidget);
+    },
+  );
+
+  testWidgets('buffer eviction rebases an active manual fling', (tester) async {
+    final key = GlobalKey<_FrameListHarnessState>();
+    await tester.pumpWidget(_FrameListHarness(key: key));
+    final frames = _frames(0, 600, payloadLength: 8);
+    key.currentState!.update(frames: frames, revision: 1, autoScroll: false);
+    await tester.pumpAndSettle();
+    final position = _scrollPosition(tester);
+    position.jumpTo(position.maxScrollExtent / 2);
+    await tester.pumpAndSettle();
+    await tester.fling(find.byType(FrameListView), const Offset(0, -180), 1000);
+    await tester.pump(const Duration(milliseconds: 16));
+
+    key.currentState!.update(
+      frames: <DataFrame>[
+        ...frames.skip(450),
+        ..._frames(600, 450, payloadLength: 8),
+      ],
+      revision: 2,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 64));
+    expect(position.pixels, lessThan(500));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('auto scroll converges after a large burst of wrapped frames', (
     tester,
   ) async {

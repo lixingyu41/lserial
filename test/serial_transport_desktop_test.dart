@@ -1,13 +1,103 @@
 @TestOn('vm')
 library;
 
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lserial/domain/connection_config.dart';
 import 'package:lserial/transports/adapters/serial_transport_desktop.dart';
 
 void main() {
+  const config = ConnectionConfig(serial: SerialConfig(portName: 'COM_TEST'));
+
+  test(
+    'serial worker exit completes a pending request without timeout',
+    () async {
+      final session = DesktopSerialTransportSession(
+        config,
+        workerEntryPoint: _exitWithoutReply,
+      );
+      addTearDown(session.disconnect);
+      await session.connect();
+
+      await expectLater(
+        session.send(<int>[1]).timeout(const Duration(seconds: 1)),
+        throwsA(isA<StateError>()),
+      );
+      expect(session.isConnected, isFalse);
+      await session.disconnect().timeout(const Duration(seconds: 1));
+    },
+  );
+
+  test(
+    'serial disconnect finishes when the worker exits without reply',
+    () async {
+      final session = DesktopSerialTransportSession(
+        config,
+        workerEntryPoint: _exitWithoutReply,
+      );
+      addTearDown(session.disconnect);
+      await session.connect();
+
+      await session.disconnect().timeout(const Duration(seconds: 1));
+      expect(session.isConnected, isFalse);
+    },
+  );
+
+  test(
+    'serial disconnect is shared while a close request is pending',
+    () async {
+      final session = DesktopSerialTransportSession(
+        config,
+        workerEntryPoint: _replyToDisconnect,
+      );
+      addTearDown(session.disconnect);
+      await session.connect();
+
+      final firstClose = session.disconnect();
+      final secondClose = session.disconnect();
+      expect(identical(firstClose, secondClose), isTrue);
+      await firstClose.timeout(const Duration(seconds: 1));
+    },
+  );
+
+  test(
+    'serial disconnect cancels an open before worker startup finishes',
+    () async {
+      final session = DesktopSerialTransportSession(
+        config,
+        workerEntryPoint: _waitDuringOpen,
+      );
+      addTearDown(session.disconnect);
+      final opening = expectLater(
+        session.connect(),
+        throwsA(isA<StateError>()),
+      );
+
+      await session.disconnect().timeout(const Duration(seconds: 1));
+      await opening.timeout(const Duration(seconds: 1));
+      expect(session.isConnected, isFalse);
+    },
+  );
+
+  test(
+    'serial worker exit during open fails without the open timeout',
+    () async {
+      final session = DesktopSerialTransportSession(
+        config,
+        workerEntryPoint: _exitDuringOpen,
+      );
+      addTearDown(session.disconnect);
+
+      await expectLater(
+        session.connect().timeout(const Duration(seconds: 1)),
+        throwsA(isA<StateError>()),
+      );
+    },
+  );
+
   test('writeSerialBytesFully continues after a partial write', () async {
     final payload = Uint8List.fromList(
       List<int>.generate(1024, (index) => index & 0xff),
@@ -130,3 +220,34 @@ void main() {
     },
   );
 }
+
+Future<void> _exitWithoutReply(List<Object?> startup) async {
+  final events = startup[0] as SendPort;
+  final commands = ReceivePort();
+  events.send(<String, Object?>{'type': 'commands', 'port': commands.sendPort});
+  events.send(<String, Object?>{'type': 'connected'});
+  await commands.first;
+  commands.close();
+}
+
+Future<void> _replyToDisconnect(List<Object?> startup) async {
+  final events = startup[0] as SendPort;
+  final commands = ReceivePort();
+  events.send(<String, Object?>{'type': 'commands', 'port': commands.sendPort});
+  events.send(<String, Object?>{'type': 'connected'});
+  final request = await commands.first as Map<Object?, Object?>;
+  await Future<void>.delayed(const Duration(milliseconds: 20));
+  events.send(<String, Object?>{
+    'type': 'response',
+    'id': request['id'],
+    'ok': true,
+  });
+  commands.close();
+}
+
+Future<void> _waitDuringOpen(List<Object?> startup) async {
+  final commands = ReceivePort();
+  await commands.first;
+}
+
+Future<void> _exitDuringOpen(List<Object?> startup) async {}

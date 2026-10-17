@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:isolate';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 import '../../domain/connection_config.dart';
@@ -24,6 +24,7 @@ const Duration serialWriteRetryDelay = Duration(milliseconds: 2);
 const int _windowsOperationAbortedErrorCode = 995;
 
 typedef SerialWriteChunk = int Function(Uint8List bytes);
+typedef SerialWorkerEntryPoint = Future<void> Function(List<Object?> startup);
 
 int serialReadLengthForAvailable(
   int available, {
@@ -103,9 +104,13 @@ bool serialReadShouldRetry(Object? error) {
 
 class DesktopSerialTransportSession
     implements TransportSession, SerialReconfigurableTransportSession {
-  DesktopSerialTransportSession(this.config);
+  DesktopSerialTransportSession(
+    this.config, {
+    @visibleForTesting SerialWorkerEntryPoint? workerEntryPoint,
+  }) : _workerEntryPoint = workerEntryPoint ?? _serialWorkerMain;
 
   final ConnectionConfig config;
+  final SerialWorkerEntryPoint _workerEntryPoint;
   final StreamController<List<int>> _incoming =
       StreamController<List<int>>.broadcast();
   final Map<int, Completer<void>> _pendingRequests = <int, Completer<void>>{};
@@ -115,8 +120,10 @@ class DesktopSerialTransportSession
   Isolate? _worker;
   SendPort? _workerCommands;
   Completer<void>? _connectCompleter;
+  Future<void>? _disconnectFuture;
   int _nextRequestId = 0;
   bool _connected = false;
+  bool _disconnectRequested = false;
 
   @override
   TransportType get type => TransportType.serial;
@@ -135,6 +142,13 @@ class DesktopSerialTransportSession
     if (_connected) {
       return;
     }
+    if (_disconnectRequested) {
+      throw StateError('Serial port session has been disconnected.');
+    }
+    final pendingConnect = _connectCompleter;
+    if (pendingConnect != null) {
+      return pendingConnect.future;
+    }
     final serial = config.serial;
     if (serial.portName.isEmpty) {
       throw StateError('No serial port selected.');
@@ -147,17 +161,27 @@ class DesktopSerialTransportSession
     _workerEventSubscription = events.listen(_handleWorkerEvent);
 
     try {
-      _worker = await Isolate.spawn<List<Object?>>(_serialWorkerMain, <Object?>[
-        events.sendPort,
-        _serialSettings(serial),
-      ], debugName: 'LSerial-${serial.portName}');
-      await completer.future.timeout(
-        const Duration(seconds: 8),
-        onTimeout: () => throw SerialOpenException(
-          portName: serial.portName,
-          failure: SerialOpenFailure.timedOut,
+      await Future.wait<void>([
+        Isolate.spawn<List<Object?>>(
+          _workerEntryPoint,
+          <Object?>[events.sendPort, _serialSettings(serial)],
+          onExit: events.sendPort,
+          debugName: 'LSerial-${serial.portName}',
+        ).then((worker) {
+          if (_disconnectRequested || _workerEvents != events) {
+            worker.kill(priority: Isolate.immediate);
+          } else {
+            _worker = worker;
+          }
+        }),
+        completer.future.timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => throw SerialOpenException(
+            portName: serial.portName,
+            failure: SerialOpenFailure.timedOut,
+          ),
         ),
-      );
+      ], eagerError: true);
     } on Object {
       await _releaseWorker();
       rethrow;
@@ -195,7 +219,13 @@ class DesktopSerialTransportSession
   }
 
   @override
-  Future<void> disconnect() async {
+  Future<void> disconnect() {
+    _disconnectRequested = true;
+    _connected = false;
+    return _disconnectFuture ??= _disconnect();
+  }
+
+  Future<void> _disconnect() async {
     final commands = _workerCommands;
     if (commands != null) {
       try {
@@ -212,6 +242,17 @@ class DesktopSerialTransportSession
   }
 
   void _handleWorkerEvent(dynamic event) {
+    if (event == null) {
+      // An exited isolate cannot acknowledge another disconnect request.
+      _worker = null;
+      _workerCommands = null;
+      _connected = false;
+      _completeStoppedRequests();
+      if (!_incoming.isClosed) {
+        unawaited(_incoming.close());
+      }
+      return;
+    }
     if (event is! Map<Object?, Object?>) {
       return;
     }
@@ -219,12 +260,13 @@ class DesktopSerialTransportSession
       case 'commands':
         _workerCommands = event['port'] as SendPort?;
       case 'connected':
-        _connected = true;
+        _connected = !_disconnectRequested;
         final completer = _connectCompleter;
         if (completer != null && !completer.isCompleted) {
           completer.complete();
         }
       case 'connectError':
+        _workerCommands = null;
         final completer = _connectCompleter;
         if (completer != null && !completer.isCompleted) {
           completer.completeError(_openExceptionFromEvent(event));
@@ -240,6 +282,7 @@ class DesktopSerialTransportSession
         }
       case 'streamDone':
         _connected = false;
+        _workerCommands = null;
         if (!_incoming.isClosed) {
           unawaited(_incoming.close());
         }
@@ -280,10 +323,19 @@ class DesktopSerialTransportSession
     _worker?.kill(priority: Isolate.immediate);
     _worker = null;
     _workerCommands = null;
-    await _workerEventSubscription?.cancel();
+    final subscription = _workerEventSubscription;
     _workerEventSubscription = null;
     _workerEvents?.close();
     _workerEvents = null;
+    _completeStoppedRequests();
+    await subscription?.cancel();
+  }
+
+  void _completeStoppedRequests() {
+    final connectCompleter = _connectCompleter;
+    if (connectCompleter != null && !connectCompleter.isCompleted) {
+      connectCompleter.completeError(StateError('Serial port worker stopped.'));
+    }
     for (final completer in _pendingRequests.values) {
       if (!completer.isCompleted) {
         completer.completeError(StateError('Serial port worker stopped.'));
