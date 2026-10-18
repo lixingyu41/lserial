@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'app_update_models.dart';
+import 'windows_installer_launcher.dart';
 
 const _latestReleaseUri =
     'https://api.github.com/repos/lixingyu41/lserial/releases/latest';
@@ -101,7 +102,13 @@ class _WindowsUpdateService implements AppUpdateService {
         await target.delete();
       }
       await partial.rename(target.path);
-      await _scheduleInstaller(target.path);
+      await launchWindowsUpdateInstaller(
+        target.path,
+        logPath: '${target.path}.install.log',
+        installDirectory: _isInstalledBuild
+            ? File(_executablePath).parent.path
+            : null,
+      );
     } finally {
       client.close(force: true);
       if (await partial.exists()) {
@@ -143,54 +150,4 @@ class _WindowsUpdateService implements AppUpdateService {
       client.close(force: true);
     }
   }
-
-  Future<void> _scheduleInstaller(String installerPath) async {
-    final script = buildWindowsUpdateScript(
-      processId: pid,
-      installerPath: installerPath,
-      executablePath: _executablePath,
-      installedBuild: _isInstalledBuild,
-    );
-    await Process.start('powershell.exe', <String>[
-      '-NoProfile',
-      '-NonInteractive',
-      '-WindowStyle',
-      'Hidden',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-Command',
-      script,
-    ], mode: ProcessStartMode.detached);
-  }
 }
-
-String buildWindowsUpdateScript({
-  required int processId,
-  required String installerPath,
-  required String executablePath,
-  required bool installedBuild,
-}) {
-  final currentExecutableCandidate = installedBuild
-      ? "\$candidates += '${_quotePowerShell(executablePath)}'"
-      : '';
-  return <String>[
-    "Wait-Process -Id $processId -ErrorAction SilentlyContinue",
-    "\$installer = Start-Process -FilePath '${_quotePowerShell(installerPath)}' "
-        "-ArgumentList @('/SILENT','/CLOSEAPPLICATIONS','/NORESTART') "
-        '-Wait -PassThru',
-    'if (\$installer.ExitCode -eq 0) {',
-    '  \$candidates = @()',
-    if (currentExecutableCandidate.isNotEmpty) currentExecutableCandidate,
-    "  \$registryPaths = @('Registry::HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8E5E49A8-78E5-45C8-A126-F030C4595D29}_is1', 'Registry::HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8E5E49A8-78E5-45C8-A126-F030C4595D29}_is1')",
-    '  foreach (\$registryPath in \$registryPaths) {',
-    '    \$entry = Get-ItemProperty -LiteralPath \$registryPath -ErrorAction SilentlyContinue',
-    "    if (\$entry.InstallLocation) { \$candidates += Join-Path \$entry.InstallLocation 'lserial.exe' }",
-    '  }',
-    "  \$candidates += Join-Path \$env:LOCALAPPDATA 'Programs\\LSerial\\lserial.exe'",
-    "  \$nextExecutable = \$candidates | Where-Object { Test-Path -LiteralPath \$_ } | Select-Object -First 1",
-    '  if (\$nextExecutable) { Start-Process -FilePath \$nextExecutable }',
-    '}',
-  ].join('; ');
-}
-
-String _quotePowerShell(String value) => value.replaceAll("'", "''");

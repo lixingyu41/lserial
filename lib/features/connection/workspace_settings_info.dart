@@ -116,6 +116,9 @@ class _UpdateClientSectionState extends State<_UpdateClientSection> {
   }
 
   Future<void> _handlePressed() async {
+    if (_checking || _downloading || _installing) {
+      return;
+    }
     final release = _release;
     if (release == null) {
       await _checkForUpdate();
@@ -135,10 +138,14 @@ class _UpdateClientSectionState extends State<_UpdateClientSection> {
         _checking = false;
         _release = result.release;
       });
-      final message = result.release == null
-          ? widget.controller.strings.latestVersion(result.currentVersion)
-          : widget.controller.strings.updateAvailable(result.release!.version);
-      _showMessage(message);
+      final release = result.release;
+      if (release != null) {
+        await _downloadAndInstall(release);
+      } else {
+        _showMessage(
+          widget.controller.strings.latestVersion(result.currentVersion),
+        );
+      }
     } on Object catch (error) {
       if (!mounted) {
         return;
@@ -162,7 +169,13 @@ class _UpdateClientSectionState extends State<_UpdateClientSection> {
           }
           final percent = (progress * 100).round().clamp(0, 100);
           if (percent != _progressPercent) {
-            setState(() => _progressPercent = percent);
+            setState(() {
+              _progressPercent = percent;
+              if (percent == 100) {
+                _downloading = false;
+                _installing = true;
+              }
+            });
           }
         },
       );
@@ -422,21 +435,21 @@ class _DownloadClientButton extends StatelessWidget {
       label: 'macOS',
       icon: Icons.laptop_mac,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.21/LSerial-v1.0.21-macOS.dmg',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.22/LSerial-v1.0.22-macOS.dmg',
       ),
     ),
     _DownloadTarget(
       label: 'Linux',
       icon: Icons.terminal,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.21/LSerial-v1.0.21-Linux-x64.tar.gz',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.22/LSerial-v1.0.22-Linux-x64.tar.gz',
       ),
     ),
     _DownloadTarget(
       label: 'Windows',
       icon: Icons.desktop_windows,
       url: Uri.parse(
-        'https://github.com/lixingyu41/lserial/releases/download/v1.0.21/LSerial-v1.0.21-Windows-x64-Setup.exe',
+        'https://github.com/lixingyu41/lserial/releases/download/v1.0.22/LSerial-v1.0.22-Windows-x64-Setup.exe',
       ),
     ),
   ];

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lserial/app/localization.dart';
@@ -66,7 +68,7 @@ void main() {
     expect(find.byType(Switch), findsNothing);
   });
 
-  testWidgets('installed client checks then downloads and installs an update', (
+  testWidgets('one click checks downloads and launches the update', (
     tester,
   ) async {
     final controller = WorkspaceController();
@@ -94,15 +96,75 @@ void main() {
     expect(find.text(AppStrings.zh.updateClient), findsOneWidget);
 
     await tester.tap(button);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump();
     expect(service.checkCalls, 1);
-    expect(find.text('下载并安装 v1.0.20'), findsOneWidget);
+    expect(service.installCalls, 1);
+    expect(closeCalls, 1);
+  });
+
+  testWidgets('app stays open until the installer has started', (tester) async {
+    final controller = WorkspaceController();
+    final service = _FakeUpdateService()..installGate = Completer<void>();
+    var closeCalls = 0;
+    addTearDown(controller.dispose);
+    await _mountUpdater(tester, controller, service, () async => closeCalls++);
+    final button = find.byKey(const ValueKey<String>('update-client-button'));
 
     await tester.tap(button);
     await tester.pump();
+    expect(find.text(AppStrings.zh.preparingUpdateInstall), findsOneWidget);
+    expect(closeCalls, 0);
+    expect(tester.widget<TextButton>(button).onPressed, isNull);
+
+    service.installGate!.complete();
     await tester.pump();
     expect(service.installCalls, 1);
     expect(closeCalls, 1);
+  });
+
+  testWidgets('installer launch failure keeps the app open and allows retry', (
+    tester,
+  ) async {
+    final controller = WorkspaceController();
+    final service = _FakeUpdateService()
+      ..installError = StateError('Installer could not start');
+    var closeCalls = 0;
+    addTearDown(controller.dispose);
+    await _mountUpdater(tester, controller, service, () async => closeCalls++);
+    final button = find.byKey(const ValueKey<String>('update-client-button'));
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(service.checkCalls, 1);
+    expect(service.installCalls, 1);
+    expect(closeCalls, 0);
+    expect(find.textContaining('Installer could not start'), findsOneWidget);
+
+    service.installError = null;
+    await tester.tap(button);
+    await tester.pump();
+    expect(service.checkCalls, 1);
+    expect(service.installCalls, 2);
+    expect(closeCalls, 1);
+  });
+
+  testWidgets('current version does not download or close the app', (
+    tester,
+  ) async {
+    final controller = WorkspaceController();
+    final service = _FakeUpdateService()..updateAvailable = false;
+    var closeCalls = 0;
+    addTearDown(controller.dispose);
+    await _mountUpdater(tester, controller, service, () async => closeCalls++);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('update-client-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(service.checkCalls, 1);
+    expect(service.installCalls, 0);
+    expect(closeCalls, 0);
+    expect(find.text(AppStrings.zh.latestVersion('1.0.19')), findsOneWidget);
   });
 
   testWidgets('unsupported platform does not show automatic update action', (
@@ -132,9 +194,32 @@ void main() {
   });
 }
 
+Future<void> _mountUpdater(
+  WidgetTester tester,
+  WorkspaceController controller,
+  AppUpdateService service,
+  Future<void> Function() onInstallScheduled,
+) => tester.pumpWidget(
+  MaterialApp(
+    home: Scaffold(
+      body: SizedBox(
+        width: 320,
+        child: WorkspaceSettingsInfo(
+          controller: controller,
+          updateService: service,
+          onInstallScheduled: onInstallScheduled,
+        ),
+      ),
+    ),
+  ),
+);
+
 class _FakeUpdateService implements AppUpdateService {
   int checkCalls = 0;
   int installCalls = 0;
+  Completer<void>? installGate;
+  Object? installError;
+  bool updateAvailable = true;
 
   @override
   bool get supported => true;
@@ -144,13 +229,15 @@ class _FakeUpdateService implements AppUpdateService {
     checkCalls++;
     return AppUpdateCheckResult(
       currentVersion: '1.0.19',
-      release: AppUpdateRelease(
-        version: '1.0.20',
-        downloadUri: Uri.parse('https://example.com/installer.exe'),
-        fileName: 'installer.exe',
-        fileSize: 100,
-        sha256: 'abc',
-      ),
+      release: updateAvailable
+          ? AppUpdateRelease(
+              version: '1.0.20',
+              downloadUri: Uri.parse('https://example.com/installer.exe'),
+              fileName: 'installer.exe',
+              fileSize: 100,
+              sha256: 'abc',
+            )
+          : null,
     );
   }
 
@@ -162,6 +249,10 @@ class _FakeUpdateService implements AppUpdateService {
     installCalls++;
     onProgress(0.5);
     onProgress(1);
+    await installGate?.future;
+    if (installError != null) {
+      throw installError!;
+    }
   }
 }
 
